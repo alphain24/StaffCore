@@ -1,0 +1,53 @@
+name: Boot check
+
+# Boots a real server and asserts every hook applied.
+#
+# The JUnit suite covers the logic that runs without Minecraft. This covers the thing it
+# cannot: whether the mixins actually attached to this version of the game. That failure is
+# invisible to a compiler and, on a live server, invisible to players until the feature they
+# needed turns out not to exist.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    # Weekly, so a Minecraft or Fabric update that moves an injection point is found here
+    # rather than by somebody's staff team.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Cache Gradle and Loom
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Boot the server and check every hook
+        run: bash .github/scripts/boot-check.sh boot.log 600
+
+      - name: Upload the boot log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-log
+          path: boot.log
+          retention-days: 7

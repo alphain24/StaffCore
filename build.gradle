@@ -1,0 +1,98 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// sqlite-jdbc lives on Maven Central. Loom adds the Minecraft/Fabric repos itself.
+	mavenCentral()
+}
+
+loom {
+	// Server-only mod: no client source set, no split environments.
+	runs {
+		server {
+			runDir = "run/server"
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	// No `mappings` line on purpose — Minecraft 26.x is shipped unobfuscated.
+
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Nested into the built jar so server owners only ever drop in one file.
+	include implementation("org.xerial:sqlite-jdbc:${project.sqlite_version}")
+
+	// Test-scope only — nothing here ships in the jar.
+	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
+	testImplementation "org.junit.jupiter:junit-jupiter"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+// Let the boot check ask the mod to prove itself: -Pselftest turns on the self test that
+// runs once the server has finished starting.
+tasks.named('runServer') {
+	if (project.hasProperty('selftest')) {
+		jvmArgs '-Dstaffcore.selftest=true'
+	}
+}
+
+test {
+	useJUnitPlatform()
+	testLogging {
+		events "passed", "failed", "skipped"
+		exceptionFormat = "full"
+	}
+}
+
+processResources {
+	def v = project.version
+	inputs.property "version", v
+
+	filesMatching("fabric.mod.json") {
+		expand "version": v
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.encoding = "UTF-8"
+}
+
+java {
+	withSourcesJar()
+
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+}
+
+jar {
+	def projectName = project.name
+	inputs.property "projectName", projectName
+
+	from("LICENSE") {
+		rename { "${it}_$projectName" }
+	}
+}
+
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+	repositories {
+	}
+}

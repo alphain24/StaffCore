@@ -1,0 +1,2914 @@
+<title>StaffCore Handbook</title>
+<style>
+  /* ---------------------------------------------------------------- tokens */
+  :root {
+    --ground:        #F7F6FA;
+    --surface:       #FFFFFF;
+    --surface-sunk:  #EFEDF4;
+    --line:          #DCD7E6;
+    --line-soft:     #E8E4F0;
+    --ink:           #16121D;
+    --ink-soft:      #3D3450;
+    --muted:         #635A73;
+    --accent:        #6D28C9;
+    --accent-quiet:  #EDE4FB;
+    --good:          #1B7F3D;
+    --good-quiet:    #DDF1E3;
+    --warn:          #8A6000;
+    --warn-quiet:    #FBEED2;
+    --bad:           #BC2E29;
+    --bad-quiet:     #FBE1E0;
+    --shadow:        0 1px 2px rgba(22,18,29,.06), 0 8px 24px rgba(22,18,29,.05);
+
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI",
+            Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", "JetBrains Mono", Menlo,
+            Consolas, "Liberation Mono", monospace;
+
+    --measure: 68ch;
+    --rail: 15rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:       #131019;
+      --surface:      #1D1826;
+      --surface-sunk: #0E0B13;
+      --line:         #342B43;
+      --line-soft:    #271F33;
+      --ink:          #EAE6F0;
+      --ink-soft:     #C9C1D6;
+      --muted:        #968CA6;
+      --accent:       #B15CFF;
+      --accent-quiet: #241338;
+      --good:         #5BE87A;
+      --good-quiet:   #10301B;
+      --warn:         #FFC93C;
+      --warn-quiet:   #33280A;
+      --bad:          #FF5C57;
+      --bad-quiet:    #351615;
+      --shadow:       0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.28);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:       #131019;
+    --surface:      #1D1826;
+    --surface-sunk: #0E0B13;
+    --line:         #342B43;
+    --line-soft:    #271F33;
+    --ink:          #EAE6F0;
+    --ink-soft:     #C9C1D6;
+    --muted:        #968CA6;
+    --accent:       #B15CFF;
+    --accent-quiet: #241338;
+    --good:         #5BE87A;
+    --good-quiet:   #10301B;
+    --warn:         #FFC93C;
+    --warn-quiet:   #33280A;
+    --bad:          #FF5C57;
+    --bad-quiet:    #351615;
+    --shadow:       0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.28);
+  }
+
+  /* ----------------------------------------------------------------- base */
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  code, kbd, .mono { font-family: var(--mono); font-size: .875em; }
+
+  code {
+    background: var(--surface-sunk);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    padding: .08em .34em;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  /* --------------------------------------------------------------- layout */
+  .page {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+    gap: 3.5rem;
+    align-items: start;
+  }
+
+  @media (max-width: 60rem) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+    .rail { position: static; max-height: none; }
+  }
+
+  /* ------------------------------------------------------------------ rail */
+  .rail {
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 2.5rem 0;
+    font-family: var(--mono);
+    font-size: .74rem;
+    line-height: 1.5;
+  }
+
+  .rail h2 {
+    font-size: .68rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    margin: 0 0 .9rem;
+  }
+
+  .rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+  .rail a {
+    color: var(--muted);
+    text-decoration: none;
+    display: block;
+    padding: .18rem 0 .18rem .7rem;
+    border-left: 2px solid var(--line-soft);
+  }
+  .rail a:hover { color: var(--accent); border-left-color: var(--accent); }
+  .rail .rail-gap { height: .7rem; }
+
+  /* ------------------------------------------------------------------ hero */
+  header.hero {
+    padding: 5rem 0 3rem;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 3.5rem;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 1.1rem;
+  }
+
+  h1 {
+    font-size: clamp(2.6rem, 6vw, 4.1rem);
+    line-height: 1.02;
+    letter-spacing: -.035em;
+    font-weight: 800;
+    margin: 0 0 1.2rem;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: 1.18rem;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    max-width: 52ch;
+    margin: 0 0 2.4rem;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 2.6rem;
+    font-family: var(--mono);
+    font-size: .78rem;
+  }
+  .facts div { padding: .5rem 0; }
+  .facts dt {
+    color: var(--muted);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-size: .66rem;
+    margin: 0 0 .15rem;
+  }
+  .facts dd { margin: 0; color: var(--ink); font-weight: 600; }
+
+  /* -------------------------------------------------------------- sections */
+  section { margin: 0 0 4rem; scroll-margin-top: 2rem; }
+
+  h2 {
+    font-size: clamp(1.5rem, 2.6vw, 1.95rem);
+    letter-spacing: -.022em;
+    font-weight: 750;
+    margin: 0 0 .35rem;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-size: 1.08rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    margin: 2rem 0 .5rem;
+  }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 1.4rem;
+    padding-bottom: .9rem;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  p, ul, ol { max-width: var(--measure); }
+  p { margin: 0 0 1rem; }
+  ul, ol { margin: 0 0 1rem; padding-left: 1.15rem; }
+  li { margin: .3rem 0; }
+  li::marker { color: var(--muted); }
+
+  .lede { font-size: 1.05rem; color: var(--ink-soft); }
+
+  /* ---------------------------------------------------------------- tables */
+  .scroller { overflow-x: auto; margin: 0 0 1.5rem; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 34rem;
+    font-size: .9rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  th, td {
+    text-align: left;
+    padding: .6rem .85rem;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+
+  thead th {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  td.mono, th.mono { font-family: var(--mono); font-size: .82rem; white-space: nowrap; }
+  td.wrap { white-space: normal; }
+
+  /* ------------------------------------------------------------- slot motif */
+  /* The whole mod is chest menus, so the inventory slot is the page's unit. */
+  .slot {
+    background: var(--surface-sunk);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 -1px 0 rgba(0,0,0,.08);
+  }
+
+  .hotbar {
+    display: grid;
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    gap: .4rem;
+    margin: 1.4rem 0 .8rem;
+    min-width: 40rem;
+  }
+
+  .hotbar .slot {
+    aspect-ratio: 1;
+    padding: .5rem .4rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: center;
+  }
+
+  .hotbar .num {
+    font-family: var(--mono);
+    font-size: .64rem;
+    color: var(--muted);
+  }
+  .hotbar .label {
+    font-size: .74rem;
+    font-weight: 650;
+    line-height: 1.2;
+    letter-spacing: -.01em;
+  }
+  .hotbar .item {
+    font-family: var(--mono);
+    font-size: .58rem;
+    color: var(--muted);
+    line-height: 1.25;
+  }
+  .hotbar .slot.empty .label { color: var(--muted); font-weight: 400; }
+
+  .grid-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: .8rem;
+    margin: 1.3rem 0 1.5rem;
+    max-width: var(--measure);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    padding: .95rem 1.05rem;
+    box-shadow: var(--shadow);
+  }
+  .card h4 {
+    margin: 0 0 .3rem;
+    font-size: .92rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+  }
+  .card p { margin: 0; font-size: .86rem; color: var(--muted); line-height: 1.55; }
+
+  /* ------------------------------------------------------------------ flow */
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: .45rem;
+    margin: 1.3rem 0 1.6rem;
+  }
+  .flow .step {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: .55rem .8rem;
+    font-size: .84rem;
+    font-weight: 650;
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+  }
+  .flow .step small {
+    font-family: var(--mono);
+    font-size: .62rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .flow .arrow {
+    align-self: center;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: .8rem;
+  }
+  .flow .step.terminal { border-color: var(--accent); color: var(--accent); }
+
+  /* ----------------------------------------------------------------- notes */
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-quiet);
+    padding: .8rem 1rem;
+    margin: 1.3rem 0;
+    max-width: var(--measure);
+    font-size: .92rem;
+    border-radius: 0 4px 4px 0;
+  }
+  .note.caution { border-left-color: var(--warn); background: var(--warn-quiet); }
+  .note.danger  { border-left-color: var(--bad);  background: var(--bad-quiet); }
+  .note p { margin: 0; }
+  .note p + p { margin-top: .5rem; }
+  .note strong { font-weight: 700; }
+
+  /* ----------------------------------------------------------------- pills */
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: .64rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: .12rem .45rem;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pill.everyone { color: var(--good); }
+  .pill.destructive { color: var(--bad); }
+  .pill.confirm { color: var(--warn); }
+
+  pre {
+    background: var(--surface-sunk);
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: .78rem;
+    line-height: 1.6;
+    margin: 0 0 1.4rem;
+    color: var(--ink-soft);
+  }
+  pre code { background: none; border: none; padding: 0; white-space: pre; font-size: inherit; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 1.6rem;
+    color: var(--muted);
+    font-size: .85rem;
+    max-width: var(--measure);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="page">
+  <header class="hero">
+    <p class="eyebrow">Fabric 26.2 · Server-side</p>
+    <h1>StaffCore Handbook</h1>
+    <p class="standfirst">
+      Everything the mod does, where to find it, and what it costs a player when you use it.
+      Written for the people who will actually be running it at 2am.
+    </p>
+    <dl class="facts">
+      <div><dt>Minecraft</dt><dd>26.2</dd></div>
+      <div><dt>Modules</dt><dd>18</dd></div>
+      <div><dt>Screens</dt><dd>21</dd></div>
+      <div><dt>Commands</dt><dd>One /staff tree</dd></div>
+      <div><dt>Permission nodes</dt><dd>40</dd></div>
+      <div><dt>Client mod</dt><dd>Not needed</dd></div>
+    </dl>
+  </header>
+
+  <div class="shell">
+    <nav class="rail" aria-label="Sections">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#idea">The idea</a></li>
+        <li><a href="#panel">The panel</a></li>
+        <div class="rail-gap"></div>
+        <li><a href="#duty">On duty</a></li>
+        <li><a href="#toolset">The toolset</a></li>
+        <li><a href="#file">A player's file</a></li>
+        <li><a href="#punish">Punishments</a></li>
+        <li><a href="#notes">Notes</a></li>
+        <li><a href="#reports">Reports</a></li>
+        <li><a href="#appeals">Appeals</a></li>
+        <li><a href="#identity">Identity &amp; logs</a></li>
+        <li><a href="#inventories">Inventories</a></li>
+        <li><a href="#security">Security checks</a></li>
+        <li><a href="#contraband">Contraband &amp; the vault</a></li>
+        <li><a href="#grief">Grief &amp; rollback</a></li>
+        <li><a href="#control">Server control</a></li>
+        <li><a href="#comms">Chat &amp; alerts</a></li>
+        <li><a href="#analytics">Analytics</a></li>
+        <li><a href="#discord">Discord</a></li>
+        <div class="rail-gap"></div>
+        <li><a href="#commands">Command list</a></li>
+        <li><a href="#permissions">Permissions</a></li>
+        <li><a href="#icons">Icon key</a></li>
+        <li><a href="#sounds">Sound key</a></li>
+        <div class="rail-gap"></div>
+        <li><a href="#config">Config</a></li>
+        <li><a href="#data">Where data lives</a></li>
+        <li><a href="#anticheat">Anti-cheat bridge</a></li>
+        <li><a href="#modules">Every module</a></li>
+        <li><a href="#health">Health checks</a></li>
+        <li><a href="#limits">Known limits</a></li>
+      </ol>
+    </nav>
+
+    <main>
+      <!-- ============================================================ IDEA -->
+      <section id="idea">
+        <p class="kicker">Orientation</p>
+        <h2>The idea</h2>
+        <p class="lede">
+          StaffCore is panel-first. Every tool lives behind <code>/staff</code>, in a chest
+          menu you can operate without remembering a single command.
+        </p>
+        <p>
+          That is the whole design argument. Moderation happens under time pressure, usually
+          while someone is actively causing the problem, and a staff member who has to recall
+          the argument order of <code>/tempban</code> is a staff member who is not watching
+          the griefer. So the panel is the primary interface and the commands are the escape
+          hatch — for free text, for speed, and for people who prefer typing.
+        </p>
+        <p>
+          Three consequences worth knowing up front:
+        </p>
+        <ul>
+          <li><strong>Nothing irreversible happens without a confirm screen.</strong> Bans,
+            rollbacks, history wipes and inventory restores all show you what is about to
+            happen and make you click again.</li>
+          <li><strong>Punishment reasons are presets, not free text.</strong> A chest menu has
+            nowhere to type, and a fixed vocabulary makes history comparable across a whole
+            staff team. The command form is there when you genuinely need something bespoke.</li>
+          <li><strong>Punishments work on offline players</strong>, and so does the
+            inventory view. Both resolve a name through the server's own records rather than
+            requiring the target to be online — which is usually the entire point.</li>
+          <li><strong>Every command starts with <code>/staff</code>.</strong> One word to
+            remember, and the rest is tab-complete.</li>
+        </ul>
+        <div class="note">
+          <p>
+            No client mod, no resource pack, nothing for players to install. Everything you
+            see is a normal chest GUI and normal chat, rendered server-side.
+          </p>
+        </div>
+      </section>
+
+      <!-- =========================================================== PANEL -->
+      <section id="panel">
+        <p class="kicker">The hub</p>
+        <h2>The panel</h2>
+        <p>
+          <code>/staff</code> opens a six-row menu split into three bands, in the order a
+          shift actually runs: what you switch on about yourself, what you do to other
+          people, and what you do to the whole server.
+        </p>
+
+        <div class="grid-cards">
+          <div class="card">
+            <h4>You</h4>
+            <p>Staff Mode · Vanish · Staff Chat · Alerts · Command Spy · Return</p>
+          </div>
+          <div class="card">
+            <h4>People</h4>
+            <p>Players · Reports · Punish · Inventories · Notes · History · Security Check</p>
+          </div>
+          <div class="card">
+            <h4>Server</h4>
+            <p>Server Control · Grief Log · Analytics · Item Scanner · Discord status</p>
+          </div>
+          <div class="card">
+            <h4>Info</h4>
+            <p>Your record · Live server status · A help card listing the equivalent commands</p>
+          </div>
+        </div>
+
+        <p>
+          Anything you lack permission for is drawn as an <strong>iron-bars "Locked" bar
+          naming the node you need</strong>, rather than hidden. Staff can see what exists
+          and ask for it, instead of concluding the mod is broken.
+        </p>
+
+        <h3>How the screens connect</h3>
+        <div class="scroller">
+<pre><code>/staff  Staff Panel
+ ├─ Players ─────────── Player List ─┬─ left-click  → whatever you came in for
+ │                                   └─ right-click → the player's file
+ ├─ Player file ──┬─ Punish ─── Duration ─── Reason ─── Confirm
+ │                ├─ History          paged, wipe sits behind a confirm
+ │                ├─ Notes            paged, delete sits behind a confirm
+ │                ├─ Inventory        live, read-only or editable
+ │                ├─ Snapshots ────── Snapshot view
+ │                └─ Security check   paged findings
+ ├─ Reports ─────────── claim / resolve / teleport
+ ├─ Server control ──── chat lock · clear · broadcast · maintenance · TPS
+ ├─ Grief log ───────── paged block history ─── Rollback (preview → confirm)
+ └─ Analytics ───────── staff leaderboard</code></pre>
+        </div>
+        <p>
+          The player list is the junction. Whichever door you came in through — Punish,
+          Notes, Inventories — a right-click on any head opens that player's full file, so
+          you are never more than one click from everything else you might need.
+        </p>
+      </section>
+
+      <!-- ============================================================ DUTY -->
+      <section id="duty">
+        <p class="kicker">Your shift</p>
+        <h2>On duty</h2>
+
+        <h3>Staff Mode</h3>
+        <p>
+          Clocking on does four things at once: it stashes your real inventory, hands you the
+          staff toolset, grants flight, and vanishes you. Clocking off reverses all four.
+        </p>
+        <p>
+          <strong>Your inventory goes to the database, not to memory.</strong> That was the
+          one genuine data-loss risk in the mod: a restart while anyone was clocked on used to
+          destroy their items outright. Now clocking on writes the stash <em>before</em>
+          clearing anything — if the write fails, staff mode refuses to start rather than
+          emptying an inventory it cannot put back — and the stash is cleared only after a
+          successful hand-back. The failure mode is a duplicate restore attempt, never a loss.
+        </p>
+        <p>
+          Disconnecting on duty now <em>keeps</em> you on duty. A staff member who crashes
+          mid-incident comes back with their tools, and their real inventory is still waiting.
+        </p>
+        <p>
+          The duty gamemode is <code>creative</code> by default, because that is what being
+          on duty actually needs: fly to the report, phase through the base you are
+          inspecting, and put back the block you just proved was griefed.
+          <code>staffModeGameMode</code> also takes <code>survival</code>, which keeps staff
+          visible to anti-cheat and stops them being an item source — the safer choice where
+          staff are not fully trusted — or <code>spectator</code>, which is the least
+          intrusive but blocks interaction entirely, so the staff toolset stops working.
+          Whichever you pick, the gamemode somebody was in <em>before</em> clocking on is
+          stored and handed back when they clock off, so changing this strands nobody. On duty
+          you are also <strong>invulnerable</strong>, vanished or not, so investigating a mob
+          farm does not make you part of the incident.
+        </p>
+
+        <h3>Movement</h3>
+        <p>
+          The panel carries a Movement control: <strong>noclip</strong> and a fly-speed cycle
+          (1× / 2× / 4× / 8×).
+        </p>
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">Noclip is spectator</span>
+            That is not a shortcut — it is the only thing that works. The client runs its own
+            collision, so a server-side "ignore physics" flag is simply ignored: you walk into
+            the wall on your own screen and the server pulls you back. Vanilla's own check for
+            passing through blocks is <em>are you a spectator</em>, so that is what the toggle
+            switches to. Your duty gamemode is remembered and restored when you switch it off.
+          </p>
+          <p>
+            Spectator normally means you cannot click anything, including this mod's own
+            menus — vanilla drops container clicks for spectators before they ever reach the
+            menu. StaffCore carves out an exception for its own screens, so the panel, the
+            player file and every other tool keep working while you noclip. Real chests stay
+            untouchable, as they should.
+          </p>
+        </div>
+
+        <h3>Vanish</h3>
+        <p class="lede">
+          Vanish is not invisibility. It is the absence of every trace a player leaves.
+        </p>
+        <p>
+          When you vanish, everyone without <code>staff.vanish</code> sees
+          <strong>"&lt;name&gt; left the game"</strong> — the real vanilla message, same
+          translation key, same yellow. Un-vanishing sends the matching join line. A staff
+          member who simply blinks out tells every observant player that vanish exists and
+          somebody is watching; one who leaves is indistinguishable from somebody who
+          actually did. Staff who can see through vanish get the truth instead.
+        </p>
+        <p>
+          The fake message and the real one have to be kept from stacking, and getting that
+          wrong is very visible. Logging off while vanished must not print a second
+          "left the game" on top of the one your vanish already sent, and rejoining must not
+          print "joined the game" or put you back in the tab list. Both took two attempts to
+          get right, and both failures came from the same mistake — assuming an ordering
+          instead of checking it.
+        </p>
+        <p>
+          <strong>The leave line.</strong> Suppression is driven by a record of who to stay
+          quiet about, and that record was being cleared from Fabric's disconnect event.
+          Fabric fires that event from the head of the connection teardown, which is
+          <em>before</em> the server builds the "left the game" message — so the state was
+          gone before the message it was meant to suppress existed. The cleanup now happens
+          on the far side of the broadcast instead, driven by the player-list removal that
+          vanilla performs immediately after it.
+        </p>
+        <p>
+          <strong>The tab list.</strong> Joining broadcasts your list entry to every client.
+          The old fix sent that entry and then chased it with a removal packet a tick later.
+          That is a race, and a race is exactly the wrong guarantee for a feature whose
+          entire job is that nobody notices — it works most of the time, which is worse than
+          not working at all, because you stop checking. The entry is now simply never sent
+          to clients that should not have it. Same technique as the entity tracker: refuse
+          the decision at the source rather than undo its consequences.
+        </p>
+
+        <h3>What is covered</h3>
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="wrap">Leak</th><th class="wrap">How it is closed</th></tr></thead>
+            <tbody>
+              <tr><td class="wrap">Seen at all</td><td class="wrap">The tracker answers vanilla's own <code>broadcastToPlayer</code> with "no", so you are never paired with an unauthorised client</td></tr>
+              <tr><td class="wrap">Join / leave lines</td><td class="wrap">Suppressed, and replaced with convincing fakes on vanish</td></tr>
+              <tr><td class="wrap">Tab list</td><td class="wrap">Entry withheld at login, and removed on vanish</td></tr>
+              <tr><td class="wrap">Player count</td><td class="wrap">Excluded from <code>getPlayerCount</code></td></tr>
+              <tr><td class="wrap"><code>/list</code></td><td class="wrap">Filtered for anyone who cannot see vanished — names and count both</td></tr>
+              <tr><td class="wrap">Server-list ping</td><td class="wrap">Both the online count and the hover sample &mdash; the ping sees zero of you</td></tr>
+              <tr><td class="wrap">Command selectors (<code>@a</code>, <code>@r</code>, <code>/msg</code>)</td><td class="wrap">Filtered for anyone who cannot see vanished</td></tr>
+              <tr><td class="wrap">Sound — walking, breaking, placing, using</td><td class="wrap">Suppressed at <code>Level#playSound</code></td></tr>
+              <tr><td class="wrap">Chest and shulker lid animations</td><td class="wrap">Open/close events refused</td></tr>
+              <tr><td class="wrap">Sculk sensors, shriekers, the warden</td><td class="wrap">No game events emitted</td></tr>
+              <tr><td class="wrap">Mobs noticing you</td><td class="wrap">Target assignment refused outright</td></tr>
+              <tr><td class="wrap">Entity collisions — boats, carts, mobs</td><td class="wrap">Not pushable, and pushes nothing</td></tr>
+              <tr><td class="wrap">Item, XP, arrow and trident pickup</td><td class="wrap">Refused</td></tr>
+              <tr><td class="wrap">Sleep count</td><td class="wrap">Excluded, so night still passes</td></tr>
+              <tr><td class="wrap">Pressure plates and tripwires</td><td class="wrap">Not counted, so nothing clicks open</td></tr>
+              <tr><td class="wrap">Mob spawning, phantoms, proximity AI</td><td class="wrap">Filtered out of <code>getNearestPlayer</code></td></tr>
+              <tr><td class="wrap">Death and advancement announcements</td><td class="wrap">Suppressed while vanished</td></tr>
+              <tr><td class="wrap">Trial spawners and vaults</td><td class="wrap">Not detected, so chambers stay unarmed</td></tr>
+              <tr><td class="wrap">Mob-spawning chunk eligibility</td><td class="wrap">Not counted, so farms run as if nobody is there</td></tr>
+              <tr><td class="wrap">Sweeping-edge splash</td><td class="wrap">Never lands, so no particles in mid-air</td></tr>
+              <tr><td class="wrap">Arrows, fireworks, bobbers, pearls</td><td class="wrap">Discarded rather than flown</td></tr>
+              <tr><td class="wrap">Damage</td><td class="wrap">Invulnerable while on duty</td></tr>
+              <tr><td class="wrap">Surviving a reconnect</td><td class="wrap">Persisted, and restored before the join line is built</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">Not yet covered</span>
+            <strong>Dispensers equipping armour</strong> onto a vanished player — the predicate
+            that picks the target is an inlined lambda, effectively impossible to target
+            safely, and the payoff is a dispenser occasionally putting a helmet on somebody
+            invisible. Not worth a fragile injection.
+          </p>
+          <p>
+            <strong>Raw chunk loading</strong> is half-done <em>by default</em>, and it is
+            worth knowing why. <code>DistanceManager#addPlayer</code> raises the spawn counter
+            <em>and</em> the chunk-loading ticket in one call. Only the spawn half is skipped
+            out of the box — that is the part anyone can actually observe, and skipping the
+            other half would leave you staring into unloaded void unable to do the job vanish
+            exists for. Set <code>vanishLoadsChunks</code> to false to skip both, and read the
+            trade in the Config section before you do: it lands on the next chunk boundary you
+            cross, not the instant you toggle vanish.
+          </p>
+          <p>
+            <strong>Map integrations</strong> — BlueMap, Dynmap, Squaremap — cannot be done
+            from here at all: each needs that mod present as a compile dependency and an API
+            call into it. They are a separate compatibility layer, not a mixin.
+          </p>
+        </div>
+
+        <h3>Freeze</h3>
+        <p>
+          Pins a player where they stand. Every tick, a frozen player who has drifted more
+          than a few centimetres is snapped back, and every ten seconds they get a reminder
+          not to log out. The small dead zone is deliberate — snapping on <em>any</em>
+          movement fights the client's own prediction and produces rubber-banding; a little
+          slack reads cleanly as "you cannot walk".
+        </p>
+
+        <h3>Return</h3>
+        <p>
+          Every staff teleport records where you came from, so <code>/back</code> puts you
+          exactly where you were, in the right dimension.
+        </p>
+      </section>
+
+      <!-- ========================================================= TOOLSET -->
+      <section id="toolset">
+        <p class="kicker">Staff mode</p>
+        <h2>The toolset</h2>
+        <p>
+          Staff mode replaces your hotbar with nine fixed tools. Slots 1, 2, 8 and 9 act when
+          you right-click the air; slots 3 through 6 act on whichever player you right-click;
+          slot 7 acts on whichever block you right-click.
+        </p>
+
+        <div class="scroller">
+          <div class="hotbar">
+            <div class="slot"><span class="num">1</span><span class="label">Staff Panel</span><span class="item">Nether Star</span></div>
+            <div class="slot"><span class="num">2</span><span class="label">Online Players</span><span class="item">Compass</span></div>
+            <div class="slot"><span class="num">3</span><span class="label">Inspect</span><span class="item">Book</span></div>
+            <div class="slot"><span class="num">4</span><span class="label">Freeze</span><span class="item">Packed Ice</span></div>
+            <div class="slot"><span class="num">5</span><span class="label">Inventory</span><span class="item">Chest</span></div>
+            <div class="slot"><span class="num">6</span><span class="label">Punish</span><span class="item">Netherite Axe</span></div>
+            <div class="slot"><span class="num">7</span><span class="label">Inspect Block</span><span class="item">Stick</span></div>
+            <div class="slot"><span class="num">8</span><span class="label">Vanish</span><span class="item">Eye of Ender</span></div>
+            <div class="slot"><span class="num">9</span><span class="label">Jump To</span><span class="item">Ender Pearl</span></div>
+          </div>
+        </div>
+
+        <p>
+          <strong>Jump To</strong> teleports you to a random player who is <em>not</em> staff.
+          Staff are excluded on purpose: the point of the tool is landing somewhere something
+          might be happening, and staff cluster at spawn.
+        </p>
+        <p>
+          <strong>Inspect Block</strong> is the CoreProtect-style inspector: left-click or
+          right-click any block to open the grief log centred on it — who broke it, who
+          placed it, who opened it and when. Left-click is the one to reach for on a chest,
+          since right-clicking one would open it.
+        </p>
+        <p>
+          On a <strong>container</strong> it opens the item history instead — who took what
+          out and who put what in, each row showing the actual stack that moved. That is
+          almost always the real question, because the chest is usually still standing and
+          the diamonds are not. A button switches across to the block view.
+        </p>
+        <div class="note">
+          <p>
+            <strong>The tools cannot leave staff mode.</strong> They refuse to be dropped,
+            they are stripped from your inventory before death drops run, any that reaches
+            the ground is destroyed rather than collected, and a two-second sweep removes one
+            from anybody not on duty and tells staff. A loose staff tool is a permanently
+            circulating item, so every route out is closed rather than just the obvious one.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ FILE -->
+      <section id="file">
+        <p class="kicker">Per player</p>
+        <h2>A player's file</h2>
+        <p>
+          One screen holding everything StaffCore knows about somebody and everything you can
+          do to them. It opens from the player list, the Inspect tool, or
+          <code>/lookup &lt;player&gt;</code>.
+        </p>
+        <p>
+          The file is keyed on a profile, not a live player, so it works for someone who has
+          already logged off. Actions that genuinely need them present — teleport, freeze,
+          live inventory — are drawn greyed with the reason stated, rather than silently
+          missing.
+        </p>
+        <p>The header alone tells you: online or offline, health, dimension, coordinates,
+          punishment count, note count, and an explicit warning line for any ban or mute
+          currently in force. Two status cards below spell out the active ban and mute in
+          full — type, reason, who issued it, when, and what is left to run.</p>
+
+        <h3>What you can do from here</h3>
+        <div class="grid-cards">
+          <div class="card"><h4>Punish</h4><p>Straight into the ladder, with their record on screen beside it.</p></div>
+          <div class="card"><h4>History</h4><p>Every punishment they have ever taken.</p></div>
+          <div class="card"><h4>Notes</h4><p>Read and write staff notes.</p></div>
+          <div class="card"><h4>Inventory</h4><p>A live view of what they are carrying.</p></div>
+          <div class="card"><h4>Snapshots</h4><p>Frozen copies of that inventory.</p></div>
+          <div class="card"><h4>Security check</h4><p>Run the automated checks on them.</p></div>
+          <div class="card"><h4>Freeze</h4><p>Lock or release them.</p></div>
+          <div class="card"><h4>Teleport / Bring</h4><p>Go to them, or pull them to you.</p></div>
+          <div class="card"><h4>Lift ban / mute</h4><p>Revoke what is currently in force, behind a confirm.</p></div>
+        </div>
+      </section>
+
+      <!-- ========================================================== PUNISH -->
+      <section id="punish">
+        <p class="kicker">Enforcement</p>
+        <h2>Punishments</h2>
+        <p class="lede">
+          You pick <strong>what they did</strong>. The ladder picks what happens.
+        </p>
+        <p>
+          This is the change that matters most to a staff team. Choosing a punishment from
+          scratch every time produces drift — the new moderator who bans for swearing, the
+          veteran who lets their friends off with a warning — and neither is visible until
+          somebody complains. Here the server decides once, in config, that a second instance
+          of chat abuse is a one-day mute, and every staff member applies that identically.
+        </p>
+        <p>
+          The rung comes from how many times this player has already been done for
+          <em>that specific offence</em>, so escalation is per-offence rather than one global
+          counter: three warnings for spam do not make their first griefing report a
+          permanent ban. The target's prior record sits on the same screen as the decision.
+        </p>
+
+        <div class="scroller">
+          <table>
+            <thead>
+              <tr><th>Offence</th><th>Icon</th><th class="wrap">Ladder — 1st / 2nd / 3rd / 4th</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Hacking / Cheating</strong></td><td class="mono">Netherite Sword</td>
+                <td class="wrap"><strong>Permanent ban</strong> — there is no version of "a bit of cheating" worth a second chance.</td></tr>
+              <tr><td><strong>Griefing</strong></td><td class="mono">TNT</td>
+                <td class="wrap">Ban 7d → Ban 30d → Ban permanent</td></tr>
+              <tr><td><strong>Chat Abuse / Toxicity</strong></td><td class="mono">Note Block</td>
+                <td class="wrap">Mute 1h → Mute 1d → Mute 7d → Ban 7d</td></tr>
+              <tr><td><strong>Disrespecting Staff</strong></td><td class="mono">Shield</td>
+                <td class="wrap">Warn → Mute 1h → Mute 1d</td></tr>
+              <tr><td><strong>Advertising</strong></td><td class="mono">Oak Sign</td>
+                <td class="wrap">Mute 1d → Ban 7d → Ban permanent</td></tr>
+              <tr><td><strong>Spamming</strong></td><td class="mono">Paper</td>
+                <td class="wrap">Warn → Mute 30m → Mute 6h</td></tr>
+              <tr><td><strong>Exploiting a Bug</strong></td><td class="mono">Redstone Torch</td>
+                <td class="wrap">Ban 7d → Ban permanent</td></tr>
+              <tr><td><strong>Scamming</strong></td><td class="mono">Gold Ingot</td>
+                <td class="wrap">Ban 14d → Ban permanent</td></tr>
+              <tr><td><strong>Inappropriate Name / Skin</strong></td><td class="mono">Player Head</td>
+                <td class="wrap">Kick → Ban permanent</td></tr>
+              <tr><td><strong>Ban Evasion</strong></td><td class="mono">Barrier</td>
+                <td class="wrap">Permanent ban</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>The flow</h3>
+        <div class="flow">
+          <div class="step"><small>Pick</small>Offence</div>
+          <span class="arrow">→</span>
+          <div class="step terminal"><small>Review</small>Confirm</div>
+        </div>
+        <p>
+          Two clicks for the common case. The icon tells you the rung before you press it —
+          how many priors they have, what applies now, and what it escalates to next time.
+        </p>
+        <p>
+          <strong>"Something else"</strong> drops into the old manual ladder — pick rung,
+          then duration, then reason — for anything the offences do not cover. It is
+          deliberately not the default route.
+        </p>
+        <div class="flow">
+          <div class="step"><small>Manual</small>Rung</div>
+          <span class="arrow">→</span>
+          <div class="step"><small>Pick</small>Duration</div>
+          <span class="arrow">→</span>
+          <div class="step"><small>Pick</small>Reason</div>
+          <span class="arrow">→</span>
+          <div class="step terminal"><small>Review</small>Confirm</div>
+        </div>
+        <p>
+          Offences, their ladders, their icons and their descriptions all come from
+          <code>config/staffcore.json</code>. Add an offence there and a new button appears;
+          change a duration and every staff member's next punishment follows it.
+        </p>
+        <p>
+          Nothing is written anywhere until you press Confirm. Abandoning the flow at any
+          point leaves no trace.
+        </p>
+
+        <h3>What happens on confirm</h3>
+        <p>
+          One code path handles every punishment, whether it came from the panel or a command:
+          record it, enforce it, announce it, mirror it to Discord. Staff hear a
+          <strong>thunderclap</strong> when a ban lands — deliberately the loudest thing in
+          the mod. By default bans and mutes are announced to the whole server; set
+          <code>publicPunishmentBroadcast</code> to <code>false</code> to keep them to staff.
+        </p>
+
+        <h3>Lifting and history</h3>
+        <p>
+          <code>/unban</code> and <code>/unmute</code>, or the Lift buttons on a player's
+          file, deactivate what is in force and record who lifted it. History keeps
+          everything — spent, expired and lifted entries stay in the list, dimmed, with the
+          name of whoever revoked them.
+        </p>
+        <div class="note danger">
+          <p>
+            <span class="pill destructive">Destructive</span>
+            <strong>Wipe history</strong> deletes every record for a player, including active
+            bans and mutes — which lifts them. It needs
+            <code>staff.history.clear</code> and a confirm, and it cannot be undone.
+          </p>
+        </div>
+      </section>
+
+      <!-- =========================================================== NOTES -->
+      <section id="notes">
+        <p class="kicker">Records</p>
+        <h2>Notes</h2>
+        <p>
+          The informal half of a player's record — the things that are not punishments but
+          that the next person on shift needs to know. Every note carries its author and a
+          timestamp.
+        </p>
+        <p>
+          Notes cannot be edited, only deleted. That is deliberate: the value of a note six
+          months later is that it says what somebody actually thought at the time. Deleting
+          one needs <code>staff.notes.remove</code> and goes through a confirm showing the
+          note you are about to lose.
+        </p>
+        <p>
+          Writing a note needs free text, so it is a command:
+          <code>/notes &lt;player&gt; add &lt;text&gt;</code>. The notes screen tells you so
+          rather than leaving you hunting.
+        </p>
+      </section>
+
+      <!-- ========================================================= REPORTS -->
+      <section id="reports">
+        <p class="kicker">Player-facing</p>
+        <h2>Reports</h2>
+        <p>
+          <span class="pill everyone">Open to everyone</span>
+          <code>/report &lt;player&gt; &lt;reason&gt;</code> is the one command in the mod
+          that is not staff-only, and it stays that way even on a server with no permissions
+          plugin installed.
+        </p>
+        <p>
+          Filing a report pings every subscribed staff member with a bell, mirrors to Discord,
+          and drops into a queue. A per-reporter cooldown (60 seconds by default) stops spam,
+          and a second report against someone already in the queue is <em>merged</em> — the
+          reporter still gets thanked, because their report is real information, but staff
+          attention is not split across duplicates.
+        </p>
+
+        <h3>The queue</h3>
+        <p>
+          Open reports first, oldest at the top, then claimed ones. Claiming is the whole
+          point of the screen: an unclaimed queue is two staff teleporting to the same player
+          while a third report ages out. One click claims, the claimant's name goes on the
+          icon, and clicking your own claimed report resolves it behind a confirm.
+        </p>
+        <ul>
+          <li><strong>Left-click</strong> — claim it, or resolve it if it is already yours</li>
+          <li><strong>Right-click</strong> — open the reported player's file</li>
+          <li><strong>Shift-click</strong> — teleport straight to them</li>
+        </ul>
+      </section>
+
+      <!-- ========================================================= APPEALS -->
+      <section id="appeals">
+        <p class="kicker">The other side</p>
+        <h2>Appeals</h2>
+        <p class="lede">
+          A banned player with nowhere to argue has exactly one move left, and it is an alt.
+        </p>
+        <p>
+          The ban screen now carries your Discord invite (set <code>discordInvite</code> in
+          config; leave it empty to hide the line). Players who are muted rather than banned
+          can also file in game with <code>/appeal &lt;text&gt;</code> — reachable while
+          muted on purpose, because a mute stops you talking in chat, it is not meant to stop
+          you contesting the mute.
+        </p>
+        <p>
+          Appeals land in a queue beside reports. <strong>Accepting one lifts the punishment
+          it was made against</strong> — an appeal that is "accepted" but leaves the ban in
+          place is worse than no appeal system at all. Rejecting closes it with your name
+          attached, so a second appeal arrives carrying the history of the first.
+        </p>
+        <ul>
+          <li><strong>Left-click</strong> — accept, and lift their ban and mute</li>
+          <li><strong>Right-click</strong> — reject; the punishment stands</li>
+          <li><strong>Shift-click</strong> — open the player's file first</li>
+        </ul>
+        <p>Either way the player is told the outcome the moment they are next online.</p>
+      </section>
+
+      <!-- ======================================================== IDENTITY -->
+      <section id="identity">
+        <p class="kicker">Who is who</p>
+        <h2>Identity &amp; logs</h2>
+        <p>
+          Every connection records the account, the name and the address it came from. From
+          that fall three things staff repeatedly need and previously had to guess at.
+        </p>
+
+        <h3>Linked accounts</h3>
+        <p>
+          Other accounts that look like they might be the same person, banned ones pulled to
+          the top and marked. On join, a link to a banned account raises a staff alert
+          automatically.
+        </p>
+        <p>
+          Two kinds of link are found. An <strong>exact address</strong> match is the strong
+          one. A <strong>range</strong> match — the same <span class="mono">/24</span>, or
+          <span class="mono">/64</span> on IPv6 — catches what exact matching cannot see at
+          all: a home address that moved within its provider's block between one session and
+          the next, and so stopped matching itself. That is not exotic. It is what happens
+          when a router reboots, and it was most of what "a VPN defeats it" really meant.
+        </p>
+        <p>
+          Each link carries a confidence out of a hundred and the reasoning that produced it.
+          Repeated use of the shared address counts for; a single stray connection counts
+          against. The signal that does most of the work is whether the two accounts have ever
+          been online <em>at the same moment</em>: one person switching between accounts never
+          can be, and two siblings routinely are. Neither is proof, but they point in opposite
+          directions, and a screen that only said "same address" could not tell you which one
+          you were looking at.
+        </p>
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">Read as a lead</span>
+            A shared address is <strong>not proof</strong>. Siblings, flatmates, schools and
+            mobile networks all put different people behind one. That is why
+            <code>autoBanEvaders</code> is <strong>off</strong> by default: auto-banning on an
+            IP match punishes the household for one member, and the player it actually
+            catches will simply use a VPN next time. What the check is good at is putting a
+            name in front of a human at the moment it is useful.
+          </p>
+          <p>
+            Even switched on, only an <strong>exact</strong> address match can ban anybody
+            automatically. A range match means "somewhere in this provider's block", which on
+            a mobile network can be a city — automating a ban on that would eventually catch
+            a stranger. Links below <code>altMinConfidence</code> are not alerted at all, since
+            an alert staff learn to dismiss teaches them to dismiss the ones that matter.
+          </p>
+        </div>
+
+        <h3>Session log</h3>
+        <p>
+          Every join and leave with a timestamp and address — the fastest way to answer "were
+          they even online when this happened?"
+        </p>
+
+        <h3>Death log</h3>
+        <p>
+          Cause, killer, world and coordinates for every death, with a click to teleport
+          to the spot. An argument about lost items becomes something you can check.
+        </p>
+
+        <h3>Ender chest</h3>
+        <p>
+          Its own screen, because the ender chest is where anything worth hiding ends up: it
+          follows the player, survives death, and is invisible to a normal inventory check.
+          Read-only unless you hold <code>security.invsee.edit</code>, and opening it in edit
+          mode is announced to staff chat just like the main inventory.
+        </p>
+      </section>
+
+      <!-- ===================================================== INVENTORIES -->
+      <section id="inventories">
+        <p class="kicker">Evidence</p>
+        <h2>Inventories</h2>
+        <p>
+          <code>/staff invsee</code> opens a genuinely live window: the slots are the player's
+          real inventory, not a copy, so what you see is what they are holding at that instant.
+          Main storage, hotbar, armour and offhand are all laid out in the same geometry every
+          time.
+        </p>
+        <p>
+          <strong>Offline players work too.</strong> If the target is not on the server, their
+          inventory is decoded straight out of their save file and shown in the same layout.
+          Those views are always read-only — writing NBT back under somebody who might
+          reconnect mid-edit is a corruption risk no amount of care makes safe — and the
+          header says so rather than leaving you to wonder why the slots will not move.
+        </p>
+
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">Edit mode</span>
+            Read-only unless you hold <code>security.invsee.edit</code>. The difference is
+            visible before you touch anything — the title says so, the header item says so,
+            and <strong>the frame turns red</strong>. Opening in edit mode is announced to
+            staff chat.
+          </p>
+          <p>
+            Reaching into another player's inventory is the most abusable thing in this mod.
+            The fix for that is daylight, not a permission node on its own — and opening in
+            edit mode now also takes a <strong>snapshot</strong>, so what was there is a matter
+            of record rather than of recollection. That protects the staff member as much as
+            the player: "it was already missing" is a claim that needs evidence pointing
+            either way.
+          </p>
+        </div>
+        <p>
+          The footer carries the rest of the file without leaving the screen: the
+          <strong>ender chest</strong>, snapshots, freeze, a security check, the contraband
+          vault and the punish ladder. The ender chest link is new in both directions — the
+          ender chest screen has always linked back here, but there was no way in, and the one
+          button on this screen that looked like an ender chest was the snapshot button.
+        </p>
+
+        <h3>Snapshots</h3>
+        <p>
+          Frozen copies of an inventory, capped per player and configurable. They
+          settle the arguments a live view cannot: what somebody had ten minutes ago, before
+          they emptied a shulker into lava.
+        </p>
+        <p>
+          Several are taken automatically: the instant before a player dies, when they log
+          out, before a staff member opens their inventory to edit, and before a rollback
+          debits them. Automatic captures are ranked <em>below</em> deliberate ones, so they
+          are discarded first when the cap bites — switching them on can never cost you a
+          snapshot you would otherwise have kept.
+        </p>
+        <p>The death one is the piece of
+          evidence that cannot be reconstructed afterwards — and you can force one from the
+          inventory view or a security check. Restoring a snapshot onto a player takes a
+          snapshot of what they currently have first, so an accidental restore is itself
+          undoable, and the player is told it happened.</p>
+        <p>
+          A snapshot is the <strong>whole</strong> inventory — storage, hotbar, armour,
+          offhand and the equipment slots past them. Somebody who died in full enchanted
+          netherite has all of it, not just what was in the nine slots along the bottom, and
+          restoring puts every piece back in the slot it came out of.
+        </p>
+        <div class="note">
+          <h4>Dying takes a snapshot, always</h4>
+          <p>
+            It fires the instant before the death lands — before a single item has hit the
+            ground — so it holds the full kit: armour worn, offhand, hotbar, everything in
+            storage. It is not behind a config switch and it cannot be turned off, because it
+            is the one capture that can never be taken late. It is also ranked as evidence
+            rather than routine, so the per-player cap discards ordinary captures before it
+            ever discards a death.
+          </p>
+          <p>
+            That makes reviving somebody who lost a kit to a bug, a bad chunk or a lava
+            accident a two-click job: open their file, Snapshots, pick the one labelled
+            <em>On death</em>, restore.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>Restoring a death snapshot does not duplicate the drops</h4>
+          <p>
+            Restoring what somebody had when they died, while what they dropped is still lying
+            on the ground, would hand them a second set. So the restore sweeps the death site
+            first: anything from the snapshot still lying there is picked up and counted as
+            already returned, and only what is genuinely gone gets recreated.
+          </p>
+          <p>
+            The recreated items are rebuilt from the stored stack, so enchantments, trims,
+            custom names, durability and everything else come back exactly as they were.
+            Someone who died in lava and lost eight of their eleven items gets three real
+            originals off the floor and eight faithful copies — and no twenty-two-item
+            windfall.
+          </p>
+        </div>
+
+        <h3>Working the slots</h3>
+        <p>
+          In edit mode the window behaves like any other container. Click to pick up and place,
+          and <strong>shift-click to move a stack across</strong> — from their inventory into
+          yours, or from yours into theirs. Armour and offhand are excluded from shift-click
+          targets, so a stack never lands somewhere it would silently equip.
+        </p>
+        <p>
+          Confiscation is a deliberate act, not a shortcut. Pick the stack up and drop it on
+          the <strong>bundle</strong> in the footer, which vaults it and logs it. Only stacks
+          picked up from the target's own slots can be vaulted this way — dropping something of
+          your own on the bundle is refused, because confiscating an item off a player who
+          never had it is not a thing that should be one misclick away.
+        </p>
+
+        <p><strong>Snapshots are kept in the database</strong> and survive a restart, so an
+          incident that spans one is still answerable. They are pruned by the per-player cap
+          and by retention, with deliberate captures outliving automatic ones.</p>
+      </section>
+
+      <!-- ======================================================== SECURITY -->
+      <section id="security">
+        <p class="kicker">Automated checks</p>
+        <h2>Security checks</h2>
+        <p>
+          Three checks, run against one player, answering "is this person's stuff possible?"
+          Every finding is a <strong>flag, never an action</strong>.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Finding</th><th>Severity</th><th class="wrap">Means</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">ILLEGAL_ITEM</td><td>Impossible</td><td class="wrap">Bedrock, a spawner, a barrier, a portal frame — not obtainable in survival.</td></tr>
+              <tr><td class="mono">OPERATOR_ITEM</td><td>Impossible</td><td class="wrap">Command, structure or jigsaw block, debug stick. A serious finding.</td></tr>
+              <tr><td class="mono">OVERSTACK</td><td>Impossible</td><td class="wrap">A stack larger than the item's own limit.</td></tr>
+              <tr><td class="mono">ILLEGAL_ENCHANT</td><td>Impossible</td><td class="wrap">An enchantment above its vanilla maximum level.</td></tr>
+              <tr><td class="mono">STAFF_TOOL</td><td>Impossible</td><td class="wrap">A staff-mode tool held outside staff mode. Removed automatically.</td></tr>
+              <tr><td class="mono">MINING</td><td>Suspicious</td><td class="wrap">Scored x-ray confidence, with the evidence attached.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Contraband watch</h3>
+        <p>
+          Every two seconds, online players are checked for items that cannot exist in
+          survival — bedrock, spawners, barriers, command blocks, over-stacked stacks — and
+          <strong>staff are alerted the moment one appears</strong>, with coordinates. Each
+          player-and-item pair alerts once, so somebody carrying contraband around for an
+          hour does not generate an alert every two seconds.
+        </p>
+        <p>
+          Waiting for somebody to run a manual check means the first person to notice a
+          duplicated spawner is whoever it gets used on. The scan also recurses into shulkers
+          and bundles and covers the ender chest, because hiding contraband one layer deeper
+          is the obvious response to learning that inventories get scanned.
+        </p>
+        <p>
+          <strong>World containers are checked too.</strong> The watch only ever saw what
+          somebody was carrying, so the way to keep a banned item was simply not to carry it
+          — leave it in a chest and nothing noticed until it came back out. Chests, barrels
+          and shulkers are now checked as they are opened and as they are closed, which costs
+          nothing extra: the grief log already copies the contents of every container anyone
+          opens, and the check rides along on a copy it has taken anyway. A staff tool found
+          sitting in one goes to the vault, exactly as it would if it were found on a player.
+        </p>
+
+        <h3>X-ray</h3>
+        <p>
+          The x-ray check reads the grief log rather than watching players, and it will not
+          fire at all until they have broken at least 500 blocks.
+        </p>
+        <p>
+          A single ratio is a bad detector, so it is not one. Four independent signals are
+          scored into a confidence percentage with the evidence attached:
+        </p>
+        <ul>
+          <li><strong>Ore fraction</strong> — the blunt signal, kept but no longer decisive.</li>
+          <li><strong>Directness</strong> — filler blocks dug between one vein and the next.
+            This is the signal that actually separates a lucky player from a guided one:
+            luck changes what you find, not how far you tunnel to reach it.</li>
+          <li><strong>Beelines</strong> — veins reached by a near-straight run of breaks.</li>
+          <li><strong>Ancient debris</strong> — never generates exposed, so every one found
+            had to be tunnelled to blind.</li>
+        </ul>
+        <p>
+          Ore a player placed themselves is excluded from their own score. Placing a block and
+          breaking it again is an ordinary thing to do — moving a vein, decorating, testing
+          silk touch — and every one of those breaks used to read as a find. It also meant
+          anybody could inflate their own ore fraction to whatever they liked with a stack of
+          iron ore and a wall, which is a poor property for a detector to have.
+        </p>
+        <p>
+          A background sweep scores online players every five minutes and alerts above 55%,
+          re-alerting only when the score climbs. That matters because x-ray has no victim:
+          nobody files a report saying somebody else found diamonds too easily. Staff who are
+          clocked on are skipped; staff mining on their own time are not, because staff cheat
+          too.
+        </p>
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">Retuned</span>
+            The alert line was 70% and the sample floor 500 blocks. Both were defensible in
+            isolation and together they meant the sweep <strong>effectively never fired</strong>:
+            on any server that is not enormous, almost nobody breaks 500 ore-plus-filler blocks
+            inside six hours, so nobody was ever scored at all. A detector that is never wrong
+            because it never speaks is not a detector. The floor is now 200 and the line 55 —
+            still high enough that no single signal can reach it alone, so an alert continues
+            to mean at least two of the four agreed.
+          </p>
+          <p>
+            <code>xrayNoticeConfidence</code> (35) is the other half. A score above it but below
+            the alert line produces a quiet line to staff that says plainly it is not a finding.
+            Without it there is no way to tell "nobody is cheating" from "this has never once
+            run", and for a long time it was the second.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>When it never says anything</h4>
+          <p>
+            Silence is the detector's normal state, which makes it impossible to tell a quiet
+            server from a broken feature. <code>/staff xray &lt;player&gt; [hours]</code> always
+            answers — confidence, sample size, the alert threshold, and every signal that
+            contributed — and takes a plain name, so it works on somebody who has already
+            logged off.
+          </p>
+          <p>
+            It now ends with <strong>"Why you have not been alerted"</strong> and names the one
+            reason that applies: not enough mining yet, a score under the line, or the sweep
+            being switched off. It also reminds you that ore a player placed themselves is
+            excluded — which is the one that catches people out, because seeding a wall with
+            ore and mining it back is the natural way to try to test this and proves nothing
+            at all.
+          </p>
+          <p>
+            One real bug lived here and is now fixed: the sweep used to skip everyone holding
+            <code>staff.gui</code>, and with no permissions plugin installed that node falls
+            back to operator level. The person testing the detector was therefore the one
+            player it was guaranteed never to look at.
+          </p>
+        </div>
+
+        <p>
+          The screen has no punish shortcut on a flag, on purpose. "The scanner said so" is
+          not a reason. The route to acting is back through the player's file, where their
+          record is visible alongside. <code>/itemscanner</code> sweeps every online player at
+          once and reports who is worth a look.
+        </p>
+      </section>
+
+      <!-- ====================================================== CONTRABAND -->
+      <section id="contraband">
+        <p class="kicker">Evidence</p>
+        <h2>Contraband &amp; the vault</h2>
+        <p class="lede">
+          Taking somebody's items is the most contestable thing staff do. It should be the
+          easiest thing to undo.
+        </p>
+        <p>
+          Confiscation used to mean deletion. That makes every mistake permanent and
+          unprovable at once: the item is gone, the player insists it was legitimate, and
+          there is nothing left to look at. Everything taken now goes to the
+          <strong>vault</strong> instead — a real stack, held, with who it came off, who took
+          it, when and why.
+        </p>
+        <p>
+          Each row offers exactly two endings. <strong>Give it back</strong> puts the stack
+          straight into the owner's inventory. <strong>Destroy</strong> is deliberate,
+          confirmed, and keeps the record — a destroyed item still leaves a row saying it
+          existed and who ended it.
+        </p>
+        <p>
+          Giving something back <strong>no longer requires the owner to be online</strong>.
+          It cannot be pushed into their save file — writing player data underneath somebody
+          who might reconnect mid-write is a corruption risk no amount of care makes safe —
+          so the decision is booked instead of the delivery. The row moves to
+          <em>awaiting return</em>, and the item is handed over the moment they next log in.
+          Until then the queued return can be cancelled and the item put back in the vault.
+        </p>
+        <p>
+          The screen pages straight from the database rather than reading a capped block, so
+          there is no ceiling on what it can show, and the filter in the footer walks through
+          held, awaiting return, returned and destroyed. That last pair matters: the table has
+          always kept a row after an item was handed back or ended, and this is what finally
+          makes that history something you can look at.
+        </p>
+
+        <div class="note">
+          <h4>Editing the rules by pointing at things</h4>
+          <p>
+            The contraband lists were always config, which meant editing them required
+            knowing that a spawner is <code>minecraft:spawner</code> and that the trial
+            variant is a different id again. The rules screen makes the item the rule: click
+            one in your own inventory to ban it, click it in the grid to allow it again.
+          </p>
+          <p>
+            Nothing is ever consumed. The click reads the item's <em>type</em> and leaves the
+            stack exactly where it was — a rules screen that ate a shulker box to learn what
+            a shulker box is would be a poor trade.
+          </p>
+          <p>
+            Two lists, two tabs. <strong>Impossible in survival</strong> is the ordinary case,
+            usually a leak from a staff member. <strong>Operator tooling</strong> is reported
+            separately because a command block on a player is a different kind of problem.
+            Each list pages, so a list longer than one screenful is edited here like any
+            other — it used to refuse past forty-five entries and send you to the JSON file,
+            because saving would have quietly dropped whatever did not fit.
+          </p>
+        </div>
+
+        <h3>Four ways to take something</h3>
+        <p>
+          Confiscation used to be one button that took whatever the scan disliked, and
+          nothing else. That is the right tool when the scan is right and the wrong one every
+          other time — so there are now four, and all of them end in the vault rather than in
+          deletion.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="wrap">Gesture</th><th class="wrap">Takes</th></tr></thead>
+            <tbody>
+              <tr><td class="wrap"><strong>Drop a stack on the bundle</strong></td><td class="wrap">Exactly what is on your cursor. Pick an item out of their inventory and put it in the vault, which is the gesture you were already reaching for.</td></tr>
+              <tr><td class="wrap"><strong>Shift-click a slot</strong></td><td class="wrap">That one stack, without picking anything up. Shift-clicking in these screens used to do nothing at all.</td></tr>
+              <tr><td class="wrap"><strong>Confiscate, left-click</strong></td><td class="wrap">Everything the security scan flags, across inventory and ender chest.</td></tr>
+              <tr><td class="wrap"><strong>Confiscate, right-click</strong></td><td class="wrap">Everything they are carrying, full stop — for when you already know what is going on and just need it held.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          The bundle icon appears on both the inventory and the ender chest screens, and with
+          an empty cursor it opens the vault — so it means the same thing whichever direction
+          you approach it from: <em>this is where confiscated items live</em>.
+        </p>
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">The guard rails</span>
+            Every route takes a <strong>snapshot first</strong>, records the item against the
+            player it came from, and announces itself in staff chat. The two bulk routes add a
+            confirm screen naming what is about to go. Nothing is ever deleted — it is all one
+            click from being handed back, which is the entire reason the vault exists.
+          </p>
+          <p>
+            The drop-on-the-bundle route only accepts a stack <strong>picked up out of one of
+            their slots</strong>. Anything else — something from your own bags, a drag, a
+            hotbar swap, a double-click gather — is refused with an explanation rather than
+            recorded under their name. A vault row is a statement about what was taken off
+            somebody, and one naming the wrong person is worse than one that never existed,
+            so an unrecognised gesture costs you a click instead.
+          </p>
+        </div>
+      </section>
+
+      <!-- =========================================================== GRIEF -->
+      <section id="grief">
+        <p class="kicker">Repair</p>
+        <h2>Grief log &amp; rollback</h2>
+        <p>
+          Every block broken and placed is logged with who, what, where, which world and when
+          — and so is <strong>every container opened</strong>, because most "griefing" reports
+          are actually theft and a log that only records broken blocks cannot answer who
+          emptied the chest.
+        </p>
+
+        <h3>Reading the log</h3>
+        <p>
+          The screen has four controls that decide what you are looking at, and they sit
+          together along the bottom rather than scattered around it.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="wrap">Control</th><th class="wrap">What it does</th></tr></thead>
+            <tbody>
+              <tr><td class="wrap"><strong>Radius</strong></td><td class="wrap">8 to 96 blocks. This used to be fixed at 24 — too small for a razed build and too wide for one stolen chest — and the rollback button used the same fixed number, so neither could be aimed.</td></tr>
+              <tr><td class="wrap"><strong>Time window</strong></td><td class="wrap">Doubles on left-click, halves on right-click.</td></tr>
+              <tr><td class="wrap"><strong>Showing</strong></td><td class="wrap">Cycles: everything except mining · everything · broken only · placed only · containers only. There used to be only a mining-noise toggle, so "just show me what was broken" — the commonest thing anyone wants — could not be asked for.</td></tr>
+              <tr><td class="wrap"><strong>Re-centre</strong></td><td class="wrap">Moves the search to where you are standing, keeping the radius, window and filters you have set. It used to reopen the screen and reset all three.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          <strong>Repeats are collapsed.</strong> Tearing down a wall writes one row per block,
+          so a page could be twenty-eight lines all saying the same thing while the row you
+          came for sat on page four. Consecutive identical actions by one player, in one place,
+          within a couple of minutes now show as a single row with a count —
+          "Steve broke 28× oak planks" — and the rest of the page is free for everything else.
+        </p>
+        <p>
+          Right-clicking a row filters to that player; the header says who you are scoped to
+          and clicking it clears the filter. Shift-clicking a row previews a rollback of that
+          player at that spot.
+        </p>
+
+        <div class="note">
+          <h4>The inspector answers about one block</h4>
+          <p>
+            Clicking a block with the inspector now shows the history of <em>that block</em>:
+            every break, place, open, take and put at that exact coordinate, newest first,
+            with who did it and when. Block changes and item movements are merged into one
+            timeline, because the story of a stolen chest is both — opened, emptied, then
+            broken.
+          </p>
+          <p>
+            It used to open an area log centred on whatever you clicked. That answers "what
+            happened around here", which is a different and much noisier question; on a base
+            wall it buries the block you pointed at under a hundred neighbouring rows.
+            Widening out is still one click away.
+          </p>
+          <p>
+            Rows that have already been rolled back are shown and marked rather than hidden,
+            since "this was already put back" is usually what somebody is trying to find out.
+          </p>
+          <p>
+            <code>/staff inspect</code> holds the mode on, so any block you click reports its
+            history whatever is in your hand and without the block breaking or the chest
+            opening underneath you. The stick still works and is faster for one question; an
+            investigation is usually a stretch of time — the chest, then the wall behind it,
+            then the floor — and that is what a mode is for. It is deliberately not saved
+            across a restart, so it can never quietly eat your first pickaxe swing.
+          </p>
+        </div>
+
+        <h3>Searching the log</h3>
+        <p>
+          The area screen answers "what happened near me, recently", which is the right
+          question most of the time and the wrong one the moment you already know what you are
+          looking for. <code>/staff search</code> takes <span class="mono">key:value</span>
+          filters and queries both logs at once:
+        </p>
+        <div class="scroller">
+<pre><code>/staff search player:Steve action:break time:2d
+/staff search block:minecraft:spawner radius:200
+/staff search Steve container:yes</code></pre>
+        </div>
+        <p>
+          <span class="mono">player:</span> <span class="mono">action:</span>
+          <span class="mono">block:</span> <span class="mono">time:</span>
+          <span class="mono">radius:</span> <span class="mono">world:</span> and
+          <span class="mono">container:</span> are the filters; a bare word is read as a
+          player name, since that is what people type first. Leaving out
+          <span class="mono">radius:</span> searches the whole world rather than guessing one.
+          An unrecognised filter is reported rather than ignored — silently dropping half a
+          query and returning confident results would be worse than refusing.
+        </p>
+        <p>
+          <code>/staff purge &lt;age&gt; [player]</code> deletes history early. Retention already
+          runs daily and unattended; this is for the other reason to delete, which is that
+          somebody asked. It previews what it would remove and does nothing until you add
+          <code>confirm</code>.
+        </p>
+
+        <div class="note">
+          <h4>Preview before you write</h4>
+          <p>
+            Rollback is the only irreversible thing in the mod — it overwrites whatever is
+            standing there now. The GUI has always shown a preview first; the commands did
+            not, which meant the fastest way to run one was also the only way to run one
+            blind. <code>/staff preview</code> mirrors the rollback tree exactly and writes
+            nothing, reporting the block changes, container stacks and any entries naming
+            blocks that no longer exist, then printing the command that would apply it.
+          </p>
+        </div>
+        <p>
+          The Grief Log screen shows activity within 24 blocks of wherever you are standing,
+          newest first. It is paged on the server — twenty-eight rows and a count per query,
+          read off the main thread and handed back on it — so opening it on a busy world
+          cannot become the cause of the lag you opened it to investigate.
+        </p>
+        <p>
+          <strong>Mass-grief detection</strong> alerts staff when somebody breaks an
+          implausible number of blocks in a short window (120 in 20 seconds by default). The
+          threshold sits well above normal mining on purpose: a detector that fires on every
+          strip-miner is one staff learn to ignore.
+        </p>
+        <ul>
+          <li><strong>Left-click</strong> an entry — teleport to that exact spot</li>
+          <li><strong>Shift-click</strong> — roll back everything that player did in this radius</li>
+          <li><strong>Right-click</strong> — filter the list to just that player</li>
+          <li><strong>The TNT</strong> — roll back the whole area, whoever did it</li>
+          <li><strong>The clock</strong> — double or halve the time window</li>
+          <li><strong>The compass</strong> — re-centre on your current position</li>
+        </ul>
+
+        <h3>How rollback behaves</h3>
+        <p>
+          Works <strong>by player</strong> when you know who did it, and <strong>by area</strong>
+          when several accounts hit one build and naming them one at a time is hopeless. Either
+          way it previews first: you see how many changes will be undone before anything is
+          written. Replay runs newest-first and inverts each action — a logged break puts the
+          block back, a logged place clears it. Order matters: somebody who broke a wall and
+          then built on the rubble has to be undone in the opposite order to how they did it.
+        </p>
+        <p>
+          Rolled-back entries are <em>marked</em> rather than deleted, so running the same
+          rollback twice is a no-op and the audit trail survives.
+        </p>
+        <div class="note">
+          <p>
+            <strong>Containers roll back too.</strong> Contents are snapshotted when a player
+            opens a chest and diffed when they close it, so the log records exactly which
+            stacks left and which arrived. A rollback puts them back — into the slot they came
+            from where it is free, anywhere free otherwise. Putting a looted chest back and
+            leaving it empty looks like the problem was fixed when it was not.
+          </p>
+          <p>
+            Snapshot-and-diff rather than hooking every click: it misses nothing, needs no
+            special cases for shift-clicking or drag-distribution, and costs one array copy
+            per chest opened instead of work on every slot interaction.
+          </p>
+          <p>
+            <strong>A chest that was broken rather than opened is restored full.</strong> That
+            one used to be a silent deletion, and it is worth being precise about why.
+            Breaking a chest scatters its contents as items; breaking a shulker hands you one
+            item with everything inside it. The open/close diff never saw any of that, because
+            nobody opened anything — so rollback put the block back empty, debited the griefer
+            one chest, and destroyed the contents. It looked like a repair and it was a
+            deletion. The contents are now recorded at the moment of the break, restored to
+            the slots they were in, and charged to whoever broke it. A shulker is the one
+            exception to the charge: its contents ride inside the item, so debiting the box
+            already takes them and counting them again would bill the same items twice.
+          </p>
+        </div>
+
+        <h3>Undoing a rollback</h3>
+        <p>
+          Rollback is the most destructive thing here and used to be the only destructive
+          thing with no way back. A ban is revoked, a confiscation handed back, a vaulted item
+          is one click from its owner — but a rollback aimed at the wrong radius overwrote
+          whatever was standing there and that was simply the end of it. The predictable
+          result is staff who hesitate to repair grief at all, which costs a server more than
+          the occasional bad call does.
+        </p>
+        <p>
+          Every rollback now writes a <strong>restore point</strong> before it touches
+          anything, recording the blocks it is about to overwrite and the contents of any
+          container it is about to replace.
+        </p>
+
+        <h4>Doing it from the panel</h4>
+        <ol>
+          <li>Open the <strong>Grief Log</strong> and click <strong>Rollback history</strong>
+            in the top-right corner. The badge on it counts how many rollbacks can still be
+            taken back.</li>
+          <li>Each row is one rollback: who ran it, how many changes, the centre and radius,
+            and how long ago. Rows already undone stay on the list, greyed, showing who undid
+            them — because "has somebody already fixed this?" is the second question people
+            ask.</li>
+          <li><strong>Left-click</strong> a row to teleport to where it happened, so you can
+            look before deciding.</li>
+          <li><strong>Shift-click</strong> to undo it. A confirm screen names what is coming
+            back; nothing is written until you accept.</li>
+        </ol>
+
+        <h4>Doing it from chat</h4>
+        <div class="scroller">
+<pre><code>/staff rollback undo          # reverse the most recent rollback
+/staff rollback undo list     # see what is available, with ids
+/staff rollback undo 14       # reverse a specific one</code></pre>
+        </div>
+        <p>
+          The bare form is the one that matters in practice. When somebody watches a repair
+          land on the wrong build they want it back in the next few seconds, not after looking
+          up a number.
+        </p>
+
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">Worth understanding</span>
+            Undo puts back <strong>exactly what was recorded</strong>. It does not attempt to
+            merge with anything built there since — if somebody has rebuilt in the meantime,
+            undoing overwrites their work in turn. That is deliberate: a restore point that
+            silently declined to restore, or tried to guess which changes to keep, would be
+            far worse than one that does precisely what it says and tells you it did.
+          </p>
+          <p>
+            Blocks whose type no longer exists — a mod removed since — are skipped and counted
+            separately, exactly as they are in a rollback.
+          </p>
+        </div>
+
+        <p>
+          Restore points are kept for <code>rollbackPointRetentionDays</code>, seven by
+          default; set it to 0 to record nothing and disable undo entirely. This is a safety
+          net for a mistake noticed shortly after it is made, not an archive — a week is long
+          enough for somebody to log in and find their build missing. Undoing also
+          <strong>un-retires the log rows</strong> the rollback consumed, so the grief log
+          stops claiming a repair that has since been reversed and the same rollback can be
+          run again if it turns out it was right after all.
+        </p>
+
+        <div class="note danger">
+          <p>
+            <strong>Rollback no longer duplicates items.</strong> Restoring a block the
+            griefer broke while they keep the drop is a duplication exploit — every rollback
+            quietly printed items. Restored blocks now have their original drops reclaimed
+            along four routes, in order of how certain each one is: ground items in the area,
+            then the offender's own inventory, then chests <em>they</em> filled during the
+            same window, and finally a debt booked against their next login if they have
+            already logged off.
+          </p>
+          <p>
+            The last two matter more than they sound. Carrying the haul away and stashing it
+            used to be a complete defence, and so did simply logging out — between them that
+            was most of what made rollback a duplication exploit in practice. Following the
+            loot needs no new tracking: the container log already records every stack put into
+            every container, by whom and when, so it knows the difference between a chest with
+            cobblestone in it and a chest <em>this person</em> put cobblestone into. Somebody
+            else's chest is never touched.
+          </p>
+          <p>
+            What is still out of reach is loot handed to another player. And a container that
+            has no room cannot take its stack back — that row is left un-retired so clearing
+            space and running it again works, and the count of what would not fit is reported
+            rather than left for you to notice.
+          </p>
+        </div>
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">Confirm required</span>
+            Anything built on top of the reverted blocks is overwritten. Entries referring to
+            blocks that no longer exist — a mod removed since — are skipped and counted
+            separately in the preview. The preview also lists <em>what</em> is going back, not
+            just how many changes: "412 changes" tells you the size of the operation and
+            nothing about whether it is the right one, where "38 oak planks, 2 chests,
+            64 diamonds" tells you at a glance whether you have the radius you meant. And if
+            it turns out you did not, <code>/staff rollback undo</code> puts it back.
+          </p>
+          <p>
+            <strong>The preview is also drawn in the world.</strong> While the confirm screen
+            is up, the blocks a rollback would restore appear around you as ghosts — visible
+            to you and nobody else, with nothing written to the server. A list tells you what
+            is coming back; standing in the build and watching the missing wall reappear tells
+            you <em>where</em>, which is the question that actually decides whether the radius
+            is right. It clears when you confirm, cancel, close the window, or after
+            forty-five seconds, and since the server's own copy never changed, the worst a
+            stuck preview can do is show you a ghost that a chunk reload fixes.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>Where the loot is chased</h4>
+          <p>
+            Putting items back is only half a repair. If the person who took them still has a
+            copy, the repair has printed items — and the better the restore gets, the more
+            attractive stealing becomes, because the victim is made whole <em>and</em> the
+            thief keeps the haul. Both the block rollback and the chest theft undo run the
+            same five checks, in this order:
+          </p>
+          <ol>
+            <li><strong>The ground</strong>, at the scene and again around the offender, who
+              may well have walked off before dropping it.</li>
+            <li><strong>Their inventory</strong>, armour and offhand included.</li>
+            <li><strong>Their ender chest</strong> — for a long time the safest place on the
+              server to put stolen goods, because nothing looked there.</li>
+            <li><strong>Chests they filled</strong> during the same window, read out of the
+              container log so somebody else's chest is never touched. The container this
+              operation has just refilled is excluded, or the debit would undo the restore it
+              is supposed to pay for.</li>
+            <li><strong>Their next login.</strong> Whatever is still missing is booked as a
+              debt rather than written off, so spending or destroying the loot delays paying
+              for it instead of avoiding it. This applies whether they are online or not.</li>
+          </ol>
+          <p>
+            Taking items out of somebody's inventory on the strength of a log query takes a
+            snapshot first, so there is a before-picture whether or not the query was right.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>Every chest, and the ones that drive away</h4>
+          <p>
+            <strong>Double chests count as one container from either half.</strong> A log row
+            lands on whichever block was clicked, so anything reading a single coordinate would
+            see half the history and present it as all of it. The inspector, the container log
+            and the theft undo all read both halves.
+          </p>
+          <p>
+            That includes <strong>copper chests</strong>, in every weather state and waxed or
+            not. Copper halves pair by tag rather than by being the same block &mdash; an
+            oxidised half and a fresh one are one chest as far as the game is concerned &mdash;
+            so the pairing is decided by asking the block, not by comparing it.
+          </p>
+          <p>
+            <strong>Chest boats and container minecarts are watched too.</strong> They hold
+            items exactly as a chest does, and until recently none of the container hooks saw
+            them at all, because every one of them hung off block interaction. That made a
+            chest minecart the best place on the server to keep anything you did not want
+            logged. Takes and puts are now recorded the same way.
+          </p>
+          <p>
+            One limit follows from what they are: <strong>they move.</strong> The log records
+            where the vehicle was when it was opened, which makes that position a description
+            of the scene rather than an address. Thefts from a chest boat are attributable and
+            visible; a positional rollback of one is not meaningful and is not offered.
+          </p>
+        </div>
+
+        <h3>When somebody owes items</h3>
+        <p>
+          A rollback takes back what the offender gained by it, or the restore prints items.
+          If they cannot pay &mdash; offline, or they spent the loot &mdash; the shortfall is
+          booked against their next login rather than written off, and they are told about it
+          when they join.
+        </p>
+        <p>
+          That debt can outlive the reason for it: a rollback run while testing, or one aimed
+          at the wrong player, leaves somebody nagged on every login with no way to settle it.
+          So it can be written off.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Command</th><th class="wrap">Does</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">/staff owed</td><td class="wrap">Everyone who owes anything, worst first.</td></tr>
+              <tr><td class="mono">/staff owed &lt;player&gt;</td><td class="wrap">Item by item, with the reason each was booked.</td></tr>
+              <tr><td class="mono">/staff owed forgive &lt;player&gt;</td><td class="wrap">Shows what would go. Add <code>confirm</code> to write it off.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <h4>A debt is not a sentence, so it expires</h4>
+          <p>
+            The reason to take items back is that a rollback would otherwise duplicate them:
+            the wall goes back up, so whoever knocked it down must not still be holding the
+            blocks. That reasoning holds while they still have them.
+          </p>
+          <p>
+            Once a sweep of the ground, their inventory, their ender chest and the chests they
+            filled has come up empty for <code>debtExpiryDays</code> (7 by default), the
+            likeliest explanation is that the items no longer exist. Charging at that point
+            takes items earned honestly since, to repay ones that were never duplicated. So the
+            debt is written off. Set it to 0 to keep debts forever.
+          </p>
+          <p>
+            <strong>Undoing a rollback cancels what it left owing</strong>, for the same
+            reason: the blocks are broken again, so nobody gained anything from a repair that
+            no longer stands.
+          </p>
+          <p>
+            Deliveries never expire. An item waiting to go back to its owner is their property,
+            and losing it would be theft rather than mercy.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>Items you picked up at the scene</h4>
+          <p>
+            Arriving at a grief site and clearing the floor is a reflex, and it quietly breaks
+            the arithmetic: those drops came out of the container being restored, so once it is
+            refilled they exist twice. The ground sweep cannot find them &mdash; they are in a
+            pocket, not on the floor &mdash; and the offender cannot be charged for them
+            either, because they genuinely do not have them.
+          </p>
+          <p>
+            So the reclaim checks whoever ran the rollback, last, and only for what is still
+            missing after the offender has paid everything they can. Bounded by the shortfall
+            and by the item types being restored, applied only to the person who chose to run
+            the command and never to a bystander, and a snapshot is taken first. You are told
+            when it happens. Turn it off with <code>rollbackReclaimsFromStaff</code>.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>Breaking blocks in creative costs nothing</h4>
+          <p>
+            A block broken in creative drops no item, so rolling it back charges its breaker
+            nothing. Without that, staff who build in creative would be billed for their own
+            work the moment anybody rolled the area back &mdash; and since the items were never
+            received, paying would mean losing real ones.
+          </p>
+          <p>
+            Entries logged before this was recorded are treated as survival. Under-charging a
+            griefer is the smaller wrong.
+          </p>
+        </div>
+
+        <h3>Somebody emptied a chest</h3>
+        <p>
+          This is the most common report on most servers, and until now the log answered only
+          half of it. Click the chest with the inspector and the container log shows every
+          stack that has moved through it &mdash; who opened it, what they took, what they put
+          back, and when. That names the thief. It did not give the items back.
+        </p>
+        <p>
+          Now it does. On any <strong>take</strong> row:
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Action</th><th class="wrap">What happens</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Shift-click a take</strong></td>
+                <td class="wrap">Undoes <em>that player's</em> takes from this container, inside the log window. Everything they lifted goes back in the chest and comes off them.</td></tr>
+              <tr><td><strong>Put everything back</strong></td>
+                <td class="wrap">The footer button. Undoes every take from this container in the window, whoever made it, and debits each thief for their own share.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <h4>What it does and does not touch</h4>
+          <p>
+            Only takes are undone. Stacks somebody <em>put in</em> are left exactly where they
+            are &mdash; a thief who dumped their cobblestone in the chest on the way past does
+            not get it handed back, and an owner who filled their own chest does not have it
+            emptied by a theft undo. That asymmetry is the whole point: this reverses the
+            taking, not the visit.
+          </p>
+          <p>
+            The items come off the thief the same way rollback collects loot: out of their
+            inventory if they are online, and booked against their next login if they are not.
+            Logging off is not an escape. Anything they have already spent or given away is
+            counted as still owed rather than quietly written off, and the chest is refilled
+            regardless &mdash; the owner should not wait on the thief's balance.
+          </p>
+          <p>
+            A chest with no room takes what fits and reports the rest, exactly as rollback
+            does. Clear space and run it again.
+          </p>
+        </div>
+      </section>
+
+      <!-- ========================================================= CONTROL -->
+      <section id="control">
+        <p class="kicker">Server-wide</p>
+        <h2>Server control</h2>
+        <p>Switches that everyone online feels the moment you press them, which is exactly why
+          the two that change what other players can do go through a confirm.</p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Control</th><th>Icon</th><th class="wrap">Effect</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Chat lock</strong></td><td class="mono">Barrier</td>
+                <td class="wrap">Silences everyone without <code>control.chat</code>. Confirmed on the way in, instant on the way out.</td></tr>
+              <tr><td><strong>Clear chat</strong></td><td class="mono">Sponge</td>
+                <td class="wrap">Pushes visible history off screen. Staff with command spy on keep their view — usually they still need to read what was said.</td></tr>
+              <tr><td><strong>Broadcast</strong></td><td class="mono">Goat Horn</td>
+                <td class="wrap">A server-wide message with a chime. Free text, so it is <code>/broadcast</code>.</td></tr>
+              <tr><td><strong>Maintenance</strong></td><td class="mono">Iron Door</td>
+                <td class="wrap">Refuses new joins from anyone without <code>control.maintenance</code>, <strong>and disconnects everyone already on</strong> who lacks it. <strong>Swaps the server-list MOTD</strong> to a bold gold maintenance notice, and puts the real one back afterwards.</td></tr>
+              <tr><td><strong>Command spy</strong></td><td class="mono">Sculk Sensor</td>
+                <td class="wrap">Shows you commands other players run. Your own are never echoed back at you.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Clearing the server</h3>
+        <p>
+          Blocking new logins alone was half a feature: everybody already online stayed
+          online, and whatever you turned maintenance on to fix carried on being played
+          through. Switching it on now announces the change, then disconnects every player
+          without <code>control.maintenance</code>.
+        </p>
+        <p>
+          The disconnect screen is the same component the login gate shows, so somebody kicked
+          and somebody refused at the door read one explanation rather than two different
+          ones — including your Discord invite, when <code>discordInvite</code> is set.
+        </p>
+
+        <h3>The maintenance notice</h3>
+        <p>
+          Turning maintenance on also swaps the <strong>server-list MOTD</strong>, because a
+          refusal at the login screen only reaches players who already clicked connect — the
+          MOTD is what everybody else actually reads. The real MOTD is captured the first time
+          it is replaced and restored when maintenance ends, so repeated toggles can never
+          leave the notice stuck on.
+        </p>
+        <div class="scroller">
+<pre><code>"maintenanceMotd": "§6§lSERVER IN MAINTENANCE
+§7Please wait while we update things — back shortly."</code></pre>
+        </div>
+        <p>
+          Legacy formatting codes work: <code>§6</code> gold, <code>§l</code> bold,
+          <code>§r</code> reset, <code>§7</code> grey, and <code>
+</code> splits the two
+          lines the server list gives you. Nothing is written to <code>server.properties</code>,
+          so a crash mid-maintenance heals itself — the next start reads your real MOTD back.
+        </p>
+
+        <h3>TPS watchdog</h3>
+        <p>
+          Samples every thirty seconds and alerts staff when TPS crosses below the configured
+          floor — then once more when it recovers. It is edge-triggered on purpose: a watchdog
+          that repeats every sample is a watchdog people switch off.
+        </p>
+      </section>
+
+      <!-- =========================================================== COMMS -->
+      <section id="comms">
+        <p class="kicker">Coordination</p>
+        <h2>Staff chat &amp; alerts</h2>
+        <h3>Staff chat</h3>
+        <p>
+          <code>/sc &lt;message&gt;</code> for one line, or <code>/staffchat</code> to toggle
+          the channel on and route everything you type there. Messages carry a quiet
+          experience-orb ping so they sit under conversation rather than over it.
+        </p>
+        <p>
+          One handler governs all chat, in a fixed order: <strong>a mute beats everything</strong>
+          including the staff channel, then staff chat, then the global lock. That ordering is
+          the point — a muted player must not be able to reach staff chat, and a chat lock must
+          not silence the staff coordinating through it.
+        </p>
+        <div class="note">
+          <p>
+            If you are the only person online holding <code>staff.chat</code>, StaffCore says
+            so after your message. A staff channel with no audience looks identical to a
+            broken one otherwise — you type, you see your own line, and nothing tells you
+            whether it went anywhere. Every send is also logged to console with a recipient
+            count.
+          </p>
+        </div>
+
+        <h3>Alerts</h3>
+        <p>
+          Reports, security flags, performance warnings and staff actions. Subscription is
+          <strong>opt-out</strong>: anyone with <code>staff.alerts</code> receives everything
+          until they turn it off, because the failure mode of a quiet alert system is that
+          nobody notices the thing it was built to catch.
+        </p>
+        <p>
+          Punishments are the deliberate exception — they are already broadcast by the
+          punishment system, and hearing the same event twice trains people to ignore both.
+          They still reach Discord.
+        </p>
+      </section>
+
+      <!-- ======================================================= ANALYTICS -->
+      <section id="analytics">
+        <p class="kicker">The team</p>
+        <h2>Analytics</h2>
+        <p>
+          Per-staff totals — punishments issued, reports claimed, commands logged, last
+          activity — plus server-wide counts, ranked by punishments issued.
+        </p>
+        <p>
+          Three numbers that are not volume sit alongside them, because counting actions on
+          its own rewards whoever does the most of them:
+        </p>
+        <ul>
+          <li><strong>Seen through</strong> — reports they claimed that actually reached a
+            conclusion. Claiming a queue and leaving it claimed is the failure mode a raw
+            count cannot see at all.</li>
+          <li><strong>Typical response</strong> — the median gap between a report arriving and
+            them acting. It separates somebody working the queue as it fills from somebody
+            clearing it once a week.</li>
+          <li><strong>Later revoked</strong> — how many of their punishments were lifted
+            afterwards. The closest thing the database holds to "was this call right".</li>
+        </ul>
+        <div class="note">
+          <p>
+            <strong>Read it as a prompt, not a score.</strong> These are better than a bare
+            volume ranking and they are still not a performance review — no number here can
+            tell you whether a ban was the right call, only whether somebody else undid it.
+            The staff member with two bans and forty resolved reports is doing the harder job.
+            Click a name to open their file and read the actual work.
+          </p>
+        </div>
+        <p>
+          Anyone with no logged command for two weeks is flagged as quiet. Bear in mind the
+          command log only records StaffCore commands, so somebody who works mostly through
+          the panel will look quieter than they are — the screen says so itself.
+        </p>
+      </section>
+
+      <!-- ========================================================= DISCORD -->
+      <section id="discord">
+        <p class="kicker">Outbound</p>
+        <h2>Discord</h2>
+        <p>
+          Set <code>discordWebhookUrl</code> in the config and punishments, reports and alerts
+          mirror into a channel. Leave it empty and the bridge is simply off; the panel shows
+          which state you are in.
+        </p>
+        <p>
+          It is fire-and-forget by design — a slow or dead webhook can never stall a tick, and
+          failures are logged once rather than retried. Payloads are built as real JSON, so a
+          player name containing a quote cannot break the message, and
+          <code>@everyone</code> is stripped whatever a staff message contains.
+        </p>
+      </section>
+
+      <!-- ======================================================== COMMANDS -->
+      <section id="commands">
+        <p class="kicker">Reference</p>
+        <h2>Command list</h2>
+        <p>
+          <strong>Everything lives under <code>/staff</code>.</strong> Tab-complete the one
+          word and the whole tree is there, and nothing StaffCore adds can collide with
+          another mod's <code>/ban</code> or <code>/kick</code>. Two commands deliberately
+          stay at the root: <code>/report</code>, because it belongs to players rather than
+          staff, and <code>/sc</code>, because it is typed dozens of times a shift.
+        </p>
+        <p>
+          <code>/staff &lt;name&gt;</code> with no subcommand opens that player's file.
+          Brigadier tries every literal first, so <code>/staff ban Notch</code> still hits
+          the ban subcommand — only a bare name falls through to the file.
+        </p>
+        <p>
+          Durations are <code>30m</code>, <code>6h</code>, <code>7d</code>,
+          <code>1h30m</code> or <code>perm</code>. Anything unparseable is <strong>refused</strong>,
+          not silently treated as zero.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Command</th><th>Node</th><th class="wrap">Does</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">/staff</td><td class="mono">staff.gui</td><td class="wrap">Open the panel</td></tr>
+              <tr><td class="mono">/staff &lt;player&gt;</td><td class="mono">staff.gui</td><td class="wrap">Open that player's file</td></tr>
+              <tr><td class="mono">/staff mode</td><td class="mono">staff.mode</td><td class="wrap">Clock on or off</td></tr>
+              <tr><td class="mono">/staff vanish</td><td class="mono">staff.vanish</td><td class="wrap">Toggle invisibility</td></tr>
+              <tr><td class="mono">/staff freeze &lt;player&gt;</td><td class="mono">staff.freeze</td><td class="wrap">Lock or release a player</td></tr>
+              <tr><td class="mono">/staff warn &lt;player&gt; &lt;reason…&gt;</td><td class="mono">staff.punish.warn</td><td class="wrap">Logged warning</td></tr>
+              <tr><td class="mono">/staff kick &lt;player&gt; &lt;reason…&gt;</td><td class="mono">staff.punish.kick</td><td class="wrap">Disconnect once</td></tr>
+              <tr><td class="mono">/staff mute &lt;player&gt; &lt;reason…&gt;</td><td class="mono">staff.punish.mute</td><td class="wrap">Permanent mute</td></tr>
+              <tr><td class="mono">/staff tempmute &lt;player&gt; &lt;dur&gt; &lt;reason…&gt;</td><td class="mono">staff.punish.mute</td><td class="wrap">Timed mute</td></tr>
+              <tr><td class="mono">/staff ban &lt;player&gt; &lt;reason…&gt;</td><td class="mono">staff.punish.ban</td><td class="wrap">Permanent ban</td></tr>
+              <tr><td class="mono">/staff tempban &lt;player&gt; &lt;dur&gt; &lt;reason…&gt;</td><td class="mono">staff.punish.ban</td><td class="wrap">Timed ban</td></tr>
+              <tr><td class="mono">/staff unban &lt;player&gt;</td><td class="mono">staff.punish.revoke</td><td class="wrap">Lift a ban</td></tr>
+              <tr><td class="mono">/staff unmute &lt;player&gt;</td><td class="mono">staff.punish.revoke</td><td class="wrap">Lift a mute</td></tr>
+              <tr><td class="mono">/staff history &lt;player&gt;</td><td class="mono">staff.history</td><td class="wrap">Print their record</td></tr>
+              <tr><td class="mono">/staff history &lt;player&gt; clear</td><td class="mono">staff.history.clear</td><td class="wrap">Wipe their record</td></tr>
+              <tr><td class="mono">/staff notes &lt;player&gt; [list]</td><td class="mono">staff.notes.view</td><td class="wrap">Read notes</td></tr>
+              <tr><td class="mono">/staff notes &lt;player&gt; add &lt;text…&gt;</td><td class="mono">staff.notes</td><td class="wrap">Write a note</td></tr>
+              <tr><td class="mono">/staff notes &lt;player&gt; remove &lt;n&gt;</td><td class="mono">staff.notes.remove</td><td class="wrap">Delete note n</td></tr>
+              <tr><td class="mono">/staff chat</td><td class="mono">staff.chat</td><td class="wrap">Toggle the staff channel</td></tr>
+              <tr><td class="mono">/staff say &lt;message…&gt;</td><td class="mono">staff.chat</td><td class="wrap">One-off staff message</td></tr>
+              <tr><td class="mono">/staff alerts</td><td class="mono">staff.alerts</td><td class="wrap">Toggle your alerts</td></tr>
+              <tr><td class="mono">/staff reports</td><td class="mono">report.view</td><td class="wrap">Open the queue</td></tr>
+              <tr><td class="mono">/staff goto &lt;player&gt;</td><td class="mono">staff.tp</td><td class="wrap">Teleport to them</td></tr>
+              <tr><td class="mono">/staff bring &lt;player&gt;</td><td class="mono">staff.tphere</td><td class="wrap">Pull them to you</td></tr>
+              <tr><td class="mono">/staff tppos &lt;x&gt; &lt;y&gt; &lt;z&gt;</td><td class="mono">staff.tppos</td><td class="wrap">Teleport to coordinates</td></tr>
+              <tr><td class="mono">/staff back</td><td class="mono">staff.tp</td><td class="wrap">Return to your last position</td></tr>
+              <tr><td class="mono">/staff invsee &lt;player&gt;</td><td class="mono">security.invsee</td><td class="wrap">Inventory view — <strong>works offline</strong></td></tr>
+              <tr><td class="mono">/staff lookup &lt;player&gt;</td><td class="mono">staff.gui</td><td class="wrap">Open their file</td></tr>
+              <tr><td class="mono">/staff seccheck &lt;player&gt;</td><td class="mono">security.check</td><td class="wrap">Run the checks</td></tr>
+              <tr><td class="mono">/staff scan</td><td class="mono">security.itemscanner</td><td class="wrap">Sweep everyone online</td></tr>
+              <tr><td class="mono">/staff xray &lt;player&gt; [hours]</td><td class="mono">security.check</td><td class="wrap">Score one player on demand, offline included</td></tr>
+              <tr><td class="mono">/staff rollback &lt;player&gt; &lt;radius&gt; [minutes]</td><td class="mono">grief.rollback</td><td class="wrap">Undo their block changes</td></tr>
+              <tr><td class="mono">/staff spy</td><td class="mono">control.spy</td><td class="wrap">Toggle command spy</td></tr>
+              <tr><td class="mono">/staff clearchat</td><td class="mono">control.chat</td><td class="wrap">Push chat history off screen</td></tr>
+              <tr><td class="mono">/staff lockchat</td><td class="mono">control.chat</td><td class="wrap">Silence non-staff</td></tr>
+              <tr><td class="mono">/staff unlockchat</td><td class="mono">control.chat</td><td class="wrap">Reopen chat</td></tr>
+              <tr><td class="mono">/staff broadcast &lt;message…&gt;</td><td class="mono">control.broadcast</td><td class="wrap">Server-wide announcement</td></tr>
+              <tr><td class="mono">/staff maintenance</td><td class="mono">control.maintenance</td><td class="wrap">Kicks non-staff, blocks joins, swaps the MOTD</td></tr>
+              <tr><td class="mono">/staff enderchest &lt;player&gt;</td><td class="mono">security.enderchest</td><td class="wrap">Live ender chest view</td></tr>
+              <tr><td class="mono">/staff logs &lt;player&gt;</td><td class="mono">staff.logs</td><td class="wrap">Joins, leaves and deaths</td></tr>
+              <tr><td class="mono">/staff alts &lt;player&gt;</td><td class="mono">staff.alts</td><td class="wrap">Accounts sharing an address</td></tr>
+              <tr><td class="mono">/staff appeals</td><td class="mono">staff.appeals</td><td class="wrap">Appeal queue</td></tr>
+              <tr><td class="mono">/staff rollback area &lt;radius&gt; [minutes]</td><td class="mono">grief.rollback</td><td class="wrap">Undo <strong>everyone's</strong> changes here</td></tr>
+              <tr><td class="mono">/staff rollback undo [id | list]</td><td class="mono">grief.rollback</td><td class="wrap">Undo a rollback — restore points kept seven days</td></tr>
+              <tr><td class="mono">/staff search &lt;query…&gt;</td><td class="mono">grief.search</td><td class="wrap">Query both logs — <code>player:</code> <code>action:</code> <code>block:</code> <code>time:</code> <code>radius:</code></td></tr>
+              <tr><td class="mono">/staff purge &lt;age&gt; [player] [confirm]</td><td class="mono">grief.purge</td><td class="wrap">Delete log history early — previews unless you confirm</td></tr>
+              <tr><td class="mono">/staff inspect</td><td class="mono">grief.inspect.mode</td><td class="wrap">Hold inspect mode; any block click shows its history</td></tr>
+              <tr><td class="mono">/staff perms [list | set | unset]</td><td class="mono">staff.perms</td><td class="wrap">Built-in groups, when no permissions mod is installed</td></tr>
+              <tr><td class="mono">/staff stats &lt;player&gt;</td><td class="mono">analytics.stats</td><td class="wrap">One staff member's totals</td></tr>
+              <tr><td class="mono">/staff reload</td><td class="mono">staff.reload</td><td class="wrap">Re-read the config and permission groups from disk</td></tr>
+              <tr><td class="mono">/staff status</td><td class="mono">staff.reload</td><td class="wrap">Modules, TPS, storage state</td></tr>
+              <tr><td class="mono">/staff backup</td><td class="mono">staff.reload</td><td class="wrap">Take a coherent copy of the database now</td></tr>
+              <tr><td class="mono">/staff export</td><td class="mono">staff.reload</td><td class="wrap">Dump every table to CSV, one file each</td></tr>
+              <tr><td class="mono">/staff selftest</td><td class="mono">staff.reload</td><td class="wrap">Prove the mod works, not just that it started &mdash; see <a href="#health">Health checks</a></td></tr>
+              <tr><td class="mono">/staff panel</td><td class="mono">staff.gui</td><td class="wrap">Open the panel, same as bare <code>/staff</code></td></tr>
+              <tr><td class="mono">/staff vault</td><td class="mono">security.vault</td><td class="wrap">The contraband vault &mdash; what was taken, and what became of it</td></tr>
+              <tr><td class="mono">/staff contraband</td><td class="mono">security.contraband</td><td class="wrap">Edit the contraband rules</td></tr>
+              <tr><td class="mono">/staff nbt</td><td class="mono">security.invsee</td><td class="wrap">Read the held item&rsquo;s real component data</td></tr>
+              <tr><td class="mono">/staff anticheat</td><td class="mono">security.check</td><td class="wrap">Bridge state and the newest findings</td></tr>
+              <tr><td class="mono">/staff anticheat &lt;player&gt;</td><td class="mono">security.check</td><td class="wrap">Everything one player has been flagged for</td></tr>
+              <tr><td class="mono">/staff anticheat test &lt;player&gt; [confidence]</td><td class="mono">staff.reload</td><td class="wrap">Push a synthetic finding through the whole pipeline, to prove an integration works</td></tr>
+              <tr><td class="mono">/staff owed</td><td class="mono">grief.rollback</td><td class="wrap">Who still owes items from a rollback or theft undo</td></tr>
+              <tr><td class="mono">/staff owed &lt;player&gt;</td><td class="mono">grief.rollback</td><td class="wrap">What one player owes, item by item</td></tr>
+              <tr><td class="mono">/staff owed forgive &lt;player&gt; [confirm]</td><td class="mono">grief.rollback</td><td class="wrap">Write a debt off &mdash; previews unless you confirm</td></tr>
+              <tr><td class="mono">/report &lt;player&gt; &lt;reason…&gt;</td><td class="mono">report.use</td><td class="wrap"><span class="pill everyone">Everyone</span> File a report — stays at the root</td></tr>
+              <tr><td class="mono">/appeal &lt;text…&gt;</td><td class="mono">appeal.use</td><td class="wrap"><span class="pill everyone">Everyone</span> File an appeal — works while muted</td></tr>
+              <tr><td class="mono">/sc &lt;message…&gt;</td><td class="mono">staff.chat</td><td class="wrap">Shortcut for <code>/staff say</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Reading the placeholders</h3>
+        <p>
+          Everything in angle brackets is something you type; everything in square brackets is
+          optional and has a sensible default if you leave it out. The names are not
+          decoration &mdash; each one expects a particular kind of value, and the commonest
+          reason a command &quot;does nothing&quot; is a placeholder filled in with the wrong
+          sort of thing.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Placeholder</th><th class="wrap">What goes there</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">&lt;player&gt;</td>
+                <td class="wrap">A player name. Tab-completes for anyone online. Offline players work too for punishments, appeals and lookups &mdash; the name is resolved against the server&rsquo;s own cache, so it has to be someone who has joined at least once. Not a UUID.</td></tr>
+              <tr><td class="mono">[player]</td>
+                <td class="wrap">The same, but optional. Left out, the command applies to everyone, or to you, depending on the command &mdash; each row in the table above says which.</td></tr>
+              <tr><td class="mono">&lt;dur&gt;</td>
+                <td class="wrap">How long a punishment lasts: a number and a unit, with no space. <code>30s</code>, <code>10m</code>, <code>2h</code>, <code>7d</code>, <code>2w</code>. Several can be run together &mdash; <code>1d12h</code> is a day and a half. Anything it cannot parse becomes <strong>permanent</strong>, deliberately: a typo that silently expires a ban an hour early is worse than one you have to undo.</td></tr>
+              <tr><td class="mono">&lt;age&gt;</td>
+                <td class="wrap">The same format, read as &quot;older than this&quot;. <code>/staff purge 30d</code> deletes log entries more than thirty days old.</td></tr>
+              <tr><td class="mono">&lt;reason&gt;</td>
+                <td class="wrap">Free text to the end of the line. No quotes needed. Shown to the player and kept on their record, so write it for them to read.</td></tr>
+              <tr><td class="mono">&lt;text&hellip;&gt;<br>&lt;message&hellip;&gt;</td>
+                <td class="wrap">Free text to the end of the line. The ellipsis means it swallows everything after it, so this is always the last argument.</td></tr>
+              <tr><td class="mono">&lt;radius&gt;</td>
+                <td class="wrap">Blocks out from where you are standing, as a whole number. A rollback radius is a square, not a circle, and it reaches from bedrock to sky &mdash; it is horizontal distance only.</td></tr>
+              <tr><td class="mono">[minutes]<br>[hours]</td>
+                <td class="wrap">How far back to look, as a plain number with no unit letter. <code>/staff xray Bob 6</code> is six hours. Left out, each command uses its own default from the config.</td></tr>
+              <tr><td class="mono">&lt;x&gt; &lt;y&gt; &lt;z&gt;<br>&lt;world&gt;</td>
+                <td class="wrap">Block coordinates as whole numbers, and a dimension id such as <code>minecraft:overworld</code>. Tab-complete offers the worlds that actually exist.</td></tr>
+              <tr><td class="mono">&lt;n&gt;</td>
+                <td class="wrap">A plain count &mdash; how many rows to show or act on.</td></tr>
+              <tr><td class="mono">&lt;name&gt;<br>&lt;group&gt;</td>
+                <td class="wrap">A permission group name as written in <code>staffcore-permissions.json</code>. Tab-completes from the groups you actually have.</td></tr>
+              <tr><td class="mono">[confirm]</td>
+                <td class="wrap">The literal word <code>confirm</code>. Without it the command previews what it would do and changes nothing. This is the only safety net on the destructive commands, and it is opt-in on purpose &mdash; typing a word is cheap next to undoing a purge.</td></tr>
+              <tr><td class="mono">[list]</td>
+                <td class="wrap">The literal word <code>list</code>, to show what exists instead of changing it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>Placeholders in the config</h4>
+        <p>
+          One config value takes markup rather than a value:
+          <code>maintenanceMotd</code> is what the server list shows while maintenance is on,
+          and it accepts the game&rsquo;s own formatting codes. <code>&sect;6</code> is gold,
+          <code>&sect;c</code> red, <code>&sect;7</code> grey, <code>&sect;l</code> bold and
+          <code>&sect;r</code> resets back to plain. A literal <code>
+</code> splits the two
+          lines the server list gives you. Nothing else in the config is a template &mdash;
+          every other value is a number, a boolean, or a plain string used as-is.
+        </p>
+      </section>
+
+      <!-- ===================================================== PERMISSIONS -->
+      <section id="permissions">
+        <p class="kicker">Reference</p>
+        <h2>Permissions</h2>
+        <p>
+          Install <a href="https://github.com/lucko/fabric-permissions-api">fabric-permissions-api</a>
+          alongside LuckPerms and StaffCore picks it up automatically. That is still the best
+          answer, and it wins outright wherever it is present.
+        </p>
+        <p>
+          Without one, <code>config/staffcore-permissions.json</code> answers instead. It is
+          written with the starter groups below on first run, and holds node lists — with
+          <code>@other</code> to inherit from another group and <code>staff.*</code> wildcards —
+          plus a map of players to groups. Assign somebody with
+          <code>/staff perms set &lt;player&gt; &lt;group&gt;</code>, and
+          <code>/staff reload</code> re-reads the file after a hand edit.
+        </p>
+        <div class="note">
+          <p>
+            <code>operatorsBypass</code> starts <strong>on</strong>, so writing this file cannot
+            lock you out before you have put yourself in it. Turn it off once your staff are
+            assigned and op stops being a way around the groups. Only then do ranks actually
+            mean anything on a server without LuckPerms — before this, every node fell back to
+            op level, which made a trainee helper exactly as powerful as an admin.
+          </p>
+        </div>
+        <p>
+          Op level remains the last resort, for a node no group mentions.
+          <code>report.use</code> is the exception to all of it: it resolves default-true, so
+          <code>/report</code> stays open to everyone rather than quietly becoming
+          admin-only.
+        </p>
+
+        <h3>Suggested groups</h3>
+        <p>These ship as the defaults in that file.</p>
+        <div class="grid-cards">
+          <div class="card">
+            <h4>Helper</h4>
+            <p><span class="mono">staff.gui · staff.mode · staff.vanish · staff.freeze · staff.tp · staff.chat · staff.alerts · staff.notes* · staff.history · report.view · security.invsee</span></p>
+          </div>
+          <div class="card">
+            <h4>Moderator</h4>
+            <p>Helper, plus <span class="mono">staff.punish.* · staff.tphere · staff.tppos · security.check · security.itemscanner · control.spy · staff.alts · staff.logs · grief.inspect · grief.search</span></p>
+          </div>
+          <div class="card">
+            <h4>Admin</h4>
+            <p>Moderator, plus <span class="mono">staff.punish.revoke · staff.history.clear · security.invsee.edit · grief.rollback · grief.purge · control.* · security.* · analytics.stats · staff.reload · staff.perms</span></p>
+          </div>
+        </div>
+        <div class="note">
+          <p>
+            Two nodes are declared but not yet wired to anything:
+            <code>grief.rollback.regen</code> and <code>proxy.admin</code>. They are reserved
+            for chunk regeneration and a proxy companion. Granting them today does nothing.
+          </p>
+        </div>
+      </section>
+
+      <!-- =========================================================== ICONS -->
+      <section id="icons">
+        <p class="kicker">Reference</p>
+        <h2>Icon key</h2>
+        <p>
+          Chosen so a screen reads at a glance without reading a word. Player heads carry the
+          real skin, and anything currently <em>switched on</em> gets an enchantment shimmer —
+          state is visible in peripheral vision.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Tool</th><th>Item</th><th>Tool</th><th>Item</th></tr></thead>
+            <tbody>
+              <tr><td>Staff Mode</td><td class="mono">Diamond Chestplate</td><td>Punish</td><td class="mono">Netherite Axe</td></tr>
+              <tr><td>Vanish</td><td class="mono">Eye of Ender</td><td>Warn</td><td class="mono">Paper</td></tr>
+              <tr><td>Freeze</td><td class="mono">Packed Ice</td><td>Kick</td><td class="mono">Iron Boots</td></tr>
+              <tr><td>Staff Chat</td><td class="mono">Oak Sign</td><td>Mute</td><td class="mono">Note Block</td></tr>
+              <tr><td>Alerts</td><td class="mono">Bell</td><td>Ban</td><td class="mono">Netherite Axe</td></tr>
+              <tr><td>Command Spy</td><td class="mono">Sculk Sensor</td><td>Temp-ban</td><td class="mono">Iron Axe</td></tr>
+              <tr><td>Teleport / Return</td><td class="mono">Ender Pearl</td><td>Timed</td><td class="mono">Clock</td></tr>
+              <tr><td>Bring Here</td><td class="mono">Lead</td><td>Permanent</td><td class="mono">Bedrock</td></tr>
+              <tr><td>Players</td><td class="mono">Player Head</td><td>Lift punishment</td><td class="mono">Totem of Undying</td></tr>
+              <tr><td>Reports</td><td class="mono">Paper</td><td>Lift mute</td><td class="mono">Jukebox</td></tr>
+              <tr><td>Notes</td><td class="mono">Writable Book</td><td>Wipe history</td><td class="mono">Lava Bucket</td></tr>
+              <tr><td>History</td><td class="mono">Book</td><td>Broadcast</td><td class="mono">Goat Horn</td></tr>
+              <tr><td>Inventory</td><td class="mono">Chest</td><td>Clear chat</td><td class="mono">Sponge</td></tr>
+              <tr><td>Snapshots</td><td class="mono">Ender Chest</td><td>Chat lock</td><td class="mono">Barrier</td></tr>
+              <tr><td>Security</td><td class="mono">Spyglass</td><td>Maintenance</td><td class="mono">Iron Door</td></tr>
+              <tr><td>Item Scanner</td><td class="mono">Hopper</td><td>Server status</td><td class="mono">Beacon</td></tr>
+              <tr><td>Grief Log</td><td class="mono">TNT</td><td>Analytics</td><td class="mono">Map</td></tr>
+              <tr><td>Broke a block</td><td class="mono">Iron Pickaxe</td><td>Placed a block</td><td class="mono">Bricks</td></tr>
+              <tr><td>Discord</td><td class="mono">Amethyst Shard</td><td>Help</td><td class="mono">Knowledge Book</td></tr>
+              <tr><td>Confirm / Cancel</td><td class="mono">Lime / Red Concrete</td><td>Locked</td><td class="mono">Iron Bars</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Menu frames are black stained glass. The invsee frame turns <strong>red</strong> in
+          edit mode.
+        </p>
+      </section>
+
+      <!-- ========================================================== SOUNDS -->
+      <section id="sounds">
+        <p class="kicker">Reference</p>
+        <h2>Sound key</h2>
+        <p>
+          One voice across the whole suite: navigation is quiet and high, state changes are
+          pitched — up for on, down for off — and anything that lands on another player is
+          loud and low. Every sound is sent to a single client, so a vanished admin clicking
+          through menus is silent to everyone else.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="wrap">Moment</th><th>Sound</th><th>Pitch</th></tr></thead>
+            <tbody>
+              <tr><td class="wrap">Menu opens / closes</td><td class="mono">block.barrel.open / close</td><td>1.5</td></tr>
+              <tr><td class="wrap">Button press</td><td class="mono">ui.button.click</td><td>1.1</td></tr>
+              <tr><td class="wrap">Into a sub-menu / back out</td><td class="mono">block.amethyst_block.chime</td><td>1.4 / 0.9</td></tr>
+              <tr><td class="wrap">Page turn</td><td class="mono">item.book.page_turn</td><td>1.1</td></tr>
+              <tr><td class="wrap">Toggle on / off</td><td class="mono">note_block.pling / bass</td><td>1.8 / 0.7</td></tr>
+              <tr><td class="wrap">Small win — note saved, report claimed</td><td class="mono">entity.experience_orb.pickup</td><td>1.3</td></tr>
+              <tr><td class="wrap">Big win — punishment landed, rollback done</td><td class="mono">entity.player.levelup</td><td>1.4</td></tr>
+              <tr><td class="wrap">Refused</td><td class="mono">entity.villager.no</td><td>1.0</td></tr>
+              <tr><td class="wrap">Something broke</td><td class="mono">block.anvil.land</td><td>1.9</td></tr>
+              <tr><td class="wrap">Staff mode on / off</td><td class="mono">block.beacon.activate / deactivate</td><td>1.6</td></tr>
+              <tr><td class="wrap">Vanish on / off</td><td class="mono">entity.enderman.teleport</td><td>1.6 / 0.8</td></tr>
+              <tr><td class="wrap">Invsee opens</td><td class="mono">block.ender_chest.open</td><td>1.3</td></tr>
+              <tr><td class="wrap">Alert or new report</td><td class="mono">block.note_block.bell</td><td>1.5</td></tr>
+              <tr><td class="wrap">Staff chat message</td><td class="mono">entity.experience_orb.pickup</td><td>1.9, quiet</td></tr>
+              <tr><td class="wrap"><strong>A ban lands</strong> — heard by all staff</td><td class="mono">entity.lightning_bolt.thunder</td><td>1.4</td></tr>
+              <tr><td class="wrap">Target: frozen / unfrozen</td><td class="mono">entity.player.hurt_freeze / chime</td><td>—</td></tr>
+              <tr><td class="wrap">Target: warned / muted</td><td class="mono">note_block.pling / bass, low</td><td>0.6 / 0.5</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================================================== CONFIG -->
+      <section id="config">
+        <p class="kicker">Setup</p>
+        <h2>Config</h2>
+        <p>
+          Written with defaults on first run to <code>config/staffcore.json</code>. The file
+          carries a <code>configVersion</code>: when a default changes in a way existing
+          servers should inherit, the value is moved only if it still holds the old default,
+          so anything you deliberately set is left alone and every change is logged.
+          <code>/staffcore reload</code> re-reads it without a restart.
+        </p>
+        <div class="scroller">
+<pre><code>{
+  "discordWebhookUrl": "",            // empty = bridge off
+  "requireReason": true,
+  "publicPunishmentBroadcast": true,  // false = announce to staff only
+  "presetReasons":   [ … ],           // becomes the buttons in the Reason menu
+  "presetDurations": [ { "label": "7 days", "spec": "7d" }, … ],
+  "reportCooldownSeconds": 60,
+  "xrayRatioThreshold": 0.04,         // ore fraction that trips the heuristic
+  "xraySampleFloor": 500,             // blocks needed before it fires at all
+  "tpsAlertFloor": 17.0,
+  "defaultRollbackMinutes": 60,
+
+  "rollbackReclaimsDrops": true,      // without this, every rollback duplicates items
+  "rollbackChasesBankedLoot": true,   // follow loot stashed in chests outside the radius
+  "rollbackPointRetentionDays": 7,    // how long a rollback stays undoable; 0 disables undo
+  "watchContraband": true,            // alert the moment a player is seen holding one
+  "watchContainers": true,            // check chests as they are opened and closed
+  "scanEnderChests": true,
+  "maxSnapshotsPerPlayer": 10,        // 0 keeps every one
+  "snapshotRetentionDays": 30,
+  "altSubnetMatching": true,          // also link accounts sharing an address range
+  "altMinConfidence": 40,             // below this, a link is not worth an alert
+  "vanishLoadsChunks": true,          // false = vanish leaves no trace, and you fly into void
+
+  // Shown in the server list while maintenance mode is on
+  "maintenanceMotd": "§6§lSERVER IN MAINTENANCE
+§7Please wait while we update things — back shortly."
+}</code></pre>
+        </div>
+        <p>
+          The punish flow is entirely preset-driven — add a reason or a duration here and a
+          new button appears, no code change.
+        </p>
+        <div class="note">
+          <p>
+            <code>vanishLoadsChunks</code> is the one worth thinking about before you change it.
+            Left <strong>on</strong> — the default — a vanished admin still holds chunks open
+            around them, so they can see and fly through the world; spawning is suppressed
+            either way, so farms behave as though nobody is there. Turned <strong>off</strong>,
+            vanish becomes complete and leaves no trace on the server at all, at the cost that
+            chunks nobody else is holding open will not load for you. Reasonable on a busy
+            server. A bad idea on a quiet one.
+          </p>
+          <p>
+            Either way the change lands on the next chunk boundary you cross rather than the
+            instant you toggle vanish, because that is when chunk tickets are registered. In
+            practice you will not notice — anyone who cares about chunk loading is moving.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ DATA -->
+      <section id="data">
+        <p class="kicker">Operations</p>
+        <h2>Where data lives</h2>
+        <p>
+          SQLite at <code>&lt;world&gt;/staffcore.db</code>, opened when the server starts,
+          with write-ahead logging on. Schema changes are numbered migrations recorded in the
+          file itself, so an existing install upgrades in place, once, in order, and never has
+          to be deleted to move forward. If it fails to open, every feature that needs it
+          degrades quietly and the rest of the mod carries on.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="wrap">Table</th><th class="wrap">Holds</th></tr></thead>
+            <tbody>
+              <tr><td class="wrap">punishments, notes, reports, appeals</td><td class="wrap">The enforcement record</td></tr>
+              <tr><td class="wrap">block log, container log</td><td class="wrap">Who broke it, and who emptied it</td></tr>
+              <tr><td class="wrap">command log</td><td class="wrap">Staff commands, for the spy and the analytics</td></tr>
+              <tr><td class="wrap">connections, session log, death log</td><td class="wrap">Addresses, sessions and deaths</td></tr>
+              <tr><td class="wrap">snapshots, snapshot items</td><td class="wrap">Inventory snapshots and their contents</td></tr>
+              <tr><td class="wrap">staff state, stash</td><td class="wrap">Vanish, freeze, duty state and on-duty inventories</td></tr>
+              <tr><td class="wrap">contraband vault</td><td class="wrap">Items taken off players and kept</td></tr>
+              <tr><td class="wrap">pending actions</td><td class="wrap">Items owed to somebody who was offline when staff decided</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Survives a restart:</strong></p>
+        <ul>
+          <li>Vanish state</li>
+          <li>Freeze anchors — logging out no longer clears a freeze</li>
+          <li>Staff mode, including the duty gamemode you came from</li>
+          <li>The on-duty inventory stash</li>
+          <li>Inventory snapshots, and everything in the vault</li>
+          <li>Anything owed to a player who was offline when staff decided it</li>
+        </ul>
+        <p><strong>In memory only</strong>, and cleared by a restart:</p>
+        <ul>
+          <li><code>/back</code> return points</li>
+          <li>Mass-grief burst counters</li>
+          <li>Inspect mode — deliberately, so it cannot eat your first pickaxe swing after a restart</li>
+        </ul>
+
+        <h3>Keeping it safe</h3>
+        <p>
+          The database is the evidence. A punishment record with a hole in it is worse than no
+          record, because somebody will act on the half that survived. Four things stand
+          between you and that:
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="wrap">What</th><th class="wrap">When</th><th class="wrap">Why it is that way</th></tr></thead>
+            <tbody>
+              <tr><td class="wrap"><strong>Transactions</strong></td><td class="wrap">Every multi-step write</td>
+                <td class="wrap">Restoring a snapshot, draining what is owed to somebody joining, retiring rolled-back rows and purging a player all touch several tables. Each either lands whole or not at all, so a crash in the middle cannot leave items handed over but the row still owing them.</td></tr>
+              <tr><td class="wrap"><strong>Integrity check</strong></td><td class="wrap">Every boot</td>
+                <td class="wrap">A corrupt file is moved aside with a timestamp and the newest good backup takes its place. If there is no backup it starts clean. It never fails the boot — a broken staff database must not be the reason nobody can play.</td></tr>
+              <tr><td class="wrap"><strong>Backups</strong></td><td class="wrap">Each start, plus <code>/staff backup</code></td>
+                <td class="wrap">Taken with SQLite's own coherent-copy command, not a file copy — copying the file by hand while the write-ahead log is live can give you something missing its most recent writes. Rotated to <code>databaseBackups</code>.</td></tr>
+              <tr><td class="wrap"><strong>Export</strong></td><td class="wrap"><code>/staff export</code></td>
+                <td class="wrap">One CSV per table in a timestamped folder. A backup is for restoring; an export is for <em>reading</em> — which is what a data request, an audit, or a spreadsheet actually needs. The table list comes from the database itself, so nothing is left out by accident.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================================================== LIMITS -->
+      <!-- ====================================================== ANTICHEAT -->
+      <section id="anticheat">
+        <p class="kicker">Security</p>
+        <h2>Anti-cheat bridge</h2>
+        <p class="lede">
+          StaffCore does not detect cheating. It gives whatever does the detecting somewhere
+          useful to say so.
+        </p>
+        <p>
+          An anti-cheat that logs to console is a tool nobody reads. The finding that changes
+          a decision is the one a staff member sees <em>next to everything else they know</em>
+          about that player &mdash; the punishment history, the alt links, the mining report.
+          A flag on its own is ambiguous. A flag alongside three others is not.
+        </p>
+
+        <h3>What arrives</h3>
+        <p>Every provider has its own vocabulary. These are the four things they all say:</p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Kind</th><th class="wrap">Means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Detection</strong></td>
+                <td class="wrap">The provider's own checks flagged something. An opinion, and often a provisional one.</td></tr>
+              <tr><td><strong>Cloud detection</strong></td>
+                <td class="wrap">A shared-intelligence service flagged this account, usually from behaviour on other servers.</td></tr>
+              <tr><td><strong>Mitigation</strong></td>
+                <td class="wrap">The provider intervened &mdash; cancelled a movement, rolled something back, slowed something down.</td></tr>
+              <tr><td><strong>Punishment</strong></td>
+                <td class="wrap">The provider punished the player itself.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          These stay separate on purpose. A detection is an opinion; a punishment already
+          happened. Collapsing them is how staff end up either ignoring everything or
+          punishing somebody twice for one offence.
+        </p>
+
+        <div class="note">
+          <h4>Noise control</h4>
+          <p>
+            Detections below <code>antiCheatAlertConfidence</code> (60 by default) are
+            recorded but not announced. Anti-cheats flag on thresholds that expect to be wrong
+            sometimes, and an alert channel that cries wolf is one staff learn to scroll past.
+            Everything is still on the player's file either way. <strong>Mitigations and
+            punishments always announce</strong> &mdash; those already happened to somebody.
+          </p>
+          <p>
+            Findings are kept for <code>antiCheatRetentionDays</code> (30 by default). A
+            year-old flag on a player who has been fine since is not evidence of anything, and
+            this is the chattiest source of rows in the database.
+          </p>
+        </div>
+
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">It never punishes</span>
+            StaffCore will not ban, mute or kick on the strength of a detection, and there is
+            no setting to make it. Acting on an anti-cheat flag stays a human decision. What
+            the bridge changes is that the human sees it.
+          </p>
+        </div>
+
+        <h3>Wiring one up</h3>
+        <p>
+          StaffCore cannot compile against an anti-cheat it does not ship with, so there is
+          one supported integration point and it is a plain method call. Any mod, bridge or
+          script does this:
+        </p>
+        <pre><code>StaffCore.antiCheat().report(new AntiCheatEvent(
+        "Polar",                       // which provider said it
+        player.getUUID(),              // or null if you only have a name
+        player.getName().getString(),
+        AntiCheatEvent.Kind.DETECTION, // or CLOUD_DETECTION, MITIGATION, PUNISHMENT
+        "Speed",                       // the provider's own name for the check
+        82,                            // confidence 0-100, or -1 if it has none
+        "moved 4.2 blocks in one tick",
+        System.currentTimeMillis()));</code></pre>
+        <p>
+          There is a shorter form taking a name instead of a UUID, which resolves the account
+          itself. Either way the call is safe to make from another mod's event thread: a
+          malformed event is dropped with a warning rather than thrown back at you, because an
+          exception there becomes somebody else's crash report.
+        </p>
+
+        <div class="note caution">
+          <h4>What is and is not automatic</h4>
+          <p>
+            StaffCore <strong>detects</strong> whether Polar, Grim, Vulcan or Matrix are
+            installed and says so in the boot log. It does <strong>not</strong> subscribe to
+            their events automatically. Subscribing means calling methods StaffCore cannot see
+            at compile time, and guessing at another mod's internals produces code that
+            compiles, runs, quietly catches its own failure and does nothing &mdash; which is
+            worse than not trying, because it looks like it worked.
+          </p>
+          <p>
+            So the honest position: if the boot log says a provider was detected, point that
+            provider's alert hook at the call above and findings will flow. Until you do,
+            nothing from it reaches StaffCore. The log tells you which of the two you are in.
+          </p>
+        </div>
+      </section>
+
+      <!-- ======================================================== MODULES -->
+      <section id="modules">
+        <p class="kicker">Reference</p>
+        <h2>Every module</h2>
+        <p class="lede">
+          StaffCore is nineteen modules behind one panel. Each owns one job, keeps its own
+          data, and can be switched off without taking anything else with it. This is the
+          whole list, in roughly the order a shift uses them.
+        </p>
+
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Module</th><th class="wrap">What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Staff Mode</strong><br><span class="mono">staff_mode</span></td>
+                <td class="wrap">Clocking on. Stashes your survival inventory, hands you the staff toolset, switches you to the duty gamemode (creative by default) and gives it all back on the way out. The stash survives a restart, and a failed restore never consumes it.</td></tr>
+              <tr><td><strong>Vanish</strong><br><span class="mono">vanish</span></td>
+                <td class="wrap">Being invisible properly. Entity tracking, tab list, player count, <code>/list</code>, selectors, the server-list sample, sounds and waypoints all agree that you are not there. Optionally stops you loading chunks. Survives a restart and a reconnect.</td></tr>
+              <tr><td><strong>Freeze</strong><br><span class="mono">freeze</span></td>
+                <td class="wrap">Pinning a player where they stand, with an on-screen explanation. Anchored to a position, so logging out and back in does not shake it off.</td></tr>
+              <tr><td><strong>Teleport</strong><br><span class="mono">teleport</span></td>
+                <td class="wrap">Going to a player, bringing one to you, teleporting to coordinates, and <code>/back</code> to return. Return points are memory-only and cleared by a restart.</td></tr>
+              <tr><td><strong>Punishments</strong><br><span class="mono">punishment</span></td>
+                <td class="wrap">Warn, mute, kick, temp-ban and ban, from a preset offence ladder or set by hand. Timed punishments expire on their own; revoking one keeps the record and marks it revoked rather than deleting it.</td></tr>
+              <tr><td><strong>Reports</strong><br><span class="mono">report</span></td>
+                <td class="wrap"><code>/report</code> for players, a claim-and-resolve queue for staff, and a teleport straight to the subject. Claiming is recorded, which is what makes follow-through measurable later.</td></tr>
+              <tr><td><strong>Appeals</strong><br><span class="mono">appeal</span></td>
+                <td class="wrap">The other side of a punishment. Works while muted, on purpose. Accepting an appeal lifts the punishment it refers to in the same action.</td></tr>
+              <tr><td><strong>Notes</strong><br><span class="mono">notes</span></td>
+                <td class="wrap">Staff-only notes on a player &mdash; the things that are not punishments but that the next person on shift needs to know.</td></tr>
+              <tr><td><strong>Inventory</strong><br><span class="mono">inventory</span></td>
+                <td class="wrap">Live inventory and ender chest views, editable behind their own permission, plus snapshots. Snapshots capture every slot including armour and offhand, are taken automatically before a death, a logout, a staff edit and a rollback debit, and restore without duplicating anything still lying on the ground.</td></tr>
+              <tr><td><strong>Security</strong><br><span class="mono">security</span></td>
+                <td class="wrap">The item checks: contraband, over-stacked stacks, enchantments above the vanilla ceiling, staff tools loose in the world, and the x-ray heuristic. Findings go to the vault rather than being deleted.</td></tr>
+              <tr><td><strong>Grief Log</strong><br><span class="mono">grief</span></td>
+                <td class="wrap">Who broke it, who placed it, who opened it and who emptied it. Block inspector, area and per-block history, search, rollback with a rendered preview, rollback undo, and chest-theft undo. Rolled-back blocks return with their orientation and their contents.</td></tr>
+              <tr><td><strong>Identity</strong><br><span class="mono">identity</span></td>
+                <td class="wrap">Addresses, sessions, deaths, and the alt links built from them. Keeps stored names current when a player renames, so an account cannot drop out of search by changing its name.</td></tr>
+              <tr><td><strong>Ban Evasion</strong><br><span class="mono">evasion</span></td>
+                <td class="wrap">Screens joins against banned accounts on the same address or range, alerts staff, and can auto-ban on an exact match only. Everything else is a lead for a human.</td></tr>
+              <tr><td><strong>Anti-cheat bridge</strong><br><span class="mono">anticheat</span></td>
+                <td class="wrap">Normalises findings from an installed anti-cheat &mdash; detections, cloud detections, mitigations and punishments &mdash; into StaffCore alerts and onto the player's file. Never punishes on its own.</td></tr>
+              <tr><td><strong>Server Control</strong><br><span class="mono">control</span></td>
+                <td class="wrap">Chat lock, clear chat, broadcast, maintenance mode with its own server-list message, command spy, and the TPS watchdog.</td></tr>
+              <tr><td><strong>Staff Chat</strong><br><span class="mono">staff_chat</span></td>
+                <td class="wrap">A private channel for staff, on <code>/sc</code> because it is typed dozens of times a shift.</td></tr>
+              <tr><td><strong>Alerts</strong><br><span class="mono">alerts</span></td>
+                <td class="wrap">The one place every notification goes through &mdash; punishments, reports, security findings, suspicious mining, performance, staff actions &mdash; so routing and rate-limiting live in one place instead of nineteen.</td></tr>
+              <tr><td><strong>Analytics</strong><br><span class="mono">analytics</span></td>
+                <td class="wrap">The staff leaderboard, and a per-person record: total actions, what kind, follow-through, overturn rate, response time, tools used and recent activity.</td></tr>
+              <tr><td><strong>Discord</strong><br><span class="mono">discord</span></td>
+                <td class="wrap">Outbound webhook for punishments, reports and alerts. One direction only &mdash; see <a href="#limits">Known limits</a>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="note">
+          <h4>Switching one off</h4>
+          <p>
+            Every module has an enable flag in <code>config/staffcore.json</code>. A disabled
+            module stops running, stops recording and disappears from the panel; what it
+            already wrote stays in the database. Nothing else changes &mdash; modules reach
+            each other through the registry and handle a missing neighbour rather than
+            assuming one.
+          </p>
+        </div>
+      </section>
+
+      <!-- ========================================================= HEALTH -->
+      <section id="health">
+        <p class="kicker">Operations</p>
+        <h2>Checking the mod is healthy</h2>
+        <p class="lede">
+          StaffCore hooks into the game in thirty-one places. Most of them are allowed to fail
+          without stopping the server, which is the right trade &mdash; and it means a broken
+          feature looks exactly like a feature nobody used today. These are the three ways to
+          tell the difference.
+        </p>
+
+        <h3>1. The startup line</h3>
+        <p>
+          Every boot prints one line. On a healthy server it reads like this:
+        </p>
+        <pre><code>[StaffCore] Health check: 14/14 hooks present, 10 verified applied.</code></pre>
+        <p>
+          <strong>Hooks present</strong> is the number of places in the game StaffCore expects
+          to find. If that first number is lower than the second, an update has moved or
+          removed something and the affected features are off &mdash; each one is named on its
+          own line underneath.
+        </p>
+        <p>
+          <strong>Verified applied</strong> is the stricter question: not just &ldquo;is the
+          target still there&rdquo;, but &ldquo;did our code actually get injected into
+          it&rdquo;. It is normally lower than the first number, and that is not a fault. Some
+          hooks cannot be positively confirmed from inside the running game, so the check
+          reports only what it can prove and stays quiet about the rest. A check that cried
+          wolf on a healthy server would teach everybody to ignore it.
+        </p>
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">What to act on</span>
+            A number lower than expected on the <em>left</em> of &ldquo;hooks present&rdquo;,
+            or any line beginning <code>[StaffCore] Hook unavailable</code>. Those name a
+            feature that is genuinely not working. A low &ldquo;verified&rdquo; count on its
+            own is not a fault.
+          </p>
+        </div>
+
+        <h3>2. The Diagnostics screen</h3>
+        <p>
+          <code>/staff</code> &rarr; <strong>Server Status</strong> opens it, or type
+          <code>/staff status</code> for the same information in chat. Every hook is listed
+          with a coloured state:
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>State</th><th>Colour</th><th class="wrap">What it means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Working</strong></td><td class="mono">Lime</td>
+                <td class="wrap">Confirmed attached and running. Nothing to do.</td></tr>
+              <tr><td><strong>Unverified</strong></td><td class="mono">Yellow</td>
+                <td class="wrap">The target is there and the hook loaded, but attachment could not be positively confirmed from inside the game. <strong>Normal</strong> &mdash; most hooks sit here. Not a fault on its own.</td></tr>
+              <tr><td><strong>Target missing</strong></td><td class="mono">Red</td>
+                <td class="wrap">The method or class StaffCore hooks no longer exists. Almost always a Minecraft or Fabric update. The feature behind it is off.</td></tr>
+              <tr><td><strong>Not applied</strong></td><td class="mono">Red</td>
+                <td class="wrap">The target exists but our code did not attach &mdash; usually another mod hooking the same place, or an injection point that moved. The feature behind it is off.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Each row names the feature it belongs to, so a red entry tells you what stopped
+          working rather than leaving you to map a class name onto a menu.
+        </p>
+
+        <h3>3. The self test</h3>
+        <p>
+          <code>/staff selftest</code> is the difference between &ldquo;it started&rdquo; and
+          &ldquo;it works&rdquo;. The health check proves our hooks attached; it cannot prove
+          the code behind them runs. A malformed query, a table missing a column, a command
+          that never registered &mdash; all three start cleanly, pass the health check, and
+          fail the first time somebody uses them.
+        </p>
+        <p>The self test uses the mod and reports eight things:</p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Check</th><th class="wrap">Proves</th></tr></thead>
+            <tbody>
+              <tr><td><strong>storage</strong></td><td class="wrap">The database is open and at the expected schema version. A version of 0 means migrations never ran.</td></tr>
+              <tr><td><strong>modules</strong></td><td class="wrap">How many modules are enabled.</td></tr>
+              <tr><td><strong>commands</strong></td><td class="wrap">The <code>/staff</code> tree registered, and how many subcommands are on it.</td></tr>
+              <tr><td><strong>contraband</strong></td><td class="wrap">Every entry in your contraband list resolves to a real item &mdash; and names the ones that do not. This is the check that would have caught <code>minecraft:spawn_egg</code>, an id that never existed and therefore never flagged a single spawn egg.</td></tr>
+              <tr><td><strong>xray scoring</strong></td><td class="wrap">The detector still scores an obvious session as obvious, against your own thresholds.</td></tr>
+              <tr><td><strong>backup</strong></td><td class="wrap">A backup actually writes a file.</td></tr>
+              <tr><td><strong>export</strong></td><td class="wrap">An export actually writes CSVs, and how many.</td></tr>
+              <tr><td><strong>config</strong></td><td class="wrap">Which config version is loaded, and the duty gamemode.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          A failing check names what is broken rather than just failing, and the server keeps
+          running either way &mdash; everything that still works is unaffected. Continuous
+          integration runs the same checks on a real server on every change, which is what
+          makes this the layer that catches things before a release does.
+        </p>
+
+        <h3>4. Module and storage state</h3>
+        <p>
+          Hooks are only half of it. <code>/staff status</code> also reports:
+        </p>
+        <ul>
+          <li><strong>Modules</strong> &mdash; which are enabled. A module switched off in the
+            config is off deliberately; one missing from the list entirely is a bug.</li>
+          <li><strong>Storage</strong> &mdash; whether the database opened. If it did not,
+            every feature that needs it degrades quietly and the rest carries on, so this is
+            worth reading rather than assuming.</li>
+          <li><strong>TPS</strong> &mdash; the server&rsquo;s own tick rate, for context.</li>
+          <li><strong>Anti-cheat bridge</strong> &mdash; which providers, if any, are wired
+            up.</li>
+        </ul>
+
+        <h3>A two-minute check after an update</h3>
+        <p>
+          After any Minecraft, Fabric or StaffCore update, this is the whole routine:
+        </p>
+        <ol>
+          <li>Read the startup line. <code>14/14</code>, or whatever the current total is, on
+            both sides of the slash.</li>
+          <li>If it is short, read the named lines under it &mdash; they say which features
+            are affected.</li>
+          <li>Open <code>/staff</code> &rarr; Server Status and confirm nothing is red.</li>
+          <li>Run <code>/staff selftest</code>. Eight checks, all passing.</li>
+          <li>Run the manual checks in <a href="#limits">Known limits</a> &mdash; vanish with a
+            second account, break and roll back a chest. Those cover the behaviour no
+            automatic check can see.</li>
+        </ol>
+        <p>
+          The build also runs this automatically: continuous integration boots a real server
+          on every change and fails if any hook is missing, and a scheduled job repeats it
+          against the newest Minecraft snapshot so a breaking change surfaces before a release
+          reaches anybody&rsquo;s server.
+        </p>
+      </section>
+
+      <section id="limits">
+        <p class="kicker">Honesty</p>
+        <h2>Known limits</h2>
+        <p>Stated plainly rather than papered over.</p>
+                  <h3>Recovery and evidence</h3>
+          <ul>
+            <li><strong>Rollback only reaches the area and window you give it.</strong> That is the scope you asked for, and widening it silently would be worse than not widening it. What <em>is</em> followed beyond the radius is the offender's own loot: ground drops are reclaimed, a live inventory is debited, chests they filled during the same window are emptied back, and whatever an offline offender still owes is collected the next time they log in. Loot handed to somebody else is gone.</li>
+            <li><strong>Container rollback still needs somewhere to put things.</strong> A full chest cannot take the stack back. The log row is left un-retired so retrying after clearing space works, and the number of stacks that would not fit is now reported rather than left for you to spot.</li>
+          </ul>
+          <h3>Detection</h3>
+          <ul>
+            <li><strong>Alt detection is a lead, never a verdict.</strong> It links accounts by exact address and by address range, scores each link out of a hundred from how often the address was shared and whether the two accounts have ever been online at the same moment, and shows its reasoning on the screen. A shared household still trips it. A determined evader with a clean VPN still beats it. Only an exact address match can ever ban anybody automatically.</li>
+            <li><strong>The x-ray check is a heuristic.</strong> It flags, it never acts, and by default it will not commit to a verdict below 500 mined blocks. It no longer counts ore a player placed themselves, but it is still inference drawn from a block log.</li>
+            <li><strong>Analytics cannot read judgement.</strong> Follow-through, response time and overturn rate sit beside the raw counts now, so the leaderboard is no longer purely a volume ranking &mdash; but no number here can tell you whether a ban was the right call. Read it as a prompt to go and look at someone's work.</li>
+          </ul>
+          <h3>Not built</h3>
+          <ul>
+            <li><strong>Discord is outbound only.</strong> Punishments, reports and alerts go out through a webhook; nothing comes back. Two-way needs a gateway connection, a bot token and roughly 10&nbsp;MB of JDA, which belongs in a separate jar.</li>
+            <li><strong>No map integrations.</strong> BlueMap, Dynmap and Squaremap would each need that mod present as a compile dependency.</li>
+          </ul>
+          <h3>Structural</h3>
+          <ul>
+            <li><strong>Almost every mixin is non-fatal.</strong> Exactly one (the login gate behind bans and maintenance) is required; the rest use <code>defaultRequire: 0</code>, so an update that moves an injection point costs you that feature rather than your server. The startup check asks two questions of each hook &mdash; is the target still there, and did our code actually get injected into it &mdash; so a mixin that quietly fails to apply is named in the log instead of passing as healthy. The second question is answered conservatively: it reports only what it can positively establish, and stays silent on anything it cannot, because a check that fires on a healthy server teaches everybody to ignore it.</li>
+            <li><strong>Some of it is still only verified by construction.</strong> Every 26.2 API change was read out of the real jar with <code>javap</code>, and the mod now proves rather more of itself at runtime: continuous integration boots a real server and runs <a href="#health">the self test</a>, so storage, migrations, the command tree, the contraband list, the detector, backups and exports are all confirmed working on every change. What still is not covered is the behaviour that needs a live client and a second account &mdash; vanish being seen, the maintenance kick landing, an inventory screen redrawing. Those are reasoned about and checked by hand.</li>
+            <li><strong>The tests cover logic and wiring, not visibility.</strong> The automated suite runs the headless half &mdash; storage and its migrations, corruption recovery, rollback arithmetic, the x-ray scoring, the contraband list against the real item registry, log parsing &mdash; and continuous integration then boots a real server, checks every hook, and runs the self test against a real database. What is <em>still</em> not automated is the half that needs two clients standing in a world: a test per visibility leak (tab list, selectors, sound, waypoints), and killing the server mid-write to prove every state transition survives it. Minecraft's own test framework runs server-side and cannot drive two connected clients, so this is a real gap rather than an oversight, and claiming coverage that is not there would be worse than the gap itself. The manual checks below cover the same ground by hand and are worth running after any Minecraft or Fabric update.</li>
+            <li><strong>There are more mixins now, not fewer.</strong> Thirty-one classes, thirty of them non-fatal. The vanish rework did remove the fragile one &mdash; a hook that reached into a package-private inner class by name &mdash; and replaced it with vanilla's own public methods, then added more of those. Each is individually sturdier and each is one more thing a Minecraft update can move. Reducing the count was on the list and did not happen; what happened instead was reducing how badly any one of them can fail, which the startup line reports every boot.</li>
+          </ul>
+          <h3>Checks worth running by hand</h3>
+          <p>
+            These are the ones automation does not cover, and they are the ones most likely to
+            break after a Minecraft or Fabric update. Each needs two accounts and a couple of
+            minutes.
+          </p>
+          <div class="scroller">
+            <table>
+              <thead><tr><th class="wrap">Check</th><th class="wrap">Expected</th></tr></thead>
+              <tbody>
+                <tr><td class="wrap">Vanish, have the other account watch you, then unvanish</td>
+                  <td class="wrap">They see you again <strong>without moving</strong>. Needing to walk away and back means entity tracking has gone stale — the exact bug the vanish rework was for.</td></tr>
+                <tr><td class="wrap">Vanish and check the server list from outside</td>
+                  <td class="wrap">Player count and the hover sample both exclude you. So does <code>/list</code> and an <code>@a</code> selector.</td></tr>
+                <tr><td class="wrap">Fill a shulker, place it, break it, roll the break back</td>
+                  <td class="wrap">The block returns <em>with its contents</em>, and the person who broke it keeps neither.</td></tr>
+                <tr><td class="wrap">The same with a double chest, clicking each half in turn</td>
+                  <td class="wrap">Both halves come back either way round.</td></tr>
+                <tr><td class="wrap">Kill the server process mid-snapshot</td>
+                  <td class="wrap">It boots, and the snapshot is either whole or absent — never half.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Recently closed</h3>
+          <p>Things that used to sit on this list, and what replaced them.</p>
+          <table>
+            <thead><tr><th class="wrap">Was</th><th class="wrap">Now</th></tr></thead>
+            <tbody>
+              <tr><td class="wrap">Rollback ignored offline offenders and banked loot</td><td class="wrap">Chests they filled are emptied back; the rest is collected on next login</td></tr>
+              <tr><td class="wrap">Container rollback failed silently on a full chest</td><td class="wrap">The deferred count is reported, and the rows still wait for a retry</td></tr>
+              <tr><td class="wrap">The vault only returned items to online players</td><td class="wrap">An offline return is queued and delivered on next login, and can be cancelled meanwhile</td></tr>
+              <tr><td class="wrap">The vault listed the newest five hundred items</td><td class="wrap">Paged straight from the database; returned and destroyed rows are reachable too</td></tr>
+              <tr><td class="wrap">Snapshots were fixed at ten per player</td><td class="wrap"><code>maxSnapshotsPerPlayer</code>, or 0 to keep every one</td></tr>
+              <tr><td class="wrap">The contraband watch never saw world containers</td><td class="wrap">Chests are checked as they are opened and closed; a staff tool found in one goes to the vault</td></tr>
+              <tr><td class="wrap">Ender chests were described as swept but were not</td><td class="wrap">They are now, behind <code>scanEnderChests</code></td></tr>
+              <tr><td class="wrap">The rules screen refused to edit past forty-five entries</td><td class="wrap">It pages</td></tr>
+              <tr><td class="wrap">Vanished players always loaded chunks</td><td class="wrap"><code>vanishLoadsChunks</code>, defaulting to the old behaviour</td></tr>
+              <tr><td class="wrap">Every node fell back to op level without a permissions mod</td><td class="wrap"><code>staffcore-permissions.json</code> &mdash; real groups, and <code>/staff perms</code></td></tr>
+              <tr><td class="wrap">Ledger parity: no search, no purge, no inspect toggle</td><td class="wrap"><code>/staff search</code>, <code>/staff purge</code>, <code>/staff inspect</code></td></tr>
+              <tr><td class="wrap">Rolling back a double chest restored only the half you clicked</td><td class="wrap">Both halves resolve as the one container they are, from either block</td></tr>
+              <tr><td class="wrap">Shift-clicking a stack in the inventory view did nothing useful</td><td class="wrap">It moves stacks between the target's inventory and your own, the way a chest does</td></tr>
+              <tr><td class="wrap">Inspect mode broke the block and told you nothing</td><td class="wrap">It reports the block's history, and the break is cancelled twice over</td></tr>
+              <tr><td class="wrap">Restoring a death snapshot while the drops were still lying there doubled everything</td><td class="wrap">The drops are swept up first; only what is genuinely gone gets recreated</td></tr>
+              <tr><td class="wrap">You could see a theft in the container log but not undo it</td><td class="wrap">Shift-click a take to undo that thief, or put the whole chest back in one click</td></tr>
+              <tr><td class="wrap">Chest boats and container minecarts were not watched at all</td><td class="wrap">Takes and puts are logged the same as a chest, so they stop being the quiet place to stash things</td></tr>
+              <tr><td class="wrap">Copper double chests read as two unrelated singles</td><td class="wrap">Pairing asks the block instead of comparing it, so every weather state and waxed variant works</td></tr>
+              <tr><td class="wrap">A rollback debt stood forever and survived undoing the rollback</td><td class="wrap">It expires, and undoing the rollback cancels it</td></tr>
+              <tr><td class="wrap">Snapshots showed empty armour and offhand slots, and restoring one gave none back</td><td class="wrap">Every slot is read back, not just the first thirty-six — the items were always stored, only the reader truncated them</td></tr>
+              <tr><td class="wrap">Rolled-back chests came back single and facing the wrong way</td><td class="wrap">The full block state is recorded, so orientation and double-chest pairing return as they were</td></tr>
+              <tr><td class="wrap">A thief who dropped the loot, banked it or hid it in their ender chest kept it after a rollback</td><td class="wrap">All five routes are chased, and anything still missing is owed against their next login</td></tr>
+              <tr><td class="wrap">On a brand-new server, snapshots, punishment reasons and alt detection wrote to columns that were never created</td><td class="wrap">Fresh and upgraded databases are now checked against each other for exactly this</td></tr>
+              <tr><td class="wrap">The contraband list named <code>minecraft:spawn_egg</code>, which is not an item &mdash; so none of the eighty-eight spawn eggs were ever flagged</td><td class="wrap"><code>#spawn_eggs</code> covers every one, existing configs are migrated, and the self test fails on any entry matching nothing</td></tr>
+              <tr><td class="wrap">Inventory and ender chest views were a photograph taken when the screen opened</td><td class="wrap">They redraw twice a second, so watching somebody empty a shulker shows it happening</td></tr>
+              <tr><td class="wrap">No way to see what an item was actually carrying</td><td class="wrap">Middle-click any slot, or <code>/staff nbt</code> for the one in your hand</td></tr>
+              <tr><td class="wrap">The x-ray check flagged strip mining, the commonest honest technique there is</td><td class="wrap">It looks for short detours off the tunnel that end on ore, which is the thing strip mining never does</td></tr>
+              <tr><td class="wrap">X-ray counted all ore alike, over one window</td><td class="wrap">Broken down by ore type and weighted by rarity, across four spans of time at once</td></tr>
+              <tr><td class="wrap">A renamed player dropped out of every search</td><td class="wrap">Stored names are brought up to date on their next join</td></tr>
+              <tr><td class="wrap">Permission assignments listed raw UUIDs</td><td class="wrap">Resolved to names, with the key kept alongside</td></tr>
+              <tr><td class="wrap">Anti-cheat findings lived in console and nowhere staff would look</td><td class="wrap">Normalised into alerts and onto the player's file &mdash; see <a href="#modules">Every module</a></td></tr>
+              <tr><td class="wrap">Block-log writes queued at shutdown were dropped</td><td class="wrap">The writer drains before the database closes</td></tr>
+            </tbody>
+          </table>
+      </section>
+
+      <footer>
+        <p>
+          StaffCore for Minecraft 26.2 · Fabric · MIT licensed. Source and build instructions
+          are in the project README.
+        </p>
+      </footer>
+    </main>
+  </div>
+</div>

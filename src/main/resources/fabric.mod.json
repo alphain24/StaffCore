@@ -1,0 +1,30 @@
+{
+	"schemaVersion": 1,
+	"id": "staffcore",
+	"version": "${version}",
+	"name": "StaffCore",
+	"description": "Modular staff-management suite for Fabric 26.2. Every tool is reachable from a chest GUI.",
+	"authors": [
+		"lebron"
+	],
+	"license": "MIT",
+	"environment": "server",
+	"entrypoints": {
+		"main": [
+			"dev.lebron.staffcore.StaffCore"
+		],
+		"preLaunch": [
+			"dev.lebron.staffcore.diagnostic.MixinDiagnostics"
+		]
+	},
+	"mixins": [
+		"staffcore.mixins.json",
+		"staffcore.optional.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
