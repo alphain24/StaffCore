@@ -92,7 +92,12 @@ public final class StartupCheck {
 					"performCommand", "staffcore$spy", MIXIN_PKG + "CommandsMixin",
 					"com.mojang.brigadier.ParseResults", "java.lang.String"),
 			new Target("Staff tools cannot be dropped", "net.minecraft.world.entity.player.Inventory",
-					"dropAll", "staffcore$keepToolsOutOfTheWorld", MIXIN_PKG + "InventoryDropMixin")
+					"dropAll", "staffcore$keepToolsOutOfTheWorld", MIXIN_PKG + "InventoryDropMixin"),
+			// Without this, item recovery can only search the ground nearby: it misses
+			// anything already in somebody's pocket and anything in an unloaded chunk.
+			new Target("Item pickup log", "net.minecraft.world.entity.item.ItemEntity",
+					"playerTouch", "staffcore$recordPickup", MIXIN_PKG + "ItemPickupMixin",
+					"net.minecraft.world.entity.player.Player")
 	);
 
 	/**

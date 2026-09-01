@@ -128,6 +128,25 @@ final class Schema {
 
 	private static void commandLog(Statement st) throws SQLException {
 		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS pickup_log (
+				    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+				    uuid        TEXT    NOT NULL,
+				    player_name TEXT    NOT NULL,
+				    item        TEXT    NOT NULL,
+				    count       INTEGER NOT NULL,
+				    world       TEXT    NOT NULL,
+				    x INTEGER, y INTEGER, z INTEGER,
+				    created_at  INTEGER NOT NULL,
+				    reclaimed   INTEGER NOT NULL DEFAULT 0
+				)
+				""");
+
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pickup_area "
+				+ "ON pickup_log(world, x, z, created_at)");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pickup_player "
+				+ "ON pickup_log(player_name, created_at)");
+
+		st.executeUpdate("""
 				CREATE TABLE IF NOT EXISTS anticheat_log (
 				    id          INTEGER PRIMARY KEY AUTOINCREMENT,
 				    provider    TEXT    NOT NULL,
@@ -617,7 +636,40 @@ final class Schema {
 			//     be cancellable when that rollback is undone: the blocks go back to broken,
 			//     so the reason the player owed anything stops being true. Without a link
 			//     there is no way to find those rows again.
-			conn -> addColumn(conn, "pending_actions", "ref_kind", "TEXT")
+			conn -> addColumn(conn, "pending_actions", "ref_kind", "TEXT"),
+
+			// 10 - who picked an item up off the ground, and where.
+			//
+			//      Recovering items by scanning the world for them only works while the
+			//      chunk is loaded and the item still exists. Neither holds: chunks unload
+			//      the moment nobody is near, and drops despawn after five minutes. Worse,
+			//      anything a third party has already pocketed is invisible to a scan by
+			//      definition, so looting somebody's death pile was a way to keep the items
+			//      through a rollback.
+			//
+			//      Recording the pickup makes recovery a query instead of a search, which is
+			//      what makes it work at any distance.
+			conn -> {
+				try (java.sql.Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS pickup_log (
+							    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+							    uuid        TEXT    NOT NULL,
+							    player_name TEXT    NOT NULL,
+							    item        TEXT    NOT NULL,
+							    count       INTEGER NOT NULL,
+							    world       TEXT    NOT NULL,
+							    x INTEGER, y INTEGER, z INTEGER,
+							    created_at  INTEGER NOT NULL,
+							    reclaimed   INTEGER NOT NULL DEFAULT 0
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pickup_area "
+							+ "ON pickup_log(world, x, z, created_at)");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pickup_player "
+							+ "ON pickup_log(player_name, created_at)");
+				}
+			}
 	);
 
 	/**

@@ -66,6 +66,7 @@ public class GriefModule implements Module {
 	private ExecutorService worker;
 	private boolean listenerRegistered;
 	private int purgeTick;
+	private int pickupPurgeTick;
 
 	/** Rolling break counts, for spotting somebody tearing through a build. */
 	private final Map<UUID, BreakBurst> bursts = new HashMap<>();
@@ -78,6 +79,13 @@ public class GriefModule implements Module {
 
 	public ContainerWatch containers() {
 		return containers;
+	}
+
+	private final PickupWatch pickups = new PickupWatch();
+
+	/** Who picked what up off the ground — see {@link PickupWatch}. */
+	public PickupWatch pickups() {
+		return pickups;
 	}
 
 	public RollbackPoints points() {
@@ -124,6 +132,8 @@ public class GriefModule implements Module {
 				return t;
 			});
 		}
+		pickups.attach(worker);
+
 		if (listenerRegistered) return;
 		listenerRegistered = true;
 
@@ -132,11 +142,20 @@ public class GriefModule implements Module {
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
 			preview.tick(server);
 
+			// Pickups outnumber every other row in the mod and are only kept for hours, so
+			// they are swept every ten minutes rather than once a day. Off-thread: this is a
+			// delete over an indexed range and has no business on the tick loop.
+			if (++pickupPurgeTick >= 20 * 60 * 10) {
+				pickupPurgeTick = 0;
+				if (worker != null) worker.execute(pickups::purge);
+			}
+
 			// Once a day, counted in ticks — no wall-clock scheduling to get wrong.
 			if (++purgeTick >= 20 * 60 * 60 * 24) {
 				purgeTick = 0;
 				purgeOldEntries();
 				if (worker != null) worker.execute(points::purge);
+				if (worker != null) worker.execute(pickups::purge);
 				// Debts are anti-duplication, not sentences — see debtExpiryDays.
 				StaffCore.pending().expireOldDebts(StaffConfig.get().debtExpiryDays);
 			}
@@ -686,6 +705,63 @@ public class GriefModule implements Module {
 	 *
 	 * @return a description for the self test to report
 	 */
+	/**
+	 * Writes a pickup, reads it back through the real lookup, and removes it.
+	 * <p>
+	 * The pickup log is what makes item recovery work at a distance and reach items somebody
+	 * has already pocketed. It is also invisible when it breaks: nothing fails, recovery just
+	 * quietly finds less, which is indistinguishable from there being nothing to find.
+	 */
+	public String pickupSelfCheck() {
+		if (!StaffCore.storage().isReady()) return "storage is not open";
+		if (worker == null) return "the log writer is not running";
+
+		final String world = "staffcore:selftest";
+		final BlockPos at = new BlockPos(29_000_000, 250, 29_000_000);
+
+		try {
+			try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(
+					"INSERT INTO pickup_log (uuid, player_name, item, count, world, x, y, z, created_at) "
+							+ "VALUES (?,?,?,?,?,?,?,?,?)")) {
+				ps.setString(1, java.util.UUID.nameUUIDFromBytes("selftest".getBytes()).toString());
+				ps.setString(2, "staffcore self test");
+				ps.setString(3, "minecraft:diamond");
+				ps.setInt(4, 5);
+				ps.setString(5, world);
+				ps.setInt(6, at.getX());
+				ps.setInt(7, at.getY());
+				ps.setInt(8, at.getZ());
+				ps.setLong(9, System.currentTimeMillis());
+				ps.executeUpdate();
+			}
+
+			var found = pickups.near(world, at, 8, 60_000L, null);
+			if (found.isEmpty()) return "wrote a pickup and the lookup did not return it";
+
+			// The apportioning too, since that is what decides who gets charged.
+			var owed = new HashMap<Item, Integer>();
+			owed.put(net.minecraft.world.item.Items.DIAMOND, 3);
+			var who = pickups.whoTook(world, at, 8, 60_000L, null, owed);
+
+			if (who.isEmpty()) return "the lookup found a row but nobody was charged for it";
+			int charged = who.values().iterator().next().getOrDefault(
+					net.minecraft.world.item.Items.DIAMOND, 0);
+			if (charged != 3) return "charged " + charged + " of 3 owed, capped wrongly";
+
+			return "recorded a pickup and charged it back correctly";
+		} catch (Exception e) {
+			return e.getClass().getSimpleName() + ": " + e.getMessage();
+		} finally {
+			try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(
+					"DELETE FROM pickup_log WHERE world = ?")) {
+				ps.setString(1, world);
+				ps.executeUpdate();
+			} catch (SQLException ignored) {
+				// A stray row in a world nothing else uses is harmless.
+			}
+		}
+	}
+
 	public String areaQuerySelfCheck() {
 		if (!StaffCore.storage().isReady()) return "storage is not open";
 		if (worker == null) return "the log writer is not running";
@@ -1346,7 +1422,9 @@ public class GriefModule implements Module {
 
 		// What came back off staff counts as recovered from the ground: it was on the floor
 		// at this scene a moment ago, and that is the honest description of where it came from.
-		return new Reclaim(result.fromGround() + result.fromStaff(),
+		// Ground, staff and pickers all describe the same thing from a staff member's point
+		// of view: it was lying at the scene a moment ago and somebody had it.
+		return new Reclaim(result.fromGround() + result.fromStaff() + result.fromPickers(),
 				result.fromInventory() + result.fromEnderChest(),
 				result.fromChests(), result.queued());
 	}
