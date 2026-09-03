@@ -92,7 +92,12 @@ public final class StartupCheck {
 					"performCommand", "staffcore$spy", MIXIN_PKG + "CommandsMixin",
 					"com.mojang.brigadier.ParseResults", "java.lang.String"),
 			new Target("Staff tools cannot be dropped", "net.minecraft.world.entity.player.Inventory",
-					"dropAll", "staffcore$keepToolsOutOfTheWorld", MIXIN_PKG + "InventoryDropMixin")
+					"dropAll", "staffcore$keepToolsOutOfTheWorld", MIXIN_PKG + "InventoryDropMixin"),
+			// Without this, creeper and TNT damage never reaches the log at all, and the area
+			// reads as though nothing happened there.
+			new Target("Explosion damage log", "net.minecraft.world.level.ServerExplosion",
+					"interactWithBlocks", "staffcore$recordExplosion", MIXIN_PKG + "ExplosionMixin",
+					"java.util.List")
 	);
 
 	/**

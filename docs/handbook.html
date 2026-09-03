@@ -1808,6 +1808,35 @@
           </p>
         </div>
 
+        <div class="note">
+          <h4>When a creeper does it</h4>
+          <p>
+            Only player block-breaking used to reach the log, which left the commonest damage
+            on most servers invisible. A creeper took out a wall and a chest, and there was
+            nothing to look at and nothing to put back &mdash; the area read as though nothing
+            had happened, because as far as the log was concerned nobody had done anything.
+          </p>
+          <p>
+            Explosions are now recorded before the blocks go, contents included, so an exploded
+            chest comes back with what was in it. Rollback treats the damage like any other
+            break.
+          </p>
+          <p>
+            <strong>Attribution follows responsibility.</strong> Where a player is genuinely
+            behind it &mdash; lighting TNT is griefing done with a tool &mdash; it goes on their
+            record exactly as breaking the blocks by hand would. Otherwise the creature is
+            named with a <code>#</code> prefix, as <code>#creeper</code> or <code>#ghast</code>.
+            Minecraft names cannot contain that character, so a mob entry can never be confused
+            for an account, and nothing tries to reach into a creeper's inventory or bill it on
+            its next login.
+          </p>
+          <p>
+            A blast is capped at <code>explosionLogCap</code> blocks (512 by default). A creeper
+            takes out a few dozen; a TNT cannon can level thousands, and writing every one
+            buries the incident the log exists to make readable.
+          </p>
+        </div>
+
         <h3>When somebody owes items</h3>
         <p>
           A rollback takes back what the offender gained by it, or the restore prints items.

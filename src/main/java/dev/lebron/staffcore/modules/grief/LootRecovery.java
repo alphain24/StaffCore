@@ -118,7 +118,10 @@ public final class LootRecovery {
 				new AABB(scene.getX() - radius, level.getMinY(), scene.getZ() - radius,
 						scene.getX() + radius, level.getMaxY(), scene.getZ() + radius));
 
-		if (playerName == null) {
+		// A creeper has no inventory, no ender chest and no next login. Sweeping the ground
+		// still matters — an explosion scatters drops that a restore would otherwise
+		// duplicate — but every route past this point is about a person, and there is not one.
+		if (playerName == null || !GriefModule.isPlayerSource(playerName)) {
 			return new Result(fromGround, 0, 0, 0, sweepStaff(level, staffName, owed), 0);
 		}
 

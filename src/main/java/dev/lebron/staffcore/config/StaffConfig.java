@@ -349,6 +349,22 @@ public final class StaffConfig {
 	 */
 	public boolean rollbackReclaimsFromStaff = true;
 
+	/**
+	 * Record blocks destroyed by explosions, so they can be rolled back.
+	 * <p>
+	 * Creeper damage is the commonest destruction on most servers and was invisible to the
+	 * log entirely, because only player block-breaking was ever recorded. Contents of exploded
+	 * containers are captured too, so a chest comes back with what was in it.
+	 */
+	public boolean logExplosions = true;
+	/**
+	 * Most blocks to record from a single explosion. 0 for no limit.
+	 * <p>
+	 * A creeper takes out a few dozen. A TNT cannon or a chain reaction can level thousands,
+	 * and writing every one buries the incident the log is meant to make readable.
+	 */
+	public int explosionLogCap = 512;
+
 	// ---- anti-cheat bridge ---------------------------------------------------
 	/**
 	 * Accept findings from an installed anti-cheat and surface them as staff alerts.

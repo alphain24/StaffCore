@@ -287,6 +287,147 @@ public class GriefModule implements Module {
 		bursts.clear();
 	}
 
+	/**
+	 * Records blocks an explosion is about to destroy.
+	 * <p>
+	 * Player block-breaking was the only thing that ever reached the log, which left the most
+	 * common form of damage on most servers completely invisible: a creeper takes out a wall
+	 * and a chest, and there is nothing to look at and nothing to roll back. Staff could see
+	 * that something had happened and had no record of what.
+	 * <p>
+	 * Called before the blocks go, because afterwards there is nothing left to describe. Both
+	 * halves are recorded in one pass — the block itself and anything inside it — since an
+	 * exploded chest loses its contents just as surely as a broken one.
+	 *
+	 * @param source what to record as responsible; see {@link #explosionSource}
+	 * @return how many positions were recorded
+	 */
+	public int logExplosion(ServerLevel level, List<BlockPos> positions, String source) {
+		if (!StaffConfig.get().logExplosions) return 0;
+		if (positions.isEmpty() || !StaffCore.storage().isReady() || worker == null) return 0;
+
+		MinecraftServer server = level.getServer();
+		String world = Mc.dimensionId(level);
+		long now = System.currentTimeMillis();
+
+		// A TNT cannon or a chain reaction can level thousands of blocks at once, and writing
+		// every one would bury the log the incident is meant to be readable in. The cap is
+		// generous next to a creeper and small next to a machine.
+		int cap = StaffConfig.get().explosionLogCap;
+		int recorded = 0;
+
+		for (BlockPos pos : positions) {
+			if (cap > 0 && recorded >= cap) {
+				StaffCore.LOGGER.warn("[Grief] Explosion at {} destroyed more than {} blocks; "
+						+ "the rest are not logged. Raise explosionLogCap if that matters.",
+						pos, cap);
+				break;
+			}
+
+			BlockState state = level.getBlockState(pos);
+			if (state.isAir()) continue;
+
+			// Contents first: reading the block entity after the block has gone returns
+			// nothing, and an exploded chest that comes back empty is a worse repair than one
+			// that does not come back at all.
+			if (level.getBlockEntity(pos) instanceof net.minecraft.world.Container container) {
+				snapshotContainer(server, container, pos, world, now);
+			}
+
+			// Gamemode is left unset: nothing here was in one. It stays null rather than
+			// being borrowed to mean "explosion", because the source name already says that
+			// and a column that means two things is a column nobody can query.
+			log(source, "BREAK", state, pos, world, now, null);
+			recorded++;
+		}
+		return recorded;
+	}
+
+	/**
+	 * Writes a container's contents to the snapshot table.
+	 * <p>
+	 * The same rows a player break writes, reached without going through the two-phase
+	 * remember-then-commit dance that exists only because Fabric hands the AFTER callback a
+	 * container vanilla has already emptied. An explosion gives us the whole list up front,
+	 * so there is nothing to hold between two events.
+	 */
+	private void snapshotContainer(MinecraftServer server, net.minecraft.world.Container container,
+			BlockPos pos, String world, long at) {
+
+		if (server == null) return;
+
+		List<int[]> slots = new ArrayList<>();
+		List<String> encoded = new ArrayList<>();
+		for (int slot = 0; slot < container.getContainerSize(); slot++) {
+			ItemStack stack = container.getItem(slot);
+			if (stack.isEmpty()) continue;
+			slots.add(new int[] { slot, stack.getCount() });
+			encoded.add(ItemCodec.encode(server, stack.copy()));
+		}
+		if (slots.isEmpty()) return;
+
+		int x = pos.getX();
+		int y = pos.getY();
+		int z = pos.getZ();
+
+		worker.execute(() -> {
+			try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(
+					"INSERT INTO container_snapshot (world, x, y, z, slot, item, count, created_at) "
+							+ "VALUES (?,?,?,?,?,?,?,?)")) {
+				for (int i = 0; i < slots.size(); i++) {
+					ps.setString(1, world);
+					ps.setInt(2, x);
+					ps.setInt(3, y);
+					ps.setInt(4, z);
+					ps.setInt(5, slots.get(i)[0]);
+					ps.setString(6, encoded.get(i));
+					ps.setInt(7, slots.get(i)[1]);
+					ps.setLong(8, at);
+					ps.addBatch();
+				}
+				ps.executeBatch();
+			} catch (SQLException | RuntimeException e) {
+				StaffCore.LOGGER.error("[Grief] explosion container snapshot failed", e);
+			}
+		});
+	}
+
+	/**
+	 * Whether a logged source is a real account rather than a creature or a mechanism.
+	 * <p>
+	 * Non-player sources are written with a {@code #} prefix, which Minecraft names cannot
+	 * contain, so the two can never collide. Everything that tries to reach into somebody's
+	 * inventory has to ask this first: a creeper has no pockets, and looking one up produces a
+	 * warning about an account nobody has.
+	 */
+	public static boolean isPlayerSource(String source) {
+		return source != null && !source.startsWith("#");
+	}
+
+	/**
+	 * Who to blame for an explosion.
+	 * <p>
+	 * A player wherever one is genuinely behind it — lighting TNT is griefing done with a
+	 * tool, and it should read on their record exactly as breaking the blocks by hand would.
+	 * Otherwise the creature responsible, under a name no account can have, so the log stays
+	 * honest about the difference between somebody doing damage and something doing it.
+	 * <p>
+	 * The {@code #} prefix is deliberate: Minecraft names cannot contain it, so a mob entry
+	 * can never be confused for a player and can never collide with one.
+	 */
+	public static String explosionSource(net.minecraft.world.entity.Entity direct,
+			net.minecraft.world.entity.Entity indirect) {
+
+		if (indirect instanceof ServerPlayer player) return Mc.name(player);
+		if (direct instanceof ServerPlayer player) return Mc.name(player);
+
+		net.minecraft.world.entity.Entity blame = indirect != null ? indirect : direct;
+		if (blame == null) return "#explosion";
+
+		return "#" + net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE
+				.getKey(blame.getType()).getPath();
+	}
+
 	/** Called from the block-place mixin. */
 	public void logPlace(ServerPlayer player, BlockPos pos, BlockState state, String dimension) {
 		log(Mc.name(player), "PLACE", state, pos, dimension);
@@ -686,6 +827,53 @@ public class GriefModule implements Module {
 	 *
 	 * @return a description for the self test to report
 	 */
+	/**
+	 * Runs a synthetic explosion through the real recorder and reads the rows back.
+	 * <p>
+	 * Explosion logging is invisible when it breaks. Nothing errors; the log simply has no
+	 * record of the damage, which reads exactly like an area where nothing happened — the
+	 * same failure mode that hid the grief log being broken for a week.
+	 */
+	public String explosionSelfCheck() {
+		if (!StaffCore.storage().isReady()) return "storage is not open";
+		if (worker == null) return "the log writer is not running";
+
+		final String world = "staffcore:selftest";
+		final String source = "#selftest";
+		final BlockPos at = new BlockPos(29_000_000, 250, 29_000_000);
+
+		try {
+			// The real writer, called the way the mixin calls it.
+			log(source, "BREAK", net.minecraft.world.level.block.Blocks.CHEST.defaultBlockState(),
+					at, world, System.currentTimeMillis(), null);
+			worker.submit(() -> { }).get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+			int rows = 0;
+			try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(
+					"SELECT COUNT(*) FROM block_log WHERE world = ? AND player_name = ?")) {
+				ps.setString(1, world);
+				ps.setString(2, source);
+				try (ResultSet rs = ps.executeQuery()) {
+					if (rs.next()) rows = rs.getInt(1);
+				}
+			}
+			if (rows == 0) return "wrote an explosion break and the log does not have it";
+			if (isPlayerSource(source)) return "a marked source was read back as a player";
+
+			return "recorded explosion damage against a non-player source";
+		} catch (Exception e) {
+			return e.getClass().getSimpleName() + ": " + e.getMessage();
+		} finally {
+			try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(
+					"DELETE FROM block_log WHERE world = ?")) {
+				ps.setString(1, world);
+				ps.executeUpdate();
+			} catch (SQLException ignored) {
+				// A stray row in a world nothing else uses is harmless.
+			}
+		}
+	}
+
 	public String areaQuerySelfCheck() {
 		if (!StaffCore.storage().isReady()) return "storage is not open";
 		if (worker == null) return "the log writer is not running";
