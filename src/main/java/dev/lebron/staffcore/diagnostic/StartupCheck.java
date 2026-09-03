@@ -97,7 +97,12 @@ public final class StartupCheck {
 			// reads as though nothing happened there.
 			new Target("Explosion damage log", "net.minecraft.world.level.ServerExplosion",
 					"interactWithBlocks", "staffcore$recordExplosion", MIXIN_PKG + "ExplosionMixin",
-					"java.util.List")
+					"java.util.List"),
+			// Without this, item recovery can only search the ground nearby: it misses
+			// anything already in somebody's pocket and anything in an unloaded chunk.
+			new Target("Item pickup log", "net.minecraft.world.entity.item.ItemEntity",
+					"playerTouch", "staffcore$recordPickup", MIXIN_PKG + "ItemPickupMixin",
+					"net.minecraft.world.entity.player.Player")
 	);
 
 	/**

@@ -371,10 +371,30 @@ public class InventoryModule implements Module {
 		}
 		if (owed.isEmpty()) return 0;
 
+		// Whoever picked the pile up, wherever they are now.
+		//
+		// This is the half a ground scan can never do. A scan reads the world, and the world
+		// only answers for loaded chunks — so a death anybody has walked away from returns
+		// nothing at all, and the restore hands over a second copy of everything. Worse, a
+		// passer-by who looted the pile is invisible to a scan by definition, because the
+		// items are in a pocket rather than on the floor.
+		//
+		// The pickup log answers both. The owner is excluded: collecting your own death drops
+		// is not theft, and this must never bill somebody for recovering their own things.
+		int fromPickers = dev.lebron.staffcore.modules.grief.LootRecovery.reclaimFromPickers(
+				level, owed, origin.pos(), (int) DROP_SWEEP_RADIUS,
+				java.util.concurrent.TimeUnit.HOURS.toMillis(3), Mc.name(target),
+				"Returned to " + Mc.name(target) + " from a restored snapshot");
+
+		// A death site is a handful of chunks, so loading it is cheap and makes the sweep
+		// mean something. Without this, restoring a snapshot anywhere nobody is standing
+		// finds no drops and quietly hands over a second copy of everything.
+		Mc.ensureLoaded(level, origin.pos(), (int) DROP_SWEEP_RADIUS, 64);
+
 		net.minecraft.world.phys.AABB area = new net.minecraft.world.phys.AABB(
 				origin.pos()).inflate(DROP_SWEEP_RADIUS);
 
-		int removed = 0;
+		int removed = fromPickers;
 		for (net.minecraft.world.entity.item.ItemEntity drop
 				: level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, area)) {
 

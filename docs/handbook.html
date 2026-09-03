@@ -1885,6 +1885,35 @@
         </div>
 
         <div class="note">
+          <h4>Reaching items somebody has already taken</h4>
+          <p>
+            Looking for items only works while they are findable, and on a real server they
+            usually are not. A chunk unloads the moment nobody is standing near it, and an item
+            in an unloaded chunk is on disk rather than in memory &mdash; invisible to any
+            search, and it will not despawn either, because entities do not tick while their
+            chunk is unloaded. Anything already in somebody's pocket is invisible by
+            definition.
+          </p>
+          <p>
+            So StaffCore records who picks what up, and recovery asks the log instead of
+            searching the world. A scene ten thousand blocks away with nobody near it works
+            exactly like one underfoot, and a passer-by who pocketed half a death pile is
+            charged for exactly what they took &mdash; the debt moves off the offender rather
+            than being collected twice.
+          </p>
+          <p>
+            The owner is always excluded: picking your own drops back up is not theft. Rows are
+            marked settled once acted on, so a second rollback over the same ground cannot
+            charge for it again. Kept for
+            <code>pickupLogRetentionMinutes</code> (three hours by default) &mdash; this is the
+            highest-volume table in the mod and only has to outlive the gap between a scene
+            being looted and staff putting it right. Turn it off with
+            <code>logItemPickups</code>, at the cost of recovery going back to searching the
+            ground nearby.
+          </p>
+        </div>
+
+        <div class="note">
           <h4>Items you picked up at the scene</h4>
           <p>
             Arriving at a grief site and clearing the floor is a reflex, and it quietly breaks

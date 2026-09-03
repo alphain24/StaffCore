@@ -15,6 +15,7 @@
     "ExplosionMixin",
     "InventoryDropMixin",
     "ItemEntityMixin",
+    "ItemPickupMixin",
     "PlayerDropMixin",
     "SpectatorMenuMixin",
     "VanishJoinMixin",

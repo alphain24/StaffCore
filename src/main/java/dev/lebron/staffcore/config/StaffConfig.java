@@ -364,6 +364,19 @@ public final class StaffConfig {
 	 * and writing every one buries the incident the log is meant to make readable.
 	 */
 	public int explosionLogCap = 512;
+	/**
+	 * Record who picks items up off the ground.
+	 * <p>
+	 * This is what lets a rollback reach items somebody has already pocketed, and what makes
+	 * recovery work at any distance: a query does not care whether the chunk is loaded or
+	 * whether the drop still exists. Without it, recovery can only scan the ground nearby,
+	 * which misses everything already taken and everything in an unloaded chunk.
+	 * <p>
+	 * The highest-volume table in the mod, which is why it is kept for hours rather than days.
+	 */
+	public boolean logItemPickups = true;
+	/** How long pickups are kept, in minutes. Only has to outlive a scene, not a season. */
+	public int pickupLogRetentionMinutes = 180;
 
 	// ---- anti-cheat bridge ---------------------------------------------------
 	/**

@@ -417,6 +417,8 @@ Changing a default in the code alone would never reach a server that has already
   "rollbackReclaimsDrops": true,       // without this, rollback duplicates items
   "rollbackChasesBankedLoot": true,    // follow loot stashed in chests outside the radius
   "rollbackReclaimsFromStaff": true,   // take back what you picked up at the scene yourself
+  "logItemPickups": true,              // who picked what up; makes recovery work at any distance
+  "pickupLogRetentionMinutes": 180,    // pickups are kept for hours, not days
   "rollbackPointRetentionDays": 7,     // how long a rollback stays undoable; 0 disables undo
   "debtExpiryDays": 7,                 // unpaid rollback debts are written off; 0 keeps them
   "massGriefBlocks": 120,              // alert threshold, 0 disables
@@ -782,6 +784,7 @@ Things that used to be on this list, and what replaced them:
 | Creeper and TNT damage was invisible to the log | Explosions are recorded, contents included, and roll back like any other break |
 | Rollback debts never expired and survived an undo | `debtExpiryDays`, and undo cancels its own debts |
 | Log output was mojibake on non-UTF-8 consoles | Console strings are ASCII, checked in the source and in the boot log |
+| Item recovery missed anything in an unloaded chunk or already pocketed | Pickups are logged, so recovery is a query rather than a search |
 
 ## Adding a module
 

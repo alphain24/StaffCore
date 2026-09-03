@@ -1,5 +1,6 @@
 package dev.lebron.staffcore.compat;
 
+import dev.lebron.staffcore.StaffCore;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -184,6 +185,49 @@ public final class Mc {
 		return other.immutable();
 	}
 
+
+	/**
+	 * Loads the chunks covering an area so its entities can be seen, up to a cap.
+	 * <p>
+	 * {@code getEntitiesOfClass} only answers for chunks that are already in memory. An item
+	 * lying in an unloaded chunk is not merely hard to find — it is invisible, and it does not
+	 * despawn either, because entities do not tick while their chunk is unloaded. So a death
+	 * pile at an abandoned spot sits there indefinitely, a restore hands the owner a second
+	 * copy of everything, and the first player to wander past collects the first copy.
+	 * <p>
+	 * Loading is capped because the cost is real and grows with the square of the radius: a
+	 * 96-block rollback covers about a hundred and seventy chunks, and pulling those off disk
+	 * on the server thread is a stall players would feel. Past the cap the sweep does what it
+	 * always did and looks at what is already loaded, which is a partial answer rather than a
+	 * wrong one — and the pickup log covers what it misses.
+	 *
+	 * @return true when the whole area is loaded, false when the cap stopped it short
+	 */
+	public static boolean ensureLoaded(ServerLevel level, BlockPos centre, int radius,
+			int maxChunks) {
+
+		int minX = (centre.getX() - radius) >> 4;
+		int maxX = (centre.getX() + radius) >> 4;
+		int minZ = (centre.getZ() - radius) >> 4;
+		int maxZ = (centre.getZ() + radius) >> 4;
+
+		long wanted = (long) (maxX - minX + 1) * (maxZ - minZ + 1);
+		if (wanted > maxChunks) {
+			StaffCore.LOGGER.warn("[StaffCore] Area covers {} chunks, more than the {} this will "
+					+ "load; item recovery falls back to whatever is already in memory.",
+					wanted, maxChunks);
+			return false;
+		}
+
+		for (int x = minX; x <= maxX; x++) {
+			for (int z = minZ; z <= maxZ; z++) {
+				// getChunk loads from disk, generating if it has to. The return value is
+				// ignored on purpose: the point is the side effect of it being resident.
+				level.getChunk(x, z);
+			}
+		}
+		return true;
+	}
 
 	// ---------------------------------------------------------------- identity
 
