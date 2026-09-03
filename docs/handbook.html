@@ -1213,6 +1213,36 @@
           </p>
         </div>
 
+        <div class="note">
+          <h4>Restoring a death: destroyed, dropped, or in somebody's pocket</h4>
+          <p>
+            Restoring hands the player everything the snapshot held, which is right whatever
+            became of the originals &mdash; but it means every copy still in the world has to
+            be accounted for exactly once, or the items exist twice.
+          </p>
+          <table>
+            <thead><tr><th class="wrap">What happened to the items</th><th class="wrap">What the restore does</th></tr></thead>
+            <tbody>
+              <tr><td class="wrap"><strong>Destroyed</strong> &mdash; burned in lava, despawned, gone</td>
+                <td class="wrap">Replacements are handed over. Nothing is duplicated, because the originals do not exist and nobody is charged for them.</td></tr>
+              <tr><td class="wrap"><strong>Still lying there</strong></td>
+                <td class="wrap">Swept off the ground first. The chunks are loaded to do it, so this works at any distance &mdash; items in an unloaded chunk never despawn, so without that they would sit there forever as a second copy.</td></tr>
+              <tr><td class="wrap"><strong>Picked up by somebody else</strong></td>
+                <td class="wrap">Taken back off them, out of their inventory or ender chest, and booked against their next login for whatever they no longer have.</td></tr>
+              <tr><td class="wrap"><strong>Picked up by the owner</strong></td>
+                <td class="wrap">Left alone. Collecting your own death drops is not theft, and the restore clears their inventory first anyway, so nothing survives twice.</td></tr>
+            </tbody>
+          </table>
+          <p>
+            Nobody is ever charged more than went missing. Somebody who pocketed a full stack
+            at a death where five were unaccounted for owes five. That cap is what makes it safe
+            to search widely: <code>deathDropSweepRadius</code> is deliberately larger than the
+            pile, because water pushes drops about and people wander while collecting, and a
+            wider circle can find more of what belongs to the death without being able to take
+            anything that does not.
+          </p>
+        </div>
+
         <h3>Working the slots</h3>
         <p>
           In edit mode the window behaves like any other container. Click to pick up and place,
@@ -1834,6 +1864,24 @@
             A blast is capped at <code>explosionLogCap</code> blocks (512 by default). A creeper
             takes out a few dozen; a TNT cannon can level thousands, and writing every one
             buries the incident the log exists to make readable.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>Fire, and what it eats</h4>
+          <p>
+            Lighting the first block is a placement and was always in the log. Everything the
+            fire then ate was not, so a wooden build could burn to nothing and leave a single
+            flint-and-steel in the record and no damage at all.
+          </p>
+          <p>
+            Every block fire burns away is now recorded, contents included, and rolls back like
+            any other break. It is attributed to <code>#fire</code> rather than to whoever
+            struck the flint: fire spreads, and by the twentieth block the person who lit it is
+            a guess dressed as a fact. Their ignition is in the log as a placement of
+            <code>minecraft:fire</code>, at a time and place you can line up against the damage
+            yourself &mdash; which is evidence, where naming them automatically would be an
+            inference on somebody's record.
           </p>
         </div>
 

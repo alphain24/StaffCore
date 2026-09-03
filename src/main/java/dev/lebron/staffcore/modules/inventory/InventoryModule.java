@@ -331,7 +331,22 @@ public class InventoryModule implements Module {
 	}
 
 	/** How far around the recorded position to sweep for the originals. */
-	private static final double DROP_SWEEP_RADIUS = 12.0D;
+	/**
+	 * How far around a snapshot's position to look for its items, in blocks.
+	 * <p>
+	 * Drops land within a block or two of a death, so a tight radius is right on the day.
+	 * They do not stay there: flowing water pushes them, lava carries them, and somebody
+	 * collecting a pile walks about while doing it. A restore run an hour later is looking for
+	 * things that have moved.
+	 * <p>
+	 * Being generous is close to free and errs the safe way. The sweep only ever removes items
+	 * the snapshot actually contains, and only up to the amount missing, so a wider circle
+	 * finds more of what belongs to this death without being able to take anything that does
+	 * not.
+	 */
+	private static double dropSweepRadius() {
+		return Math.max(4, dev.lebron.staffcore.config.StaffConfig.get().deathDropSweepRadius);
+	}
 
 	/**
 	 * Removes the drops the restore has just duplicated.
@@ -382,17 +397,17 @@ public class InventoryModule implements Module {
 		// The pickup log answers both. The owner is excluded: collecting your own death drops
 		// is not theft, and this must never bill somebody for recovering their own things.
 		int fromPickers = dev.lebron.staffcore.modules.grief.LootRecovery.reclaimFromPickers(
-				level, owed, origin.pos(), (int) DROP_SWEEP_RADIUS,
+				level, owed, origin.pos(), (int) dropSweepRadius(),
 				java.util.concurrent.TimeUnit.HOURS.toMillis(3), Mc.name(target),
 				"Returned to " + Mc.name(target) + " from a restored snapshot");
 
 		// A death site is a handful of chunks, so loading it is cheap and makes the sweep
 		// mean something. Without this, restoring a snapshot anywhere nobody is standing
 		// finds no drops and quietly hands over a second copy of everything.
-		Mc.ensureLoaded(level, origin.pos(), (int) DROP_SWEEP_RADIUS, 64);
+		Mc.ensureLoaded(level, origin.pos(), (int) dropSweepRadius(), 64);
 
 		net.minecraft.world.phys.AABB area = new net.minecraft.world.phys.AABB(
-				origin.pos()).inflate(DROP_SWEEP_RADIUS);
+				origin.pos()).inflate(dropSweepRadius());
 
 		int removed = fromPickers;
 		for (net.minecraft.world.entity.item.ItemEntity drop

@@ -98,6 +98,12 @@ public final class StartupCheck {
 			new Target("Explosion damage log", "net.minecraft.world.level.ServerExplosion",
 					"interactWithBlocks", "staffcore$recordExplosion", MIXIN_PKG + "ExplosionMixin",
 					"java.util.List"),
+			// Fire is the classic griefing tool, and without this the blocks it eats are
+			// never recorded - only the flint-and-steel that started it.
+			new Target("Fire damage log", "net.minecraft.world.level.block.FireBlock",
+					"checkBurnOut", "staffcore$recordBurnToAir", MIXIN_PKG + "FireSpreadMixin",
+					"net.minecraft.world.level.Level", "net.minecraft.core.BlockPos", "int",
+					"net.minecraft.util.RandomSource", "int"),
 			// Without this, item recovery can only search the ground nearby: it misses
 			// anything already in somebody's pocket and anything in an unloaded chunk.
 			new Target("Item pickup log", "net.minecraft.world.entity.item.ItemEntity",

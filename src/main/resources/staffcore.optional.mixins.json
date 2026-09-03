@@ -13,6 +13,7 @@
     "CommandsMixin",
     "ContainerCloseMixin",
     "ExplosionMixin",
+    "FireSpreadMixin",
     "InventoryDropMixin",
     "ItemEntityMixin",
     "ItemPickupMixin",

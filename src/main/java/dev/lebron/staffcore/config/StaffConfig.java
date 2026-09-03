@@ -365,6 +365,28 @@ public final class StaffConfig {
 	 */
 	public int explosionLogCap = 512;
 	/**
+	 * Record blocks that fire burns away, so a burned build can be put back.
+	 * <p>
+	 * Lighting the first block is a placement and was always logged; everything the fire then
+	 * ate was not, so a wooden build could burn to nothing and leave a single flint-and-steel
+	 * in the record and no damage at all.
+	 */
+	public boolean logFireDamage = true;
+
+	/**
+	 * How far around a death to look for its items when restoring a snapshot, in blocks.
+	 * <p>
+	 * Restoring hands the player everything the snapshot held, so anything of theirs still
+	 * lying about has to be taken off the ground or the two copies both exist. Drops land
+	 * close by, but water pushes them and people wander while collecting, so the search is
+	 * deliberately wider than the pile.
+	 * <p>
+	 * It can only remove items the snapshot actually contains, and only as many as are
+	 * missing, so widening it finds more of what belongs to the death without letting it take
+	 * anything that does not.
+	 */
+	public int deathDropSweepRadius = 16;
+	/**
 	 * Record who picks items up off the ground.
 	 * <p>
 	 * This is what lets a rollback reach items somebody has already pocketed, and what makes

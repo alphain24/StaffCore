@@ -414,6 +414,8 @@ Changing a default in the code alone would never reach a server that has already
   "logContainerAccess": true,          // most "griefing" is theft
   "logExplosions": true,               // creeper and TNT damage, so it can be rolled back
   "explosionLogCap": 512,              // blocks recorded per blast; 0 for no limit
+  "logFireDamage": true,               // blocks fire burns away, so a burned build comes back
+  "deathDropSweepRadius": 16,          // how far around a death to look for its items
   "rollbackReclaimsDrops": true,       // without this, rollback duplicates items
   "rollbackChasesBankedLoot": true,    // follow loot stashed in chests outside the radius
   "rollbackReclaimsFromStaff": true,   // take back what you picked up at the scene yourself
@@ -782,6 +784,7 @@ Things that used to be on this list, and what replaced them:
 | Copper double chests read as two unrelated singles | Pairing asks `chestCanConnectTo` instead of comparing blocks |
 | Chest boats and container minecarts were never watched | Logged like any other container |
 | Creeper and TNT damage was invisible to the log | Explosions are recorded, contents included, and roll back like any other break |
+| Fire burned builds down with nothing in the log but the flint-and-steel | Every block fire eats is recorded, contents included |
 | Rollback debts never expired and survived an undo | `debtExpiryDays`, and undo cancels its own debts |
 | Log output was mojibake on non-UTF-8 consoles | Console strings are ASCII, checked in the source and in the boot log |
 | Item recovery missed anything in an unloaded chunk or already pocketed | Pickups are logged, so recovery is a query rather than a search |

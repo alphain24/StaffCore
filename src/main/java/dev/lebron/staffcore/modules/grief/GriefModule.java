@@ -412,6 +412,31 @@ public class GriefModule implements Module {
 	}
 
 	/**
+	 * Records a block that fire has just burned away.
+	 * <p>
+	 * Contents first, because a burning chest loses them exactly as a broken one does, and
+	 * reading the block entity a moment later returns nothing.
+	 * <p>
+	 * Attributed to fire rather than to whoever struck the flint. Fire spreads, and by the
+	 * twentieth block the person who lit it is a guess dressed as a fact - their ignition is
+	 * in the log as a placement of {@code minecraft:fire}, at a time and place staff can line
+	 * up against this themselves. Naming them here would put an inference on somebody's
+	 * record and call it evidence.
+	 */
+	public void logFire(ServerLevel level, BlockPos pos, BlockState burned) {
+		if (!StaffConfig.get().logFireDamage) return;
+		if (!StaffCore.storage().isReady() || worker == null) return;
+
+		String world = Mc.dimensionId(level);
+		long now = System.currentTimeMillis();
+
+		if (level.getBlockEntity(pos) instanceof net.minecraft.world.Container container) {
+			snapshotContainer(level.getServer(), container, pos, world, now);
+		}
+		log("#fire", "BREAK", burned, pos, world, now, null);
+	}
+
+	/**
 	 * Whether a logged source is a real account rather than a creature or a mechanism.
 	 * <p>
 	 * Non-player sources are written with a {@code #} prefix, which Minecraft names cannot
