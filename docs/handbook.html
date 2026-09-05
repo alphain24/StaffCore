@@ -623,8 +623,23 @@
           Whichever you pick, the gamemode somebody was in <em>before</em> clocking on is
           stored and handed back when they clock off, so changing this strands nobody. On duty
           you are also <strong>invulnerable</strong>, vanished or not, so investigating a mob
-          farm does not make you part of the incident.
+          farm does not make you part of the incident. Set
+          <code>staffModeInvulnerable</code> to <code>false</code> if you would rather staff
+          stayed killable.
         </p>
+        <div class="note">
+          <p>
+            <span class="pill">Clocking off really does end it</span>
+            Flight and invulnerability are worked out from who is currently claiming them —
+            your gamemode, duty, vanish — rather than restored from a copy taken earlier.
+            That matters because staff mode and vanish set the same two fields and normally
+            overlap, so a remembered "what it was before" is whichever of them wrote last.
+            Worth knowing what invulnerability actually costs you if it lingers: vanilla
+            treats an invulnerable player as one no mob can see, so they are not merely
+            unhurt — nothing ever comes at them. Rejoining would have hidden it, because the
+            game rebuilds both fields from your gamemode on login.
+          </p>
+        </div>
 
         <h3>Movement</h3>
         <p>

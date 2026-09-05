@@ -2,7 +2,6 @@ package dev.lebron.staffcore.modules.vanish;
 
 import dev.lebron.staffcore.StaffCore;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.GameType;
 
 import java.util.Collection;
 import java.util.Map;
@@ -59,18 +58,15 @@ public final class VanishState {
 	 *                    broadcast, after they are gone. Looking it up live returned null
 	 *                    both times, which is exactly why join and leave lines leaked.
 	 * @param greetOnJoin they reconnected still hidden and have not been told yet
-	 * @param priorFlight what {@code mayfly} was before vanish touched it
-	 * @param priorInvuln what {@code invulnerable} was before vanish touched it
 	 */
-	public record Hidden(UUID id, String name, Phase phase, boolean greetOnJoin,
-			boolean priorFlight, boolean priorInvuln) {
+	public record Hidden(UUID id, String name, Phase phase, boolean greetOnJoin) {
 
 		Hidden with(Phase next) {
-			return new Hidden(id, name, next, greetOnJoin, priorFlight, priorInvuln);
+			return new Hidden(id, name, next, greetOnJoin);
 		}
 
 		Hidden greeted() {
-			return new Hidden(id, name, phase, false, priorFlight, priorInvuln);
+			return new Hidden(id, name, phase, false);
 		}
 	}
 
@@ -125,16 +121,16 @@ public final class VanishState {
 	// --------------------------------------------------------------------- writing
 
 	/**
-	 * Marks a player hidden, remembering the abilities vanish is about to overwrite.
+	 * Marks a player hidden.
 	 * <p>
-	 * Capturing them here rather than reconstructing them on reveal is the fix for vanish
-	 * fighting staff mode: the old code rebuilt {@code mayfly} and {@code invulnerable} from
-	 * {@code isCreative()}, which is not where they came from when staff mode set them, so
-	 * un-vanishing silently took a staff member's flight away.
+	 * Deliberately does <em>not</em> remember the abilities vanish is about to overwrite. It
+	 * used to, and that copy was the bug: staff mode had already set both fields by the time
+	 * vanish looked, so "what it was before" was staff mode's answer, and clocking off handed
+	 * duty invulnerability back to a player who no longer had any claim on it. Abilities are
+	 * worked out from live state instead — see {@code AbilityState}.
 	 */
 	public Hidden conceal(ServerPlayer player, Phase phase) {
-		Hidden entry = new Hidden(player.getUUID(), player.nameAndId().name(), phase, false,
-				player.getAbilities().mayfly, player.getAbilities().invulnerable);
+		Hidden entry = new Hidden(player.getUUID(), player.nameAndId().name(), phase, false);
 
 		hidden.put(entry.id(), entry);
 		persist(entry.id(), true);
@@ -142,8 +138,8 @@ public final class VanishState {
 	}
 
 	/** Marks a player hidden from stored state during login, before vanilla announces them. */
-	public Hidden restoreOnLogin(UUID id, String name, boolean flight, boolean invulnerable) {
-		Hidden entry = new Hidden(id, name, Phase.JOINING, true, flight, invulnerable);
+	public Hidden restoreOnLogin(UUID id, String name) {
+		Hidden entry = new Hidden(id, name, Phase.JOINING, true);
 		hidden.put(id, entry);
 		// No persist: this is reading what is already on disk, not deciding anything.
 		return entry;
@@ -211,10 +207,5 @@ public final class VanishState {
 		} catch (RuntimeException e) {
 			return false;
 		}
-	}
-
-	/** Flight and invulnerability as they should be with vanish switched off. */
-	public static boolean naturalFlight(ServerPlayer player, GameType mode) {
-		return mode == GameType.CREATIVE || mode == GameType.SPECTATOR;
 	}
 }

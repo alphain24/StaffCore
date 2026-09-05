@@ -5,6 +5,7 @@ import dev.lebron.staffcore.compat.Mc;
 import dev.lebron.staffcore.config.StaffConfig;
 import dev.lebron.staffcore.gui.Sfx;
 import dev.lebron.staffcore.gui.Theme;
+import dev.lebron.staffcore.module.AbilityState;
 import dev.lebron.staffcore.module.Module;
 import dev.lebron.staffcore.modules.alerts.AlertsModule;
 import dev.lebron.staffcore.modules.vanish.VanishModule;
@@ -129,26 +130,27 @@ public class StaffModeModule implements Module {
 			player.setGameMode(duty);
 		}
 
-		// Flight in every mode, so staff can move around a survival world freely.
-		player.getAbilities().mayfly = true;
-
-		// On duty means untouchable, vanished or not. A staff member investigating a mob
-		// farm or standing in lava to read a grief log should not be part of the incident.
-		if (StaffConfig.get().staffModeInvulnerable) {
-			player.getAbilities().invulnerable = true;
-			player.setInvulnerable(true);
-		}
+		// Flight in every mode so staff can move around a survival world freely, and — when
+		// configured — invulnerability, because a staff member investigating a mob farm or
+		// standing in lava to read a grief log should not become part of the incident.
+		//
+		// Both are worked out from state rather than set here, so that vanish claiming the
+		// same two fields cannot end up disagreeing with this about who wants them.
+		AbilityState.reapply(player);
 
 		applySpeed(player, speedOf(player));
 		player.onUpdateAbilities();
 	}
 
-	/** Puts everything back the way a normal player expects it. */
+	/**
+	 * Puts everything back the way a normal player expects it.
+	 * <p>
+	 * Called after {@code inStaffMode} has already been cleared, so the resolver sees somebody
+	 * who is off duty. Doing it the other way round leaves duty abilities on a player who is
+	 * no longer on duty, and an invulnerable player is one no mob will ever target.
+	 */
 	private void clearDutyMode(ServerPlayer player) {
-		player.getAbilities().invulnerable = player.isCreative();
-		player.setInvulnerable(false);
-		player.getAbilities().mayfly = player.isCreative() || player.isSpectator();
-		player.getAbilities().flying = false;
+		AbilityState.reapply(player);
 		player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
 		player.noPhysics = false;
 		noclip.remove(player.getUUID());
