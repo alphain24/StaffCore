@@ -43,6 +43,7 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.NameAndId;
 import net.minecraft.world.phys.Vec3;
@@ -1114,6 +1115,21 @@ public final class StaffCommands {
 						"    … and " + (r.restoring().size() - 8) + " more kinds", Theme.MUTED), false);
 			}
 		}
+		// Drawn in the world, not just counted in chat. The panel has done this from the
+		// start and the command never did, which made the two disagree about what a preview
+		// is: a list of numbers tells you how big the rollback is, and the blocks in front of
+		// you tell you whether it is the right one. The second is the question a radius
+		// actually poses.
+		int drawn = Mods.grief().preview().show(self, (ServerLevel) self.level(), r.proposed());
+		if (drawn > 0) {
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  Showing " + drawn + " block(s) around you — only you can see them, and "
+							+ "nothing has been written.", Theme.ACCENT), false);
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  They clear themselves shortly, or run the rollback to make them real.",
+					Theme.MUTED), false);
+		}
+
 		if (r.itemsDeferred() > 0) {
 			ctx.getSource().sendSuccess(() -> Theme.warn(
 					"  " + r.itemsDeferred() + " stack(s) have nowhere to go — those chests are full."), false);

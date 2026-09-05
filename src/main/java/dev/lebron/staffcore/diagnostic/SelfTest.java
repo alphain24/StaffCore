@@ -102,6 +102,12 @@ public final class SelfTest {
 		results.add(check("grief query", Mods.grief()::areaQuerySelfCheck,
 				detail -> detail.startsWith("wrote a break")));
 
+		results.add(check("explosion log", Mods.grief()::explosionSelfCheck,
+				detail -> detail.startsWith("recorded explosion")));
+
+		results.add(check("pickup log", Mods.grief()::pickupSelfCheck,
+				detail -> detail.startsWith("recorded a pickup")));
+
 		results.add(check("backup", () -> {
 			Path written = StaffCore.storage().backup("self test");
 			if (written == null) return "no file was written";

@@ -623,8 +623,23 @@
           Whichever you pick, the gamemode somebody was in <em>before</em> clocking on is
           stored and handed back when they clock off, so changing this strands nobody. On duty
           you are also <strong>invulnerable</strong>, vanished or not, so investigating a mob
-          farm does not make you part of the incident.
+          farm does not make you part of the incident. Set
+          <code>staffModeInvulnerable</code> to <code>false</code> if you would rather staff
+          stayed killable.
         </p>
+        <div class="note">
+          <p>
+            <span class="pill">Clocking off really does end it</span>
+            Flight and invulnerability are worked out from who is currently claiming them —
+            your gamemode, duty, vanish — rather than restored from a copy taken earlier.
+            That matters because staff mode and vanish set the same two fields and normally
+            overlap, so a remembered "what it was before" is whichever of them wrote last.
+            Worth knowing what invulnerability actually costs you if it lingers: vanilla
+            treats an invulnerable player as one no mob can see, so they are not merely
+            unhurt — nothing ever comes at them. Rejoining would have hidden it, because the
+            game rebuilds both fields from your gamemode on login.
+          </p>
+        </div>
 
         <h3>Movement</h3>
         <p>
@@ -1210,6 +1225,36 @@
             Someone who died in lava and lost eight of their eleven items gets three real
             originals off the floor and eight faithful copies — and no twenty-two-item
             windfall.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>Restoring a death: destroyed, dropped, or in somebody's pocket</h4>
+          <p>
+            Restoring hands the player everything the snapshot held, which is right whatever
+            became of the originals &mdash; but it means every copy still in the world has to
+            be accounted for exactly once, or the items exist twice.
+          </p>
+          <table>
+            <thead><tr><th class="wrap">What happened to the items</th><th class="wrap">What the restore does</th></tr></thead>
+            <tbody>
+              <tr><td class="wrap"><strong>Destroyed</strong> &mdash; burned in lava, despawned, gone</td>
+                <td class="wrap">Replacements are handed over. Nothing is duplicated, because the originals do not exist and nobody is charged for them.</td></tr>
+              <tr><td class="wrap"><strong>Still lying there</strong></td>
+                <td class="wrap">Swept off the ground first. The chunks are loaded to do it, so this works at any distance &mdash; items in an unloaded chunk never despawn, so without that they would sit there forever as a second copy.</td></tr>
+              <tr><td class="wrap"><strong>Picked up by somebody else</strong></td>
+                <td class="wrap">Taken back off them, out of their inventory or ender chest, and booked against their next login for whatever they no longer have.</td></tr>
+              <tr><td class="wrap"><strong>Picked up by the owner</strong></td>
+                <td class="wrap">Left alone. Collecting your own death drops is not theft, and the restore clears their inventory first anyway, so nothing survives twice.</td></tr>
+            </tbody>
+          </table>
+          <p>
+            Nobody is ever charged more than went missing. Somebody who pocketed a full stack
+            at a death where five were unaccounted for owes five. That cap is what makes it safe
+            to search widely: <code>deathDropSweepRadius</code> is deliberately larger than the
+            pile, because water pushes drops about and people wander while collecting, and a
+            wider circle can find more of what belongs to the death without being able to take
+            anything that does not.
           </p>
         </div>
 
@@ -1808,6 +1853,53 @@
           </p>
         </div>
 
+        <div class="note">
+          <h4>When a creeper does it</h4>
+          <p>
+            Only player block-breaking used to reach the log, which left the commonest damage
+            on most servers invisible. A creeper took out a wall and a chest, and there was
+            nothing to look at and nothing to put back &mdash; the area read as though nothing
+            had happened, because as far as the log was concerned nobody had done anything.
+          </p>
+          <p>
+            Explosions are now recorded before the blocks go, contents included, so an exploded
+            chest comes back with what was in it. Rollback treats the damage like any other
+            break.
+          </p>
+          <p>
+            <strong>Attribution follows responsibility.</strong> Where a player is genuinely
+            behind it &mdash; lighting TNT is griefing done with a tool &mdash; it goes on their
+            record exactly as breaking the blocks by hand would. Otherwise the creature is
+            named with a <code>#</code> prefix, as <code>#creeper</code> or <code>#ghast</code>.
+            Minecraft names cannot contain that character, so a mob entry can never be confused
+            for an account, and nothing tries to reach into a creeper's inventory or bill it on
+            its next login.
+          </p>
+          <p>
+            A blast is capped at <code>explosionLogCap</code> blocks (512 by default). A creeper
+            takes out a few dozen; a TNT cannon can level thousands, and writing every one
+            buries the incident the log exists to make readable.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>Fire, and what it eats</h4>
+          <p>
+            Lighting the first block is a placement and was always in the log. Everything the
+            fire then ate was not, so a wooden build could burn to nothing and leave a single
+            flint-and-steel in the record and no damage at all.
+          </p>
+          <p>
+            Every block fire burns away is now recorded, contents included, and rolls back like
+            any other break. It is attributed to <code>#fire</code> rather than to whoever
+            struck the flint: fire spreads, and by the twentieth block the person who lit it is
+            a guess dressed as a fact. Their ignition is in the log as a placement of
+            <code>minecraft:fire</code>, at a time and place you can line up against the damage
+            yourself &mdash; which is evidence, where naming them automatically would be an
+            inference on somebody's record.
+          </p>
+        </div>
+
         <h3>When somebody owes items</h3>
         <p>
           A rollback takes back what the offender gained by it, or the restore prints items.
@@ -1852,6 +1944,35 @@
           <p>
             Deliveries never expire. An item waiting to go back to its owner is their property,
             and losing it would be theft rather than mercy.
+          </p>
+        </div>
+
+        <div class="note">
+          <h4>Reaching items somebody has already taken</h4>
+          <p>
+            Looking for items only works while they are findable, and on a real server they
+            usually are not. A chunk unloads the moment nobody is standing near it, and an item
+            in an unloaded chunk is on disk rather than in memory &mdash; invisible to any
+            search, and it will not despawn either, because entities do not tick while their
+            chunk is unloaded. Anything already in somebody's pocket is invisible by
+            definition.
+          </p>
+          <p>
+            So StaffCore records who picks what up, and recovery asks the log instead of
+            searching the world. A scene ten thousand blocks away with nobody near it works
+            exactly like one underfoot, and a passer-by who pocketed half a death pile is
+            charged for exactly what they took &mdash; the debt moves off the offender rather
+            than being collected twice.
+          </p>
+          <p>
+            The owner is always excluded: picking your own drops back up is not theft. Rows are
+            marked settled once acted on, so a second rollback over the same ground cannot
+            charge for it again. Kept for
+            <code>pickupLogRetentionMinutes</code> (three hours by default) &mdash; this is the
+            highest-volume table in the mod and only has to outlive the gap between a scene
+            being looted and staff putting it right. Turn it off with
+            <code>logItemPickups</code>, at the cost of recovery going back to searching the
+            ground nearby.
           </p>
         </div>
 

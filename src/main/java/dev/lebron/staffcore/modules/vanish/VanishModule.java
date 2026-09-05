@@ -6,6 +6,7 @@ import dev.lebron.staffcore.config.StaffConfig;
 import dev.lebron.staffcore.gui.Icon;
 import dev.lebron.staffcore.gui.Sfx;
 import dev.lebron.staffcore.gui.Theme;
+import dev.lebron.staffcore.module.AbilityState;
 import dev.lebron.staffcore.module.Module;
 import dev.lebron.staffcore.permission.Nodes;
 import dev.lebron.staffcore.permission.Permissions;
@@ -108,10 +109,11 @@ public class VanishModule implements Module {
 		MinecraftServer server = Mc.server(player);
 		if (server == null) return false;
 
-		var wasHidden = state.get(player.getUUID());
-		if (wasHidden.isPresent()) {
+		if (state.isHidden(player)) {
+			// State first, then the world: reveal works the abilities out from who is still
+			// claiming them, so it has to be looking at a player who is already visible.
 			state.reveal(player.getUUID());
-			reveal(server, player, wasHidden.get());
+			reveal(server, player);
 			announceFake(server, player, true);
 			player.sendSystemMessage(Theme.info("You are visible again."));
 			Sfx.unvanish(player);
@@ -123,7 +125,8 @@ public class VanishModule implements Module {
 		// would look to everyone else.
 		announceFake(server, player, false);
 
-		conceal(server, player, state.conceal(player, VanishState.Phase.ACTIVE));
+		state.conceal(player, VanishState.Phase.ACTIVE);
+		conceal(server, player);
 		player.sendSystemMessage(Theme.good("You are vanished — everyone was told you left."));
 		Sfx.vanish(player);
 		return true;
@@ -167,15 +170,15 @@ public class VanishModule implements Module {
 
 	// ------------------------------------------------------------- hide and reveal
 
-	private void conceal(MinecraftServer server, ServerPlayer player, VanishState.Hidden entry) {
+	private void conceal(MinecraftServer server, ServerPlayer player) {
 		player.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY,
 				MobEffectInstance.INFINITE_DURATION, 0, false, false));
 
 		// A vanished staff member should leave no trace in the world either: nothing can
-		// hurt them, nothing targets them, and they stop colliding with anything.
-		player.getAbilities().invulnerable = true;
-		player.getAbilities().mayfly = true;
-		player.onUpdateAbilities();
+		// hurt them, nothing targets them, and they stop colliding with anything. The two
+		// abilities are worked out from state rather than set here, because staff mode wants
+		// the same two fields and only one of them can be the last to write.
+		AbilityState.reapply(player);
 		player.setInvisible(true);
 
 		// Vanilla's own "does this entity stop you building here" flag. Standing in a
@@ -199,19 +202,20 @@ public class VanishModule implements Module {
 	/**
 	 * Puts back everything {@link #conceal} changed.
 	 * <p>
-	 * Abilities are restored from what was captured at conceal time rather than rebuilt from
-	 * the current gamemode. Rebuilding them was wrong whenever something else had set them:
-	 * a staff member flying on duty lost flight the moment they un-vanished, because
-	 * {@code isCreative()} said they should not have it.
+	 * Abilities are worked out again rather than restored from a copy taken at conceal time.
+	 * A copy is wrong in both directions once two features share the fields: rebuilding from
+	 * {@code isCreative()} alone took flight off a staff member who un-vanished while still on
+	 * duty, and remembering the value instead handed duty invulnerability back to somebody who
+	 * had just clocked off — leaving them permanently untargetable by every mob in the game.
+	 * <p>
+	 * Called after the player has been dropped from the hidden set, so the resolver is looking
+	 * at somebody who is already visible.
 	 */
-	private void reveal(MinecraftServer server, ServerPlayer player, VanishState.Hidden was) {
+	private void reveal(MinecraftServer server, ServerPlayer player) {
 		player.removeEffect(MobEffects.INVISIBILITY);
 		player.setInvisible(false);
 		player.blocksBuilding = true;
-		player.getAbilities().invulnerable = was.priorInvuln();
-		player.getAbilities().mayfly = was.priorFlight();
-		if (!was.priorFlight()) player.getAbilities().flying = false;
-		player.onUpdateAbilities();
+		AbilityState.reapply(player);
 
 		for (ServerPlayer viewer : server.getPlayerList().getPlayers()) {
 			if (viewer == player) continue;
@@ -291,10 +295,7 @@ public class VanishModule implements Module {
 	public void restoreBeforeJoin(ServerPlayer player) {
 		if (!VanishState.storedVanished(player.getUUID())) return;
 
-		// Abilities are captured as they are right now, before anything of ours touches
-		// them, so un-vanishing later puts back what the player actually had.
-		state.restoreOnLogin(player.getUUID(), player.nameAndId().name(),
-				player.getAbilities().mayfly, player.getAbilities().invulnerable);
+		state.restoreOnLogin(player.getUUID(), player.nameAndId().name());
 	}
 
 	/**
@@ -321,7 +322,7 @@ public class VanishModule implements Module {
 
 			if (state.takeGreeting(joiner.getUUID())) {
 				// Vanish held across the reconnect, and nobody was told they arrived.
-				state.get(joiner.getUUID()).ifPresent(entry -> conceal(server, joiner, entry));
+				conceal(server, joiner);
 				joiner.sendSystemMessage(Theme.good("Still vanished — your join was not announced."));
 				Sfx.vanish(joiner);
 			}

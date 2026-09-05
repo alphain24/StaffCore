@@ -349,6 +349,57 @@ public final class StaffConfig {
 	 */
 	public boolean rollbackReclaimsFromStaff = true;
 
+	/**
+	 * Record blocks destroyed by explosions, so they can be rolled back.
+	 * <p>
+	 * Creeper damage is the commonest destruction on most servers and was invisible to the
+	 * log entirely, because only player block-breaking was ever recorded. Contents of exploded
+	 * containers are captured too, so a chest comes back with what was in it.
+	 */
+	public boolean logExplosions = true;
+	/**
+	 * Most blocks to record from a single explosion. 0 for no limit.
+	 * <p>
+	 * A creeper takes out a few dozen. A TNT cannon or a chain reaction can level thousands,
+	 * and writing every one buries the incident the log is meant to make readable.
+	 */
+	public int explosionLogCap = 512;
+	/**
+	 * Record blocks that fire burns away, so a burned build can be put back.
+	 * <p>
+	 * Lighting the first block is a placement and was always logged; everything the fire then
+	 * ate was not, so a wooden build could burn to nothing and leave a single flint-and-steel
+	 * in the record and no damage at all.
+	 */
+	public boolean logFireDamage = true;
+
+	/**
+	 * How far around a death to look for its items when restoring a snapshot, in blocks.
+	 * <p>
+	 * Restoring hands the player everything the snapshot held, so anything of theirs still
+	 * lying about has to be taken off the ground or the two copies both exist. Drops land
+	 * close by, but water pushes them and people wander while collecting, so the search is
+	 * deliberately wider than the pile.
+	 * <p>
+	 * It can only remove items the snapshot actually contains, and only as many as are
+	 * missing, so widening it finds more of what belongs to the death without letting it take
+	 * anything that does not.
+	 */
+	public int deathDropSweepRadius = 16;
+	/**
+	 * Record who picks items up off the ground.
+	 * <p>
+	 * This is what lets a rollback reach items somebody has already pocketed, and what makes
+	 * recovery work at any distance: a query does not care whether the chunk is loaded or
+	 * whether the drop still exists. Without it, recovery can only scan the ground nearby,
+	 * which misses everything already taken and everything in an unloaded chunk.
+	 * <p>
+	 * The highest-volume table in the mod, which is why it is kept for hours rather than days.
+	 */
+	public boolean logItemPickups = true;
+	/** How long pickups are kept, in minutes. Only has to outlive a scene, not a season. */
+	public int pickupLogRetentionMinutes = 180;
+
 	// ---- anti-cheat bridge ---------------------------------------------------
 	/**
 	 * Accept findings from an installed anti-cheat and surface them as staff alerts.
