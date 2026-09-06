@@ -70,6 +70,7 @@ public class InvseeMenu extends Gui {
 		boolean canEdit = Permissions.check(viewer, Nodes.INVSEE_EDIT);
 
 		InventorySource source;
+		io.github.alphain24.staffcore.inventory.InventoryGateway.EditSession session = null;
 		if (live != null) {
 			source = InventorySource.live(live, canEdit);
 			if (canEdit) {
@@ -78,11 +79,11 @@ public class InvseeMenu extends Gui {
 
 				// Announcing the opening says it happened; a snapshot says what was there.
 				// That protects the staff member as much as the player — "it was already
-				// missing" needs evidence pointing one way or the other.
-				if (io.github.alphain24.staffcore.config.StaffConfig.get().autoSnapshotOnStaffEdit) {
-					Mods.inventory().capture(live, "Before staff edit", Mc.name(viewer),
-							io.github.alphain24.staffcore.modules.inventory.InventoryModule.Kind.ROUTINE);
-				}
+				// missing" needs evidence pointing one way or the other. The gateway takes
+				// it and holds the before-picture until the screen closes, so what gets
+				// recorded is the net change rather than every click that carried it.
+				session = io.github.alphain24.staffcore.inventory.InventoryGateway.beginEdit(
+						live, Mc.name(viewer), "staff edit through invsee");
 			}
 		} else {
 			ItemStack[] stored = OfflineInventory.load(server, target);
@@ -96,20 +97,43 @@ public class InvseeMenu extends Gui {
 		}
 
 		boolean isOffline = live == null;
+		io.github.alphain24.staffcore.inventory.InventoryGateway.EditSession opened = session;
 		Sfx.invsee(viewer);
 		Guis.silent(viewer,
 				Theme.title(isOffline ? "Offline" : (canEdit ? "Editing" : "Viewing"), target.name()),
 				(id, inv, v) -> new InvseeMenu(id, inv, v, target,
-						new InventoryViewContainer(source), isOffline));
+						new InventoryViewContainer(source), isOffline, opened));
 	}
 
 	private InvseeMenu(int containerId, Inventory playerInventory, ServerPlayer viewer,
-			NameAndId target, InventoryViewContainer view, boolean offline) {
+			NameAndId target, InventoryViewContainer view, boolean offline,
+			io.github.alphain24.staffcore.inventory.InventoryGateway.EditSession session) {
 		super(containerId, playerInventory, viewer, 6, view);
 		this.target = target;
 		this.view = view;
 		this.offline = offline;
+		this.session = session;
 		render();
+	}
+
+	/**
+	 * The open edit session, or null when this is a read-only or offline view.
+	 * <p>
+	 * Held rather than recorded per click: vanilla moves stacks one click at a time, and a
+	 * row for each would bury the change under the mechanics of making it.
+	 */
+	private final io.github.alphain24.staffcore.inventory.InventoryGateway.EditSession session;
+
+	/**
+	 * Records what the edit actually changed.
+	 * <p>
+	 * Runs whether the screen was closed deliberately, by walking away, or by disconnecting —
+	 * {@code Gui.removed} guarantees it — so there is no way to make a change and avoid the
+	 * record by leaving abruptly.
+	 */
+	@Override
+	protected void onClosed() {
+		io.github.alphain24.staffcore.inventory.InventoryGateway.endEdit(session);
 	}
 
 	// ------------------------------------------------------- live-slot protection

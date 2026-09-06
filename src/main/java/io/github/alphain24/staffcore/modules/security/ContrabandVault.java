@@ -198,8 +198,13 @@ public final class ContrabandVault {
 
 		// Into the inventory if there is room, on the floor if not. Refusing to return an
 		// item because somebody's inventory is full would be a strange way to correct a
-		// mistake we made.
-		io.github.alphain24.staffcore.util.ItemDebit.give(owner, stack);
+		// mistake we made. Through the gateway, so a return is recorded the same way a
+		// confiscation is — the two halves of the same transaction should not have different
+		// standards of proof.
+		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.give(
+				owner, io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.VAULT_RETURN,
+				by, "returned from the contraband vault", java.util.List.of(stack));
+		if (outcome.wasRefused()) return false;
 
 		return resolve(entry.id(), State.RETURNED, by);
 	}

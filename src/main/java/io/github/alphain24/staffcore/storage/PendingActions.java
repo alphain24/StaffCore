@@ -4,7 +4,7 @@ import io.github.alphain24.staffcore.StaffCore;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.gui.Theme;
 import io.github.alphain24.staffcore.util.ItemCodec;
-import io.github.alphain24.staffcore.util.ItemDebit;
+import io.github.alphain24.staffcore.inventory.InventoryGateway;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
@@ -298,7 +298,9 @@ public final class PendingActions {
 			if (row.kind() == Kind.GIVE) {
 				ItemStack stack = row.stack(server);
 				if (!stack.isEmpty()) {
-					ItemDebit.give(player, stack);
+					InventoryGateway.give(player, InventoryGateway.Origin.PENDING_SETTLEMENT,
+							"system", "queued while they were offline",
+							java.util.List.of(stack));
 					given += stack.getCount();
 				}
 				spent.add(row.id());
@@ -316,7 +318,8 @@ public final class PendingActions {
 
 			Map<Item, Integer> owed = new HashMap<>();
 			owed.put(type, row.count());
-			int took = ItemDebit.debit(player, owed);
+			int took = InventoryGateway.take(player, InventoryGateway.Origin.PENDING_SETTLEMENT,
+					"system", "settling a debt owed since they were last online", owed).items();
 			debited += took;
 
 			int remaining = owed.getOrDefault(type, 0);

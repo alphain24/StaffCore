@@ -300,26 +300,20 @@ public class InventoryModule implements Module {
 	 */
 	public int restore(ServerPlayer target, Snapshot snapshot) {
 		ItemStack[] contents = contentsOf(snapshot);
-		Inventory inv = target.getInventory();
 
-		// Clearing first means anything they picked up since is gone, which is the point:
-		// this puts them back to a recorded moment rather than adding to what they have.
-		// clearContent() empties equipment as well as storage, so armour the snapshot did not
-		// have does not survive the restore.
-		inv.clearContent();
-		int size = Math.min(contents.length, inv.getContainerSize());
-		for (int i = 0; i < size; i++) {
-			inv.setItem(i, contents[i].copy());
-		}
+		// Through the gateway, which snapshots the current state and records the restore
+		// before writing anything. Clearing first means anything picked up since is gone,
+		// which is the point — this puts them back to a recorded moment rather than topping
+		// them up — and is exactly why the state being overwritten has to be kept.
+		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.replaceAll(
+				target, io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.SNAPSHOT_RESTORE,
+				snapshot.takenBy(), "restored from a snapshot taken " + snapshot.label(), contents);
 
-		// Both menus. containerMenu is whatever they happen to have open, and if that is a
-		// chest it has no armour or offhand slots in it — so armour restored while somebody
-		// is standing in a container would not appear on their own screen until something
-		// else refreshed it. Other players are fine either way: LivingEntity re-checks
-		// equipment against its last known set every tick.
-		target.inventoryMenu.broadcastChanges();
-		if (target.containerMenu != target.inventoryMenu) {
-			target.containerMenu.broadcastChanges();
+		if (outcome.wasRefused()) {
+			target.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.bad(
+					"A staff member tried to restore your inventory and it was refused: "
+							+ outcome.refused()));
+			return 0;
 		}
 
 		int cleared = reclaimDrops(target, snapshot, contents);

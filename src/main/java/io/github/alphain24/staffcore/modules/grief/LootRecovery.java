@@ -4,7 +4,7 @@ import io.github.alphain24.staffcore.StaffCore;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.config.StaffConfig;
 import io.github.alphain24.staffcore.module.Mods;
-import io.github.alphain24.staffcore.util.ItemDebit;
+import io.github.alphain24.staffcore.inventory.InventoryGateway;
 import io.github.alphain24.staffcore.util.PlayerLookup;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -139,7 +139,7 @@ public final class LootRecovery {
 		if (playerName == null || !GriefModule.isPlayerSource(playerName)) {
 			int staffOnly = sweepStaff(level, staffName, owed);
 			int pickedUp = sweepPickers(level, owed, scene, radius, windowMs, null, reason,
-					refKind, refId);
+					refKind, refId, staffName);
 			return new Result(fromGround, 0, 0, 0, staffOnly, pickedUp, 0);
 		}
 
@@ -148,20 +148,18 @@ public final class LootRecovery {
 		int fromInventory = 0;
 		int fromEnderChest = 0;
 		if (offender != null) {
-			// Taking items out of somebody's inventory on the strength of a log query is
-			// exactly the kind of action that should leave a before-picture, whether or not
-			// the query turns out to have been right.
-			if (snapshot && StaffConfig.get().autoSnapshotBeforeDebit) {
-				Mods.inventory().capture(offender, "Before rollback debit", "system",
-						io.github.alphain24.staffcore.modules.inventory.InventoryModule.Kind.ROUTINE);
-			}
-
 			// Around them as well as around the scene. Walking away with the haul and
 			// dropping it was otherwise a complete defence against the sweep above.
 			fromGround += sweepGround(level, owed,
 					offender.getBoundingBox().inflate(OFFENDER_SWEEP));
 
-			fromInventory = ItemDebit.debit(offender, owed);
+			// Through the gateway, which takes the before-picture and writes the audit row
+			// itself. Taking items out of somebody's inventory on the strength of a log query
+			// is exactly the kind of action that has to leave a record whether or not the
+			// query turns out to have been right — so it is no longer optional, and the
+			// hand-rolled capture that used to sit here would now be a duplicate.
+			fromInventory = InventoryGateway.take(offender, InventoryGateway.Origin.ROLLBACK_DEBIT,
+					staffName == null ? "system" : staffName, reason, owed).items();
 			fromEnderChest = debitContainer(offender.getEnderChestInventory(), owed);
 		}
 
@@ -181,7 +179,7 @@ public final class LootRecovery {
 		// distance and through an unloaded chunk, because it asks the log rather than the
 		// world — and the only one that can reach items a third party walked off with.
 		int fromPickers = sweepPickers(level, owed, scene, radius, windowMs, playerName, reason,
-				refKind, refId);
+				refKind, refId, staffName);
 
 		int queued = queue(level, playerName, owed, reason, refKind, refId);
 
@@ -210,12 +208,8 @@ public final class LootRecovery {
 		ServerPlayer staff = level.getServer().getPlayerList().getPlayerByName(staffName);
 		if (staff == null) return 0;
 
-		if (StaffConfig.get().autoSnapshotBeforeDebit) {
-			Mods.inventory().capture(staff, "Before rollback reclaim", "system",
-					io.github.alphain24.staffcore.modules.inventory.InventoryModule.Kind.ROUTINE);
-		}
-
-		int taken = ItemDebit.debit(staff, owed);
+		int taken = InventoryGateway.take(staff, InventoryGateway.Origin.ROLLBACK_DEBIT,
+				staffName, "picked up at the scene of a rollback", owed).items();
 		taken += debitContainer(staff.getEnderChestInventory(), owed);
 
 		if (taken > 0) {
@@ -238,7 +232,7 @@ public final class LootRecovery {
 	public static int reclaimFromPickers(ServerLevel level, Map<Item, Integer> owed,
 			BlockPos scene, int radius, long windowMs, String owner, String reason) {
 
-		return sweepPickers(level, owed, scene, radius, windowMs, owner, reason, null, null);
+		return sweepPickers(level, owed, scene, radius, windowMs, owner, reason, null, null, null);
 	}
 
 	/**
@@ -259,7 +253,8 @@ public final class LootRecovery {
 	 * @param owner the player the items belong to, left alone; null when there is no owner
 	 */
 	private static int sweepPickers(ServerLevel level, Map<Item, Integer> owed, BlockPos scene,
-			int radius, long windowMs, String owner, String reason, String refKind, Long refId) {
+			int radius, long windowMs, String owner, String reason, String refKind, Long refId,
+			String staffName) {
 
 		if (scene == null || !StaffConfig.get().logItemPickups) return 0;
 		if (owed.values().stream().noneMatch(due -> due != null && due > 0)) return 0;
@@ -281,12 +276,9 @@ public final class LootRecovery {
 
 			ServerPlayer picker = level.getServer().getPlayerList().getPlayerByName(name);
 			if (picker != null) {
-				if (StaffConfig.get().autoSnapshotBeforeDebit) {
-					Mods.inventory().capture(picker, "Before rollback reclaim", "system",
-							io.github.alphain24.staffcore.modules.inventory.InventoryModule.Kind.ROUTINE);
-				}
-
-				int got = ItemDebit.debit(picker, theirs);
+				int got = InventoryGateway.take(picker, InventoryGateway.Origin.ROLLBACK_DEBIT,
+						staffName == null ? "system" : staffName,
+						"picked up items belonging to a rollback", theirs).items();
 				got += debitContainer(picker.getEnderChestInventory(), theirs);
 				taken += got;
 

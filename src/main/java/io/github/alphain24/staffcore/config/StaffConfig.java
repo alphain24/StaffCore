@@ -236,7 +236,12 @@ public final class StaffConfig {
 	 * opening is already announced in staff chat; this makes it answerable as well, and
 	 * protects the staff member as much as the player — "it was already missing" is a claim
 	 * that needs evidence pointing either way.
+	 * <p>
+	 * <b>No longer switches anything off.</b> Every inventory mutation now goes through
+	 * {@code InventoryGateway}, which snapshots unconditionally: a door with an exemption is
+	 * not a door. Kept so existing config files still load, and honest about doing nothing.
 	 */
+	@Deprecated
 	public boolean autoSnapshotOnStaffEdit = true;
 
 	/**
@@ -245,7 +250,12 @@ public final class StaffConfig {
 	 * Rollback now debits an offender's inventory to stop repairs duplicating items. That is
 	 * correct, and it is also the mod reaching into a player's inventory on the strength of a
 	 * log query — which is exactly the kind of action that should leave a before-picture.
+	 * <p>
+	 * <b>No longer switches anything off</b>, for the same reason as
+	 * {@link #autoSnapshotOnStaffEdit}: the gateway snapshots every mutation whatever this
+	 * says. Kept so existing config files still load.
 	 */
+	@Deprecated
 	public boolean autoSnapshotBeforeDebit = true;
 
 	// ---- storage -------------------------------------------------------------

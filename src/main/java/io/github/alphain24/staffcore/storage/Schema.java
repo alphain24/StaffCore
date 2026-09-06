@@ -497,6 +497,29 @@ final class Schema {
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status, created_at)");
+
+		// Every write into a player's inventory, whoever made it and why. Punishments have
+		// had one door and one record for a long time; item movement had four doors and no
+		// record at all, and item loss is the one that cannot be undone by apologising.
+		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS inventory_audit (
+				    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+				    origin       TEXT    NOT NULL,
+				    direction    TEXT    NOT NULL,
+				    actor        TEXT    NOT NULL,
+				    target_uuid  TEXT    NOT NULL,
+				    target_name  TEXT    NOT NULL,
+				    reason       TEXT    NOT NULL,
+				    items        TEXT    NOT NULL,
+				    item_count   INTEGER NOT NULL,
+				    snapshot_id  INTEGER,
+				    created_at   INTEGER NOT NULL
+				)
+				""");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_inventory_audit_target "
+				+ "ON inventory_audit(target_uuid, created_at)");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_inventory_audit_origin "
+				+ "ON inventory_audit(origin, created_at)");
 	}
 
 	// ------------------------------------------------------------------ upgrades
@@ -668,6 +691,31 @@ final class Schema {
 							+ "ON pickup_log(world, x, z, created_at)");
 					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pickup_player "
 							+ "ON pickup_log(player_name, created_at)");
+				}
+			},
+
+			// 11 - one audit row per inventory mutation, whichever subsystem made it.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS inventory_audit (
+							    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+							    origin       TEXT    NOT NULL,
+							    direction    TEXT    NOT NULL,
+							    actor        TEXT    NOT NULL,
+							    target_uuid  TEXT    NOT NULL,
+							    target_name  TEXT    NOT NULL,
+							    reason       TEXT    NOT NULL,
+							    items        TEXT    NOT NULL,
+							    item_count   INTEGER NOT NULL,
+							    snapshot_id  INTEGER,
+							    created_at   INTEGER NOT NULL
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_inventory_audit_target "
+							+ "ON inventory_audit(target_uuid, created_at)");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_inventory_audit_origin "
+							+ "ON inventory_audit(origin, created_at)");
 				}
 			}
 	);
