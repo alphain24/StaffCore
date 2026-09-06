@@ -515,11 +515,33 @@ public final class ContainerWatch {
 			long windowMs, Map<net.minecraft.world.item.Item, Integer> owed,
 			java.util.Set<BlockPos> keepFilled) {
 
+		return reclaimBanked(level, player, windowMs, owed, keepFilled, false);
+	}
+
+	/**
+	 * The same, optionally counting instead of taking.
+	 * <p>
+	 * The dry run exists so a preview can say what would be charged. It shares this method
+	 * rather than reimplementing the search because a preview built from a second copy of the
+	 * logic is a preview of something nobody is going to run — the same reason the noise
+	 * filter's first test passed while the query it was supposed to be testing was broken.
+	 * <p>
+	 * Counting leaves {@code owed} untouched, so a caller can preview and then act on the
+	 * same map.
+	 */
+	public int reclaimBanked(net.minecraft.server.level.ServerLevel level, String player,
+			long windowMs, Map<net.minecraft.world.item.Item, Integer> owed,
+			java.util.Set<BlockPos> keepFilled, boolean dryRun) {
+
 		if (player == null || owed.isEmpty() || !StaffCore.storage().isReady()) return 0;
 
 		long cutoff = System.currentTimeMillis() - windowMs;
 		String world = Mc.dimensionId(level);
 		int reclaimed = 0;
+
+		// A dry run must not touch the caller's map, so what it would have taken is tracked
+		// alongside instead and subtracted when the budget for each deposit is worked out.
+		Map<net.minecraft.world.item.Item, Integer> counted = new java.util.HashMap<>();
 
 		String sql = """
 				SELECT * FROM container_log
@@ -555,15 +577,23 @@ public final class ContainerWatch {
 
 				Integer due = owed.get(logged.getItem());
 				if (due == null || due <= 0) continue;
+				if (dryRun) due -= counted.getOrDefault(logged.getItem(), 0);
+				if (due <= 0) continue;
 
 				// Never take more than was deposited here, and never more than is owed —
 				// a chest the offender also had legitimate items in keeps them.
 				int budget = Math.min(due, deposit.count());
-				int taken = takeFrom(container, logged, budget);
+				int taken = takeFrom(container, logged, budget, dryRun);
 				if (taken == 0) continue;
 
-				owed.put(logged.getItem(), due - taken);
 				reclaimed += taken;
+				if (dryRun) {
+					// Counting only, but the running total still has to come down or every
+					// deposit of the same item would be counted against the same debt.
+					counted.merge(logged.getItem(), taken, Integer::sum);
+					continue;
+				}
+				owed.put(logged.getItem(), due - taken);
 			}
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Grief] banked-loot reclaim failed", e);
@@ -572,11 +602,15 @@ public final class ContainerWatch {
 	}
 
 	/** Removes up to {@code budget} matching items from one container. */
-	private int takeFrom(Container container, ItemStack match, int budget) {
+	private int takeFrom(Container container, ItemStack match, int budget, boolean dryRun) {
 		int taken = 0;
 		for (int slot = 0; slot < container.getContainerSize() && taken < budget; slot++) {
 			ItemStack inSlot = container.getItem(slot);
 			if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, match)) continue;
+			if (dryRun) {
+				taken += Math.min(budget - taken, inSlot.getCount());
+				continue;
+			}
 
 			int take = Math.min(budget - taken, inSlot.getCount());
 			inSlot.shrink(take);

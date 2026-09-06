@@ -1130,6 +1130,20 @@ public final class StaffCommands {
 					Theme.MUTED), false);
 		}
 
+		// The other half of the operation, and the half that cannot be undone by running it
+		// again. Putting blocks back is visible and reversible; taking items off a player who
+		// is not online to see it happen is neither, and the preview used to show only the
+		// first. A rollback is two things, so a preview of one of them is not a preview.
+		if (!r.charges().isEmpty()) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  Who would be charged:", Theme.TEXT), false);
+			for (var charge : r.charges()) {
+				ctx.getSource().sendSuccess(() -> Icon.text(
+						"    " + charge.player() + (charge.online() ? "" : " (offline)")
+								+ " — " + charge.items() + ", " + charge.route(),
+						charge.online() ? Theme.MUTED : Theme.BAD), false);
+			}
+		}
+
 		if (r.itemsDeferred() > 0) {
 			ctx.getSource().sendSuccess(() -> Theme.warn(
 					"  " + r.itemsDeferred() + " stack(s) have nowhere to go — those chests are full."), false);
@@ -1308,6 +1322,13 @@ public final class StaffCommands {
 		staff.then(Commands.literal("owed")
 				.requires(src -> Permissions.check(src, Nodes.ROLLBACK))
 				.executes(StaffCommands::owedList)
+				// Symmetrical with /staff rollback undo. A debit is the half of a rollback
+				// that removes items from somebody, and it was the half with no way back.
+				.then(Commands.literal("undo")
+						.then(Commands.argument("id", com.mojang.brigadier.arguments.LongArgumentType.longArg(1))
+								.executes(ctx -> owedUndo(ctx, false))
+								.then(Commands.literal("confirm")
+										.executes(ctx -> owedUndo(ctx, true)))))
 				.then(Commands.literal("forgive")
 						.then(Commands.argument("player", StringArgumentType.word())
 								.executes(ctx -> owedForgive(ctx, false))
@@ -1703,6 +1724,58 @@ public final class StaffCommands {
 	 * either. Confirmed rather than instant, since forgiving a real griefer's debt by
 	 * mistyping a name should take more than one keystroke.
 	 */
+	/**
+	 * Gives back what a debit took.
+	 * <p>
+	 * The counterpart to {@code /staff rollback undo}, and the reason it had to exist: a
+	 * rollback is two operations, and only one of them could be taken back. Putting blocks
+	 * back is visible and reversible by running the undo; removing items from somebody's
+	 * inventory on the strength of a log query was neither, and the person it goes wrong for
+	 * is most often the one who was offline when it happened.
+	 * <p>
+	 * Shows what it would do before doing it, for the same reason forgiveness does: the
+	 * argument is an opaque number, and mistyping one should not cost items.
+	 */
+	private static int owedUndo(CommandContext<CommandSourceStack> ctx, boolean confirmed) {
+		long id = com.mojang.brigadier.arguments.LongArgumentType.getLong(ctx, "id");
+		var gateway = io.github.alphain24.staffcore.inventory.InventoryGateway.describeReversal(id);
+
+		if (!gateway.possible()) {
+			ctx.getSource().sendFailure(Theme.bad(gateway.problem()));
+			return 0;
+		}
+
+		if (!confirmed) {
+			ctx.getSource().sendSuccess(() -> Theme.warn(
+					"Debit #" + id + " took " + gateway.items() + " from "
+							+ gateway.targetName() + "."), false);
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  /staff owed undo " + id + " confirm  gives it back.", Theme.MUTED), false);
+			return 1;
+		}
+
+		MinecraftServer server = ctx.getSource().getServer();
+		ServerPlayer target = server.getPlayerList().getPlayer(gateway.targetId());
+		if (target == null) {
+			ctx.getSource().sendFailure(Theme.bad(
+					gateway.targetName() + " is offline. Giving items back needs them here, "
+							+ "so this can wait until they next log in."));
+			return 0;
+		}
+
+		audit(ctx, "/staff owed undo " + id);
+		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.reverse(
+				id, target, Mc.name(ctx.getSource().getPlayer()));
+
+		if (outcome.wasRefused()) {
+			ctx.getSource().sendFailure(Theme.bad("Refused: " + outcome.refused()));
+			return 0;
+		}
+		ctx.getSource().sendSuccess(() -> Theme.good(
+				"Gave " + outcome.items() + " item(s) back to " + gateway.targetName() + "."), true);
+		return 1;
+	}
+
 	private static int owedForgive(CommandContext<CommandSourceStack> ctx, boolean confirmed) {
 		String name = StringArgumentType.getString(ctx, "player");
 		MinecraftServer server = ctx.getSource().getServer();

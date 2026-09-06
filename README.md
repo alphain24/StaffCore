@@ -327,6 +327,7 @@ has already logged off.
 | `/staff anticheat test <player> [n]` | `staff.reload` | Push a synthetic finding through the pipeline |
 | `/staff owed [player]` | `grief.rollback` | Who still owes items from a rollback |
 | `/staff owed forgive <player> [confirm]` | `grief.rollback` | Write a debt off |
+| `/staff owed undo <id> [confirm]` | `grief.rollback` | Give back what a debit took |
 | `/staff reload` | `staff.reload` | Re-read config and permission groups |
 | `/staff status` | `staff.reload` | Modules, TPS, storage, and which hooks are broken |
 | **`/report <player> <reason…>`** | `report.use` | **Open to everyone** — stays at root |
@@ -384,7 +385,7 @@ Changing a default in the code alone would never reach a server that has already
 
 ```jsonc
 {
-  "configVersion": 2,                 // managed by StaffCore; don't edit
+  "configVersion": 3,                 // managed by StaffCore; don't edit
   "discordWebhookUrl": "",            // empty = bridge off
   "requireReason": true,
   "publicPunishmentBroadcast": true,  // false = staff-only announcements
@@ -414,8 +415,8 @@ Changing a default in the code alone would never reach a server that has already
   "logFireDamage": true,               // blocks fire burns away, so a burned build comes back
   "deathDropSweepRadius": 16,          // how far around a death to look for its items
   "rollbackReclaimsDrops": true,       // without this, rollback duplicates items
-  "rollbackChasesBankedLoot": true,    // follow loot stashed in chests outside the radius
-  "rollbackReclaimsFromStaff": true,   // take back what you picked up at the scene yourself
+  "rollbackChasesBankedLoot": false,   // follow loot stashed in chests outside the radius
+  "rollbackReclaimsFromStaff": false,  // take back what you picked up at the scene yourself
   "logItemPickups": true,              // who picked what up; makes recovery work at any distance
   "pickupLogRetentionMinutes": 180,    // pickups are kept for hours, not days
   "rollbackPointRetentionDays": 7,     // how long a rollback stays undoable; 0 disables undo

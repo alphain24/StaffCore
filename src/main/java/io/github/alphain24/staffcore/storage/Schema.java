@@ -513,7 +513,12 @@ final class Schema {
 				    items        TEXT    NOT NULL,
 				    item_count   INTEGER NOT NULL,
 				    snapshot_id  INTEGER,
-				    created_at   INTEGER NOT NULL
+				    created_at   INTEGER NOT NULL,
+				    items_data   TEXT,
+				    ref_kind     TEXT,
+				    ref_id       INTEGER,
+				    reversed_at  INTEGER,
+				    reversed_by  TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_inventory_audit_target "
@@ -717,6 +722,17 @@ final class Schema {
 					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_inventory_audit_origin "
 							+ "ON inventory_audit(origin, created_at)");
 				}
+			},
+
+			// 12 - make an audit row reversible. The human-readable item list is for reading;
+			// undoing needs the same facts in a form a machine can act on, plus somewhere to
+			// mark that it has already been given back so it cannot be given back twice.
+			conn -> {
+				addColumn(conn, "inventory_audit", "items_data", "TEXT");
+				addColumn(conn, "inventory_audit", "ref_kind", "TEXT");
+				addColumn(conn, "inventory_audit", "ref_id", "INTEGER");
+				addColumn(conn, "inventory_audit", "reversed_at", "INTEGER");
+				addColumn(conn, "inventory_audit", "reversed_by", "TEXT");
 			}
 	);
 
@@ -748,6 +764,11 @@ final class Schema {
 			{"block_log", "gamemode", "TEXT"},
 			{"rollback_change", "prior_state", "TEXT"},
 			{"pending_actions", "ref_kind", "TEXT"},
+			{"inventory_audit", "items_data", "TEXT"},
+			{"inventory_audit", "ref_kind", "TEXT"},
+			{"inventory_audit", "ref_id", "INTEGER"},
+			{"inventory_audit", "reversed_at", "INTEGER"},
+			{"inventory_audit", "reversed_by", "TEXT"},
 	};
 
 	/**

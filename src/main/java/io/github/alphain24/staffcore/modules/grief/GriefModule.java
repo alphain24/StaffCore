@@ -1387,10 +1387,10 @@ public class GriefModule implements Module {
 	 */
 	public record RollbackResult(int reverted, int skipped, int dropsRemoved, int itemsReturned,
 			int itemsDeferred, int bankedRemoved, int debitsQueued, List<RestoredItem> restoring,
-			Map<BlockPos, BlockState> proposed) {
+			Map<BlockPos, BlockState> proposed, List<LootRecovery.Charge> charges) {
 
 		static final RollbackResult NOTHING =
-				new RollbackResult(0, 0, 0, 0, 0, 0, 0, List.of(), Map.of());
+				new RollbackResult(0, 0, 0, 0, 0, 0, 0, List.of(), Map.of(), List.of());
 	}
 
 	/**
@@ -1558,7 +1558,9 @@ public class GriefModule implements Module {
 
 		if (dryRun) {
 			return new RollbackResult(reverted, skipped, 0, containerResult.restored(),
-					containerResult.deferred(), 0, 0, freeze(tally), proposed);
+					containerResult.deferred(), 0, 0, freeze(tally), proposed,
+					previewCharges(level, centre, radius, restored, player, windowMs,
+							owedContents));
 		}
 
 		Reclaim reclaim = reclaimDrops(level, centre, radius, restored, player, windowMs,
@@ -1571,7 +1573,27 @@ public class GriefModule implements Module {
 
 		return new RollbackResult(reverted, skipped, reclaim.fromGround() + reclaim.fromInventory(),
 				containerResult.restored(), containerResult.deferred(),
-				reclaim.fromChests(), reclaim.queued(), freeze(tally), Map.of());
+				reclaim.fromChests(), reclaim.queued(), freeze(tally), Map.of(), List.of());
+	}
+
+	/**
+	 * Who a rollback would charge, worked out the same way the real one works it out.
+	 * <p>
+	 * The owed map is built here exactly as {@link #reclaimDrops} builds it, because a
+	 * preview of a different sum is not a preview.
+	 */
+	private List<LootRecovery.Charge> previewCharges(ServerLevel level, BlockPos centre,
+			int radius, List<Item> restored, String player, long windowMs,
+			Map<Item, Integer> contents) {
+
+		if (!StaffConfig.get().rollbackReclaimsDrops) return List.of();
+		if (restored.isEmpty() && contents.isEmpty()) return List.of();
+
+		Map<Item, Integer> owed = new HashMap<>();
+		for (Item item : restored) owed.merge(item, 1, Integer::sum);
+		contents.forEach((item, count) -> owed.merge(item, count, Integer::sum));
+
+		return LootRecovery.preview(level, player, owed, centre, radius, windowMs, containers);
 	}
 
 	/** Biggest first, so a preview that has to truncate keeps the part worth reading. */

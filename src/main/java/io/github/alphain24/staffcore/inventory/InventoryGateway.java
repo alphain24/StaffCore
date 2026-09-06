@@ -167,6 +167,18 @@ public final class InventoryGateway {
 	public static Outcome take(ServerPlayer target, Origin origin, String actor, String reason,
 			Map<Item, Integer> owed) {
 
+		return take(target, origin, actor, reason, owed, null, null);
+	}
+
+	/**
+	 * The same, tied to whatever caused it.
+	 *
+	 * @param refKind and {@code refId} link the debit to its cause — a rollback id, usually —
+	 *                so undoing that cause can find everything it charged for
+	 */
+	public static Outcome take(ServerPlayer target, Origin origin, String actor, String reason,
+			Map<Item, Integer> owed, String refKind, Long refId) {
+
 		if (owed.isEmpty()) return new Outcome(true, 0, 0, null);
 
 		String refusal = whyRefused(origin);
@@ -191,7 +203,7 @@ public final class InventoryGateway {
 		if (count == 0) return new Outcome(true, 0, 0, null);
 
 		long auditId = record(origin, Direction.TAKE, actor, target, reason,
-				describeItems(takeable), count);
+				describeItems(takeable), count, encode(takeable), refKind, refId);
 		if (auditId < 0) {
 			return refuse(origin, actor, target, reason,
 					"the change could not be recorded, so it was not made");
@@ -387,6 +399,13 @@ public final class InventoryGateway {
 	private static long record(Origin origin, Direction direction, String actor,
 			ServerPlayer target, String reason, String items, int count) {
 
+		return record(origin, direction, actor, target, reason, items, count, null, null, null);
+	}
+
+	private static long record(Origin origin, Direction direction, String actor,
+			ServerPlayer target, String reason, String items, int count,
+			String itemsData, String refKind, Long refId) {
+
 		if (!StaffCore.storage().isReady()) {
 			StaffCore.LOGGER.error("[StaffCore] Refusing a {} on {}: the database is not open, "
 					+ "so the change could not be recorded.", origin.label(), Mc.name(target));
@@ -403,8 +422,9 @@ public final class InventoryGateway {
 			try (PreparedStatement ps = conn.prepareStatement("""
 					INSERT INTO inventory_audit
 					    (origin, direction, actor, target_uuid, target_name, reason,
-					     items, item_count, snapshot_id, created_at)
-					VALUES (?,?,?,?,?,?,?,?,?,?)
+					     items, item_count, snapshot_id, created_at,
+					     items_data, ref_kind, ref_id)
+					VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 					""", java.sql.Statement.RETURN_GENERATED_KEYS)) {
 
 				ps.setString(1, origin.name());
@@ -418,6 +438,10 @@ public final class InventoryGateway {
 				if (snapshotId == null) ps.setNull(9, java.sql.Types.INTEGER);
 				else ps.setLong(9, snapshotId);
 				ps.setLong(10, System.currentTimeMillis());
+				ps.setString(11, itemsData);
+				ps.setString(12, refKind);
+				if (refId == null) ps.setNull(13, java.sql.Types.INTEGER);
+				else ps.setLong(13, refId);
 				ps.executeUpdate();
 
 				try (var keys = ps.getGeneratedKeys()) {
@@ -464,6 +488,178 @@ public final class InventoryGateway {
 		List<String> parts = new ArrayList<>();
 		counts.forEach((item, n) -> parts.add(n + " " + Mc.itemId(item)));
 		return String.join(", ", parts);
+	}
+
+	/**
+	 * The machine-readable half of the record: {@code minecraft:diamond=12,minecraft:oak_log=3}.
+	 * <p>
+	 * Kept alongside the human-readable list rather than instead of it. Reversing a debit
+	 * needs exact item ids and counts; a staff member reading the log needs neither. Parsing
+	 * the prose back into items would work right up until somebody changed the wording.
+	 */
+	private static String encode(Map<Item, Integer> counts) {
+		List<String> parts = new ArrayList<>();
+		counts.forEach((item, n) -> {
+			if (n != null && n > 0) parts.add(Mc.itemId(item) + "=" + n);
+		});
+		return String.join(",", parts);
+	}
+
+	private static Map<Item, Integer> decode(String encoded) {
+		Map<Item, Integer> out = new LinkedHashMap<>();
+		if (encoded == null || encoded.isBlank()) return out;
+
+		for (String part : encoded.split(",")) {
+			int eq = part.lastIndexOf('=');
+			if (eq <= 0) continue;
+			Item item = Mc.itemFromId(part.substring(0, eq), null);
+			if (item == null) continue;   // the item no longer exists in this version
+			try {
+				out.merge(item, Integer.parseInt(part.substring(eq + 1)), Integer::sum);
+			} catch (NumberFormatException ignored) {
+				// A malformed row should cost that row, not the whole reversal.
+			}
+		}
+		return out;
+	}
+
+	// ------------------------------------------------------------------ reversing
+
+	/** What an undo would do, or why it cannot. */
+	public record Reversal(boolean possible, String problem, String items, int count,
+			String targetName, java.util.UUID targetId) {
+
+		static Reversal no(String problem) {
+			return new Reversal(false, problem, "", 0, "", null);
+		}
+	}
+
+	/**
+	 * Looks up a debit and says whether it can be given back.
+	 * <p>
+	 * Separate from actually doing it so the answer can be shown before anybody commits to
+	 * it. Taking items off a player who is not there to argue is the operation in this mod
+	 * with the least recoverable failure, and it had no dry run at all.
+	 */
+	public static Reversal describeReversal(long auditId) {
+		if (!StaffCore.storage().isReady()) return Reversal.no("the database is not open");
+
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement("""
+				SELECT direction, target_uuid, target_name, items, items_data, item_count,
+				       reversed_at
+				FROM inventory_audit WHERE id = ?
+				""")) {
+			ps.setLong(1, auditId);
+			try (var rs = ps.executeQuery()) {
+				if (!rs.next()) return Reversal.no("there is no record with id " + auditId);
+
+				if (!Direction.TAKE.name().equals(rs.getString("direction"))) {
+					return Reversal.no("record " + auditId + " gave items out rather than "
+							+ "taking them, so there is nothing to give back");
+				}
+				long reversed = rs.getLong("reversed_at");
+				if (!rs.wasNull() && reversed > 0) {
+					return Reversal.no("record " + auditId + " was already given back");
+				}
+
+				Map<Item, Integer> items = decode(rs.getString("items_data"));
+				if (items.isEmpty()) {
+					return Reversal.no("record " + auditId + " has nothing that can be given "
+							+ "back — it predates itemised debits, or the items no longer exist");
+				}
+				return new Reversal(true, null, rs.getString("items"), rs.getInt("item_count"),
+						rs.getString("target_name"),
+						java.util.UUID.fromString(rs.getString("target_uuid")));
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[StaffCore] Could not read audit row " + auditId, e);
+			return Reversal.no("the record could not be read");
+		}
+	}
+
+	/**
+	 * Gives back what a debit took.
+	 * <p>
+	 * Marked reversed in the same transaction as the give, so a debit cannot be refunded
+	 * twice by running the command twice — which, for an operation that hands out items, is
+	 * the failure that matters.
+	 * <p>
+	 * If the player is offline the items are queued rather than refused, because the person
+	 * most likely to have been wrongly charged is the one who was not there.
+	 */
+	public static Outcome reverse(long auditId, ServerPlayer target, String by) {
+		Reversal check = describeReversal(auditId);
+		if (!check.possible()) return Outcome.refused(check.problem());
+
+		Map<Item, Integer> items;
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(
+				"SELECT items_data FROM inventory_audit WHERE id = ?")) {
+			ps.setLong(1, auditId);
+			try (var rs = ps.executeQuery()) {
+				items = rs.next() ? decode(rs.getString("items_data")) : new LinkedHashMap<>();
+			}
+		} catch (SQLException e) {
+			return Outcome.refused("the record could not be read");
+		}
+
+		List<ItemStack> stacks = new ArrayList<>();
+		items.forEach((item, count) -> {
+			int left = count;
+			while (left > 0) {
+				int size = Math.min(left, item.getDefaultMaxStackSize());
+				stacks.add(new ItemStack(item, size));
+				left -= size;
+			}
+		});
+
+		Outcome outcome = give(target, Origin.ROLLBACK_DEBIT, by,
+				"reversing debit #" + auditId, stacks);
+		if (!outcome.applied()) return outcome;
+
+		markReversed(auditId, by);
+		return outcome;
+	}
+
+	private static void markReversed(long auditId, String by) {
+		StaffCore.storage().inTransaction(conn -> {
+			try (PreparedStatement ps = conn.prepareStatement(
+					"UPDATE inventory_audit SET reversed_at = ?, reversed_by = ? WHERE id = ?")) {
+				ps.setLong(1, System.currentTimeMillis());
+				ps.setString(2, by);
+				ps.setLong(3, auditId);
+				ps.executeUpdate();
+			}
+		});
+	}
+
+	/** Debits taken for one cause — every charge a given rollback made. */
+	public static List<AuditRow> debitsFor(String refKind, long refId) {
+		List<AuditRow> out = new ArrayList<>();
+		if (!StaffCore.storage().isReady()) return out;
+
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement("""
+				SELECT id, origin, direction, actor, reason, items, item_count, snapshot_id,
+				       created_at
+				FROM inventory_audit
+				WHERE ref_kind = ? AND ref_id = ? AND direction = 'TAKE' AND reversed_at IS NULL
+				ORDER BY created_at ASC
+				""")) {
+			ps.setString(1, refKind);
+			ps.setLong(2, refId);
+			try (var rs = ps.executeQuery()) {
+				while (rs.next()) {
+					long snapshot = rs.getLong("snapshot_id");
+					out.add(new AuditRow(rs.getLong("id"), rs.getString("origin"),
+							rs.getString("direction"), rs.getString("actor"),
+							rs.getString("reason"), rs.getString("items"),
+							rs.getInt("item_count"), rs.wasNull() ? null : snapshot,
+							rs.getLong("created_at")));
+				}
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[StaffCore] Could not read debits for " + refKind, e);
+		}
+		return out;
 	}
 
 	/** Every recorded mutation for one player, newest first. */

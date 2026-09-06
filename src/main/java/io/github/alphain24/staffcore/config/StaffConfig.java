@@ -37,7 +37,7 @@ public final class StaffConfig {
 	public int configVersion = 0;
 
 	/** The version this build writes. Raise it when a default changes and should propagate. */
-	private static final int CURRENT_VERSION = 2;
+	private static final int CURRENT_VERSION = 3;
 
 	// ---- discord -------------------------------------------------------------
 	public String discordWebhookUrl = "";
@@ -109,7 +109,7 @@ public final class StaffConfig {
 	 * by whom and when, so it is not. Only that player's own deposits inside the same time
 	 * window are touched, and only up to what is actually owed.
 	 */
-	public boolean rollbackChasesBankedLoot = true;
+	public boolean rollbackChasesBankedLoot = false;
 	/** Blocks broken inside the window before staff are alerted. 0 disables. */
 	public int massGriefBlocks = 120;
 	public int massGriefWindowSeconds = 20;
@@ -341,7 +341,7 @@ public final class StaffConfig {
 	 * restore prints items. Bounded by the shortfall and by the item types involved, applied
 	 * only to whoever ran the command, and a snapshot is taken first.
 	 */
-	public boolean rollbackReclaimsFromStaff = true;
+	public boolean rollbackReclaimsFromStaff = false;
 
 	/**
 	 * Record blocks destroyed by explosions, so they can be rolled back.
@@ -515,6 +515,25 @@ public final class StaffConfig {
 		// matches every one and stays right when the next mob is added.
 		if (from < 2) {
 			migrateIllegalItems(cfg);
+		}
+
+		// v3: two rollback behaviours became opt-in. Both are correct and both are
+		// surprising — one follows stolen items into chests outside the rollback radius, the
+		// other takes items back off the staff member who ran it. Correct and surprising is
+		// the wrong combination for something that removes items from a player's inventory,
+		// so new servers now start with them off.
+		//
+		// Existing servers keep what they had. Changing a default is a decision for a new
+		// install; changing behaviour under a running server is somebody logging in to find
+		// their rollbacks quietly stopped doing half of what they did yesterday.
+		if (from < 3) {
+			cfg.rollbackChasesBankedLoot = true;
+			cfg.rollbackReclaimsFromStaff = true;
+			StaffCore.LOGGER.info(
+					"[StaffCore] Config upgrade: rollbackChasesBankedLoot and "
+							+ "rollbackReclaimsFromStaff are now off by default for new servers. "
+							+ "Yours keep their current behaviour. Set them to false in "
+							+ "config/staffcore.json if you would rather take the new default.");
 		}
 
 		cfg.configVersion = CURRENT_VERSION;

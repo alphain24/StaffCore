@@ -137,7 +137,7 @@ public final class LootRecovery {
 		// pickup log still has to be asked, because a person may well have pocketed what the
 		// creeper scattered. Those items have an owner even when the damage does not.
 		if (playerName == null || !GriefModule.isPlayerSource(playerName)) {
-			int staffOnly = sweepStaff(level, staffName, owed);
+			int staffOnly = sweepStaff(level, staffName, owed, refKind, refId);
 			int pickedUp = sweepPickers(level, owed, scene, radius, windowMs, null, reason,
 					refKind, refId, staffName);
 			return new Result(fromGround, 0, 0, 0, staffOnly, pickedUp, 0);
@@ -159,7 +159,7 @@ public final class LootRecovery {
 			// query turns out to have been right — so it is no longer optional, and the
 			// hand-rolled capture that used to sit here would now be a duplicate.
 			fromInventory = InventoryGateway.take(offender, InventoryGateway.Origin.ROLLBACK_DEBIT,
-					staffName == null ? "system" : staffName, reason, owed).items();
+					staffName == null ? "system" : staffName, reason, owed, refKind, refId).items();
 			fromEnderChest = debitContainer(offender.getEnderChestInventory(), owed);
 		}
 
@@ -173,7 +173,7 @@ public final class LootRecovery {
 		// found nothing, the chest was refilled anyway, and the difference was printed.
 		// Last, and only for what is still missing. Anything the offender could pay has
 		// already been taken off them, so what reaches here is a genuine shortfall.
-		int fromStaff = sweepStaff(level, staffName, owed);
+		int fromStaff = sweepStaff(level, staffName, owed, refKind, refId);
 
 		// Whoever else pocketed something at this scene. This is the route that works at any
 		// distance and through an unloaded chunk, because it asks the log rather than the
@@ -201,7 +201,8 @@ public final class LootRecovery {
 	 * chose to run the rollback — never a bystander. A snapshot is taken first, so staff who
 	 * lose something they were legitimately carrying can get it straight back.
 	 */
-	private static int sweepStaff(ServerLevel level, String staffName, Map<Item, Integer> owed) {
+	private static int sweepStaff(ServerLevel level, String staffName, Map<Item, Integer> owed,
+			String refKind, Long refId) {
 		if (staffName == null || !StaffConfig.get().rollbackReclaimsFromStaff) return 0;
 		if (owed.values().stream().noneMatch(due -> due != null && due > 0)) return 0;
 
@@ -209,7 +210,7 @@ public final class LootRecovery {
 		if (staff == null) return 0;
 
 		int taken = InventoryGateway.take(staff, InventoryGateway.Origin.ROLLBACK_DEBIT,
-				staffName, "picked up at the scene of a rollback", owed).items();
+				staffName, "picked up at the scene of a rollback", owed, refKind, refId).items();
 		taken += debitContainer(staff.getEnderChestInventory(), owed);
 
 		if (taken > 0) {
@@ -278,7 +279,7 @@ public final class LootRecovery {
 			if (picker != null) {
 				int got = InventoryGateway.take(picker, InventoryGateway.Origin.ROLLBACK_DEBIT,
 						staffName == null ? "system" : staffName,
-						"picked up items belonging to a rollback", theirs).items();
+						"picked up items belonging to a rollback", theirs, refKind, refId).items();
 				got += debitContainer(picker.getEnderChestInventory(), theirs);
 				taken += got;
 
@@ -304,6 +305,130 @@ public final class LootRecovery {
 		// Settled, so a second rollback over the same ground cannot charge for it again.
 		pickups.retire(world, scene, radius, lookback, owner);
 		return taken;
+	}
+
+	// ------------------------------------------------------------------- dry run
+
+	/** One player who would be charged, what for, and by which route. */
+	public record Charge(String player, boolean online, String items, int count, String route) {}
+
+	/**
+	 * Who would be charged what, without charging anybody.
+	 * <p>
+	 * A rollback debit is the operation in this mod with the least recoverable failure: it
+	 * removes items from a player who is very often not online to see it happen, on the
+	 * strength of a log query. Duplication was the stated fear and it drove the whole design;
+	 * deletion is the worse failure and it had no dry run at all. This is that dry run.
+	 * <p>
+	 * Read-only throughout, and the banked-chest search shares the real one rather than
+	 * reimplementing it — a preview built from a second copy of the logic is a preview of
+	 * something nobody is going to run.
+	 */
+	public static java.util.List<Charge> preview(ServerLevel level, String playerName,
+			Map<Item, Integer> owed, BlockPos scene, int radius, long windowMs,
+			ContainerWatch containers) {
+
+		java.util.List<Charge> charges = new java.util.ArrayList<>();
+		if (owed.isEmpty()) return charges;
+
+		// A working copy, so nothing here can decrement the caller's debt.
+		Map<Item, Integer> remaining = new java.util.LinkedHashMap<>();
+		owed.forEach((item, due) -> {
+			if (due != null && due > 0) remaining.put(item, due);
+		});
+
+		// 1. The ground. Unambiguous, and charges nobody.
+		int onGround = countGround(level, remaining, scene, radius);
+		if (onGround > 0) {
+			charges.add(new Charge("—", true, onGround + " item(s)", onGround,
+					"lying on the ground"));
+		}
+
+		// 2. The offender, if they are here.
+		ServerPlayer offender = playerName == null ? null
+				: level.getServer().getPlayerList().getPlayerByName(playerName);
+		if (offender != null) {
+			Map<Item, Integer> found = countHeld(offender, remaining);
+			int total = sum(found);
+			if (total > 0) {
+				charges.add(new Charge(playerName, true, describeOwed(found), total,
+						"their inventory"));
+				found.forEach((item, n) -> remaining.merge(item, -n, Integer::sum));
+			}
+		}
+
+		// 3. Chests they filled outside the radius, when that is switched on.
+		if (StaffConfig.get().rollbackChasesBankedLoot && containers != null && playerName != null) {
+			int banked = containers.reclaimBanked(level, playerName, windowMs, remaining, null, true);
+			if (banked > 0) {
+				charges.add(new Charge(playerName, offender != null, banked + " item(s)", banked,
+						"chests they filled outside the radius"));
+			}
+		}
+
+		// 4. Whoever else pocketed something at the scene.
+		if (scene != null && StaffConfig.get().logItemPickups) {
+			var byPlayer = Mods.grief().pickups()
+					.whoTook(Mc.dimensionId(level), scene, radius, windowMs, playerName, remaining);
+			byPlayer.forEach((name, theirs) -> {
+				int total = sum(theirs);
+				if (total == 0) return;
+				boolean online = level.getServer().getPlayerList().getPlayerByName(name) != null;
+				charges.add(new Charge(name, online, describeOwed(theirs), total,
+						"picked it up at the scene"));
+			});
+		}
+
+		// 5. What is left is owed by somebody who cannot pay it now. Naming this is the
+		//    point of the preview: an offline offender is the one who cannot object.
+		int left = sum(remaining);
+		if (left > 0 && playerName != null) {
+			charges.add(new Charge(playerName, offender != null, describeOwed(remaining), left,
+					offender != null
+							? "not found on them — would be queued as a debt"
+							: "offline — would be queued and collected on next login"));
+		}
+		return charges;
+	}
+
+	private static int countGround(ServerLevel level, Map<Item, Integer> owed, BlockPos scene,
+			int radius) {
+
+		if (scene == null) return 0;
+		int found = 0;
+		for (ItemEntity drop : level.getEntitiesOfClass(ItemEntity.class,
+				new AABB(scene).inflate(radius))) {
+			Integer due = owed.get(drop.getItem().getItem());
+			if (due == null || due <= 0) continue;
+			found += Math.min(due, drop.getItem().getCount());
+		}
+		return found;
+	}
+
+	private static Map<Item, Integer> countHeld(ServerPlayer player, Map<Item, Integer> owed) {
+		Map<Item, Integer> found = new java.util.LinkedHashMap<>();
+		var inv = player.getInventory();
+		for (int slot = 0; slot < inv.getContainerSize(); slot++) {
+			ItemStack stack = inv.getItem(slot);
+			if (stack.isEmpty()) continue;
+			int due = owed.getOrDefault(stack.getItem(), 0)
+					- found.getOrDefault(stack.getItem(), 0);
+			if (due <= 0) continue;
+			found.merge(stack.getItem(), Math.min(due, stack.getCount()), Integer::sum);
+		}
+		return found;
+	}
+
+	private static int sum(Map<Item, Integer> counts) {
+		return counts.values().stream().mapToInt(v -> v == null ? 0 : Math.max(0, v)).sum();
+	}
+
+	private static String describeOwed(Map<Item, Integer> counts) {
+		java.util.List<String> parts = new java.util.ArrayList<>();
+		counts.forEach((item, n) -> {
+			if (n != null && n > 0) parts.add(n + "× " + Mc.itemId(item));
+		});
+		return String.join(", ", parts);
 	}
 
 	/** Removes owed items from item entities inside an area. */
