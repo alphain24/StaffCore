@@ -7,7 +7,7 @@
     "only the affected feature until the injection point is fixed."
   ],
   "required": false,
-  "package": "dev.lebron.staffcore.mixin",
+  "package": "io.github.alphain24.staffcore.mixin",
   "mixins": [
     "BlockItemMixin",
     "CommandsMixin",

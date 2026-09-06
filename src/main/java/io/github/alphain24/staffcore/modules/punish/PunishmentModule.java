@@ -1,0 +1,375 @@
+package io.github.alphain24.staffcore.modules.punish;
+
+import net.minecraft.server.players.NameAndId;
+import io.github.alphain24.staffcore.StaffCore;
+import io.github.alphain24.staffcore.compat.Mc;
+import io.github.alphain24.staffcore.config.StaffConfig;
+import io.github.alphain24.staffcore.gui.Icon;
+import io.github.alphain24.staffcore.gui.Sfx;
+import io.github.alphain24.staffcore.gui.Theme;
+import io.github.alphain24.staffcore.module.Module;
+import io.github.alphain24.staffcore.modules.alerts.AlertsModule;
+import io.github.alphain24.staffcore.permission.Nodes;
+import io.github.alphain24.staffcore.permission.Permissions;
+import io.github.alphain24.staffcore.util.TimeFormat;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Records punishments, enforces them, and announces them.
+ * <p>
+ * {@link #apply} is the single entry point — the GUI, the flat commands and any future
+ * automation all funnel through it, so there is exactly one place where a punishment is
+ * written, enforced, broadcast and mirrored to Discord. Nothing else in the mod calls
+ * {@code disconnect} on a punished player.
+ */
+public class PunishmentModule implements Module {
+
+	@Override
+	public String id() {
+		return "punishment";
+	}
+
+	@Override
+	public String displayName() {
+		return "Punishments";
+	}
+
+	// ------------------------------------------------------------------ the one door
+
+	/**
+	 * Applies a punishment end to end.
+	 *
+	 * @param base       WARN / KICK / MUTE / BAN — the temporary variant is derived from {@code durationMs}
+	 * @param durationMs null for permanent (or for types that have no duration)
+	 * @return the stored record, or null when storage rejected it
+	 */
+	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
+			PunishmentType base, Long durationMs, String reason) {
+		return apply(server, target, staffName, base, durationMs, reason, null);
+	}
+
+	/** As above, tagged with the offence ladder it came from so escalation can count it. */
+	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
+			PunishmentType base, Long durationMs, String reason, String offenceId) {
+
+		PunishmentType type = base.withDuration(durationMs);
+		Long expiresAt = durationMs == null ? null : System.currentTimeMillis() + durationMs;
+		String cleanReason = (reason == null || reason.isBlank()) ? "No reason given" : reason.trim();
+
+		Punishment record = record(target.id(), target.name(), staffName, type,
+				cleanReason, expiresAt, offenceId);
+		if (record == null) return null;
+
+		enforce(server, record);
+		announce(server, record);
+		return record;
+	}
+
+	/** How many times this player has already been done for this offence. */
+	public int countForOffence(UUID target, String offenceId) {
+		Connection c = conn();
+		if (c == null || offenceId == null) return 0;
+		try (PreparedStatement ps = c.prepareStatement(
+				"SELECT COUNT(*) FROM punishments WHERE target_uuid=? AND offence=?")) {
+			ps.setString(1, target.toString());
+			ps.setString(2, offenceId);
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? rs.getInt(1) : 0;
+			}
+		} catch (SQLException e) {
+			return 0;
+		}
+	}
+
+	/** Applies the immediate, in-world consequence. */
+	private void enforce(MinecraftServer server, Punishment p) {
+		ServerPlayer online = server.getPlayerList().getPlayer(p.targetUuid());
+
+		if (p.type().isBan() || p.type() == PunishmentType.KICK) {
+			if (online != null) {
+				Mc.disconnect(online, disconnectScreen(p));
+			}
+			return;
+		}
+
+		if (online == null) return;
+
+		if (p.type().isMute()) {
+			online.sendSystemMessage(Theme.bad("You have been muted — " + p.reason()));
+			online.sendSystemMessage(Theme.warn("Expires: " + p.remaining()));
+			if (StaffConfig.get().allowInGameAppeals) {
+				online.sendSystemMessage(Theme.info("Disagree? Use /appeal <what you want to say>."));
+			}
+			String invite = StaffConfig.get().discordInvite;
+			if (invite != null && !invite.isBlank()) {
+				online.sendSystemMessage(Theme.info("Or appeal on Discord: " + invite));
+			}
+			Sfx.muted(online);
+		} else if (p.type() == PunishmentType.WARN) {
+			online.sendSystemMessage(Theme.warn("Warning from " + p.staffName() + " — " + p.reason()));
+			Sfx.warned(online);
+		}
+	}
+
+	/**
+	 * The full-screen text a banned or kicked player sees.
+	 * <p>
+	 * The appeal line matters more than it looks. A ban screen that only says "you are
+	 * banned" produces a player who either gives up or comes back on an alt; one that says
+	 * where to argue produces an appeal, which is a conversation staff can actually resolve.
+	 */
+	public Component disconnectScreen(Punishment p) {
+		MutableComponent out = Icon.text(p.type().isBan() ? "You are banned\n\n" : "You were kicked\n\n", Theme.BAD);
+		out.append(Icon.text(p.reason() + "\n", Theme.TEXT));
+		out.append(Icon.text("By " + p.staffName() + "\n", Theme.MUTED));
+
+		if (p.type().isBan()) {
+			out.append(Icon.text(p.isPermanent()
+					? "This ban does not expire.\n"
+					: "Expires in " + TimeFormat.remaining(p.expiresAt()) + "\n", Theme.MUTED));
+			out.append(appealBlock());
+		}
+		return out;
+	}
+
+	/**
+	 * The "you can argue about this" half of a ban screen.
+	 * <p>
+	 * Always shown, even with no Discord invite configured, because the failure mode of
+	 * staying silent is exactly the thing a ban is meant to prevent: a player who concludes
+	 * there is no way back and simply returns on another account. With an invite set they
+	 * get a destination; without one they are at least told an appeal exists.
+	 */
+	private MutableComponent appealBlock() {
+		MutableComponent out = Icon.text("\n", Theme.MUTED);
+		out.append(Icon.text("Think this is a mistake? You can appeal.\n", Theme.TEXT));
+
+		String invite = StaffConfig.get().discordInvite;
+		if (invite != null && !invite.isBlank()) {
+			out.append(Icon.text("Join our Discord and open a ban appeal:\n", Theme.MUTED));
+			out.append(Icon.text(invite, Theme.ACCENT));
+		} else {
+			out.append(Icon.text("Contact a staff member to open an appeal.", Theme.MUTED));
+		}
+		return out;
+	}
+
+	/** Staff chat line, alert bus, Discord, and the thunderclap for bans. */
+	private void announce(MinecraftServer server, Punishment p) {
+		MutableComponent line = Theme.prefix()
+				.append(Icon.text(p.staffName(), Theme.ACCENT))
+				.append(Icon.text(" " + p.type().pastTense() + " ", Theme.MUTED))
+				.append(Icon.text(p.targetName(), Theme.TEXT))
+				.append(Icon.text(" — " + p.reason(), Theme.MUTED));
+
+		boolean everyone = StaffConfig.get().publicPunishmentBroadcast && p.type().persistent();
+		for (ServerPlayer viewer : server.getPlayerList().getPlayers()) {
+			boolean isStaff = Permissions.check(viewer, Nodes.PUNISH);
+			if (everyone || isStaff) {
+				viewer.sendSystemMessage(line);
+			}
+		}
+
+		if (p.type().isBan()) {
+			Sfx.banBroadcast(server, viewer -> Permissions.check(viewer, Nodes.PUNISH));
+		}
+
+		StaffCore.modules().get("alerts", AlertsModule.class).ifPresent(a ->
+				a.onPunishment(server, p.staffName(), p.targetName(), p.type(), p.reason()));
+	}
+
+	// -------------------------------------------------------------------- revoking
+
+	/** Lifts an active ban or mute. Returns the number of rows affected. */
+	public int revoke(MinecraftServer server, UUID target, String staffName, boolean bans) {
+		String types = bans ? "('BAN','TEMPBAN')" : "('MUTE','TEMPMUTE')";
+		Connection c = conn();
+		if (c == null) return 0;
+
+		try (PreparedStatement ps = c.prepareStatement(
+				"UPDATE punishments SET active=0, revoked_by=? WHERE target_uuid=? AND active=1 AND type IN " + types)) {
+			ps.setString(1, staffName);
+			ps.setString(2, target.toString());
+			int n = ps.executeUpdate();
+
+			if (n > 0 && !bans) {
+				ServerPlayer online = server.getPlayerList().getPlayer(target);
+				if (online != null) {
+					online.sendSystemMessage(Theme.good("You have been unmuted."));
+					Sfx.success(online);
+				}
+			}
+			return n;
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] revoke failed", e);
+			return 0;
+		}
+	}
+
+	// -------------------------------------------------------------------- querying
+
+	/** Active ban for this uuid, or null. Expired rows are retired as a side effect. */
+	public Punishment activeBan(UUID target) {
+		return activeOfTypes(target, PunishmentType.BAN, PunishmentType.TEMPBAN);
+	}
+
+	/** Active mute for this uuid, or null. */
+	public Punishment activeMute(UUID target) {
+		return activeOfTypes(target, PunishmentType.MUTE, PunishmentType.TEMPMUTE);
+	}
+
+	private Punishment activeOfTypes(UUID target, PunishmentType a, PunishmentType b) {
+		Connection c = conn();
+		if (c == null) return null;
+
+		String sql = "SELECT * FROM punishments WHERE target_uuid=? AND active=1 "
+				+ "AND type IN (?,?) ORDER BY created_at DESC LIMIT 1";
+		try (PreparedStatement ps = c.prepareStatement(sql)) {
+			ps.setString(1, target.toString());
+			ps.setString(2, a.name());
+			ps.setString(3, b.name());
+			try (ResultSet rs = ps.executeQuery()) {
+				if (!rs.next()) return null;
+				Punishment p = map(rs);
+				if (p.isExpired()) {
+					deactivate(p.id());
+					return null;
+				}
+				return p;
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] lookup failed", e);
+			return null;
+		}
+	}
+
+	public List<Punishment> history(UUID target) {
+		List<Punishment> out = new ArrayList<>();
+		Connection c = conn();
+		if (c == null) return out;
+
+		try (PreparedStatement ps = c.prepareStatement(
+				"SELECT * FROM punishments WHERE target_uuid=? ORDER BY created_at DESC")) {
+			ps.setString(1, target.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) out.add(map(rs));
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] history failed", e);
+		}
+		return out;
+	}
+
+	public int historyCount(UUID target) {
+		Connection c = conn();
+		if (c == null) return 0;
+		try (PreparedStatement ps = c.prepareStatement(
+				"SELECT COUNT(*) FROM punishments WHERE target_uuid=?")) {
+			ps.setString(1, target.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? rs.getInt(1) : 0;
+			}
+		} catch (SQLException e) {
+			return 0;
+		}
+	}
+
+	// -------------------------------------------------------------------- writing
+
+	public Punishment record(UUID target, String targetName, String staffName,
+			PunishmentType type, String reason, Long expiresAt) {
+		return record(target, targetName, staffName, type, reason, expiresAt, null);
+	}
+
+	public Punishment record(UUID target, String targetName, String staffName,
+			PunishmentType type, String reason, Long expiresAt, String offenceId) {
+		Connection c = conn();
+		if (c == null) return null;
+
+		String sql = """
+				INSERT INTO punishments
+				  (target_uuid, target_name, staff_name, type, reason, duration_ms,
+				   created_at, expires_at, active, offence)
+				VALUES (?,?,?,?,?,?,?,?,1,?)
+				""";
+		long now = System.currentTimeMillis();
+		try (PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+			ps.setString(1, target.toString());
+			ps.setString(2, targetName);
+			ps.setString(3, staffName);
+			ps.setString(4, type.name());
+			ps.setString(5, reason);
+			if (expiresAt == null) ps.setNull(6, java.sql.Types.INTEGER);
+			else ps.setLong(6, expiresAt - now);
+			ps.setLong(7, now);
+			if (expiresAt == null) ps.setNull(8, java.sql.Types.INTEGER);
+			else ps.setLong(8, expiresAt);
+			ps.setString(9, offenceId);
+			ps.executeUpdate();
+
+			try (ResultSet keys = ps.getGeneratedKeys()) {
+				long id = keys.next() ? keys.getLong(1) : -1;
+				return new Punishment(id, target, targetName, staffName, type, reason, now, expiresAt, true, null);
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] record failed", e);
+			return null;
+		}
+	}
+
+	public void clearHistory(UUID target) {
+		Connection c = conn();
+		if (c == null) return;
+		try (PreparedStatement ps = c.prepareStatement("DELETE FROM punishments WHERE target_uuid=?")) {
+			ps.setString(1, target.toString());
+			ps.executeUpdate();
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] clear failed", e);
+		}
+	}
+
+	public void deactivate(long id) {
+		Connection c = conn();
+		if (c == null) return;
+		try (PreparedStatement ps = c.prepareStatement("UPDATE punishments SET active=0 WHERE id=?")) {
+			ps.setLong(1, id);
+			ps.executeUpdate();
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] deactivate failed", e);
+		}
+	}
+
+	// --------------------------------------------------------------------- plumbing
+
+	private static Connection conn() {
+		return StaffCore.storage().isReady() ? StaffCore.storage().conn() : null;
+	}
+
+	private Punishment map(ResultSet rs) throws SQLException {
+		long exp = rs.getLong("expires_at");
+		Long expires = rs.wasNull() ? null : exp;
+		return new Punishment(
+				rs.getLong("id"),
+				UUID.fromString(rs.getString("target_uuid")),
+				rs.getString("target_name"),
+				rs.getString("staff_name"),
+				PunishmentType.valueOf(rs.getString("type")),
+				rs.getString("reason"),
+				rs.getLong("created_at"),
+				expires,
+				rs.getInt("active") == 1,
+				rs.getString("revoked_by"));
+	}
+}

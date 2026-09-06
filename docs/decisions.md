@@ -152,4 +152,22 @@ against Gradle's published checksums.
 
 ## Namespace
 
-*(pending — item 6)*
+**Date:** 2026-09-06
+**Decides:** the Java package and `maven_group`
+
+Moved from `dev.lebron.staffcore` to `io.github.alphain24.staffcore`.
+
+`dev.lebron` asserts ownership of a domain nobody here controls. That is a problem twice over:
+it is not a namespace this project can defend if anything is ever published to a Maven
+repository, and it is a name collision waiting to happen with whoever does own it. `io.github.`
+plus a GitHub username is the conventional answer for a project without its own domain, and it
+is tied to an account that actually exists and holds this repository.
+
+Done before the first release rather than after, because the package name is part of the
+published artifact: changing it later breaks every mixin config, every entrypoint and anything
+anybody has built against it.
+
+Touched 162 files — every source file, both mixin configs (which name the package as a
+string, so a rename that misses one fails at runtime rather than at compile time),
+`fabric.mod.json`'s two entrypoints, `maven_group`, and the README's source links. Verified by
+the boot check rather than the compiler: 17/17 hooks present, 13 verified applied.

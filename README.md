@@ -114,7 +114,7 @@ guessed:
 | `PlayerList#canPlayerLogin(SocketAddress, GameProfile)` | `(SocketAddress, NameAndId)` |
 | authlib `GameProfile.getName()` / `getId()` | `name()` / `id()` — it is a record |
 
-Almost all of it is absorbed by [`compat/Mc.java`](src/main/java/dev/lebron/staffcore/compat/Mc.java).
+Almost all of it is absorbed by [`compat/Mc.java`](src/main/java/io/github/alphain24/staffcore/compat/Mc.java).
 
 ## Build
 
@@ -236,7 +236,7 @@ Frames are black stained glass; the invsee frame turns **red** in edit mode.
 
 ## Sounds
 
-All of it in [`gui/Sfx.java`](src/main/java/dev/lebron/staffcore/gui/Sfx.java) — one file,
+All of it in [`gui/Sfx.java`](src/main/java/io/github/alphain24/staffcore/gui/Sfx.java) — one file,
 one voice. Navigation is quiet and high, state changes are pitched (up for on, down for
 off), anything that lands on another player is loud and low. Every sound is sent to a
 single client, so a vanished admin clicking through menus is silent to everyone else.
@@ -628,8 +628,8 @@ one-file fix, not a hunt:
 
 | File | Holds |
 |---|---|
-| [`compat/Mc.java`](src/main/java/dev/lebron/staffcore/compat/Mc.java) | identity, server/level access, permissions, sounds, teleport, player heads, colour collections, stack limits, block registry, tick time |
-| [`gui/Sfx.java`](src/main/java/dev/lebron/staffcore/gui/Sfx.java) | every `SoundEvents` constant |
+| [`compat/Mc.java`](src/main/java/io/github/alphain24/staffcore/compat/Mc.java) | identity, server/level access, permissions, sounds, teleport, player heads, colour collections, stack limits, block registry, tick time |
+| [`gui/Sfx.java`](src/main/java/io/github/alphain24/staffcore/gui/Sfx.java) | every `SoundEvents` constant |
 
 This paid off immediately. Porting to 26.2 turned up thirteen breaking API changes, and
 twelve of them were fixed inside `Mc.java` alone — the modules and menus only needed a
