@@ -36,8 +36,9 @@ Everything it records goes in a SQLite file next to your world, backed up on eve
 3. Drop `staffcore-1.0.0.jar` into `mods/`.
 4. Start the server.
 
-SQLite is bundled inside the jar, so there is nothing else to install and no database to set
-up. The mod is server-side: players connect with a vanilla client.
+SQLite is bundled inside the jar (~12 MB, mostly native libraries), so there is nothing else
+to install and no database to set up. The mod is server-side: players connect with a vanilla
+client.
 
 Requires **Java 25**.
 
@@ -152,9 +153,6 @@ it passes on a healthy build and fails on a deliberately broken one.
 The snapshot job is *expected* to fail sometimes. That is the point: a snapshot that moves an
 injection point should surface on a schedule rather than on somebody's server the week the
 release lands.
-
-Drop the jar and Fabric API into your server's `mods/` folder. `sqlite-jdbc` is nested
-inside the jar (~12 MB, mostly native libraries), so there is nothing else to install.
 
 ---
 
