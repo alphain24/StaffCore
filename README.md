@@ -301,7 +301,6 @@ has already logged off.
 | `/staff lookup <player>` | `staff.gui` | Same as `/staff <player>` |
 | `/staff seccheck <player>` · `/staff scan` | `security.check`, `security.itemscanner` | Checks, sweep |
 | `/staff xray <player> [hours]` | `security.check` | Score one player on demand, offline included |
-| `/staff vault` · `/staff contraband` | `security.vault` | Held items; edit the rule lists |
 | `/staff preview [area] …` | `grief.rollback` | What a rollback would change, writing nothing |
 | `/staff rollback <player> <radius> [minutes]` | `grief.rollback` | Undo block changes |
 | `/staff rollback undo [id \| list]` | `grief.rollback` | Undo a rollback — restore points kept 7 days |
@@ -324,8 +323,8 @@ has already logged off.
 | `/staff selftest` | `staff.reload` | Prove the mod works, not just that it started |
 | `/staff nbt` | `security.invsee` | Read the held item's component data |
 | `/staff panel` | `staff.gui` | Open the panel |
-| `/staff vault` | `security.vault` | The contraband vault |
-| `/staff contraband` | `security.contraband` | Edit the contraband rules |
+| `/staff vault` | `security.vault` | The contraband vault; `security.vault.destroy` to destroy an item for good |
+| `/staff contraband` | `security.vault` | The contraband rules; `security.contraband.edit` to change them |
 | `/staff anticheat [player]` | `security.check` | Bridge state, or one player's findings |
 | `/staff anticheat test <player> [n]` | `staff.reload` | Push a synthetic finding through the pipeline |
 | `/staff owed [player]` | `grief.rollback` | Who still owes items from a rollback |
