@@ -184,6 +184,29 @@ the boot check rather than the compiler: 17/17 hooks present, 13 verified applie
 
 ---
 
+## Commit history
+
+**Date:** 2026-09-06
+
+Before this round the repository had two commits, while the README cited development history
+as evidence throughout: bugs found on the first JUnit run, two mixin failures caught by reading
+logs, two reflective detection approaches that failed in opposite directions. All of that is
+probably true and none of it was verifiable, because none of it was in the history. It also
+could not be bisected, which is the practical cost — a regression traceable to "one of these
+two commits" is traceable to nothing.
+
+From here the history is at real granularity: one commit per change, with a message that says
+what was wrong and why the fix is shaped the way it is. That is worth stating rather than
+assuming, because it is the sort of discipline that quietly stops.
+
+**What the history still does not cover.** Everything before this round remains two commits.
+The claims the README made about that period are not made verifiable by anything here; where
+they described a bug that is now covered by a test, the test is the evidence and the anecdote
+is decoration. Several of those anecdotes were moved into this file with the design notes, and
+they should be read as recollection rather than record.
+
+---
+
 # Moved from the README
 
 The README had grown to eight hundred lines, and the reasoning was the best material in it and
