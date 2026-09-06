@@ -407,6 +407,7 @@ Changing a default in the code alone would never reach a server that has already
   "presetReasons":   [ … ],           // these become the buttons in the Reason menu
   "presetDurations": [ { "label": "7 days", "spec": "7d" }, … ],
   "reportCooldownSeconds": 60,
+  "rootAliases": false,               // /ban, /vanish etc. at the root, if free
   "xrayRatioThreshold": 0.12,         // ore fraction that trips the heuristic
   "xraySampleFloor": 200,             // blocks needed before it will fire at all
   "tpsAlertFloor": 17.0,

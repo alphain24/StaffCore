@@ -103,9 +103,81 @@ public final class StaffCommands {
 				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
 				.executes(ctx -> openFile(ctx, "player")));
 
-		dispatcher.register(staff);
+		com.mojang.brigadier.tree.LiteralCommandNode<CommandSourceStack> root =
+				dispatcher.register(staff);
 
 		registerRootExceptions(dispatcher);
+		if (StaffConfig.get().rootAliases) registerAliases(dispatcher, root);
+	}
+
+	/**
+	 * Subcommands worth reaching for by reflex, in the form staff already type.
+	 * <p>
+	 * Deliberately a short list. Every one of these is a name another mod might reasonably
+	 * want, and the more of them there are the more likely one collides — so this covers the
+	 * commands somebody uses forty times a shift and nothing else.
+	 */
+	private static final String[] ALIASES = {
+			"ban", "tempban", "unban", "mute", "tempmute", "unmute",
+			"kick", "warn", "vanish", "freeze", "invsee"
+	};
+
+	/**
+	 * Puts the common subcommands at the root, but only where nothing else wants the name.
+	 * <p>
+	 * {@code /staff} as the single entry point avoids collisions outright, and that reasoning
+	 * is sound. It is also not how anybody's hands work: staff muscle memory is {@code /ban},
+	 * and telling somebody their reflexes are wrong is not a design. This is the compromise,
+	 * off by default.
+	 * <p>
+	 * <b>Never overwrites.</b> A taken name is skipped and logged rather than replaced,
+	 * because replacing another mod's {@code /ban} is worse than not offering the alias:
+	 * the command still works, and does something other than what the person typing it meant.
+	 * <p>
+	 * Each alias is a redirect rather than a copy, so the permission check, the arguments and
+	 * the behaviour are the subcommand's own and cannot drift from it.
+	 * <p>
+	 * The collision check is best-effort by nature: mods register commands in the same phase
+	 * and the order is not guaranteed, so a mod registering after this one still wins. That is
+	 * the right way round — whoever asked for the name explicitly should keep it — and it is
+	 * why the skipped list is logged rather than assumed empty.
+	 */
+	private static void registerAliases(CommandDispatcher<CommandSourceStack> dispatcher,
+			com.mojang.brigadier.tree.LiteralCommandNode<CommandSourceStack> root) {
+
+		List<String> added = new java.util.ArrayList<>();
+		List<String> skipped = new java.util.ArrayList<>();
+
+		for (String alias : ALIASES) {
+			if (dispatcher.getRoot().getChild(alias) != null) {
+				skipped.add(alias);
+				continue;
+			}
+			com.mojang.brigadier.tree.CommandNode<CommandSourceStack> target = root.getChild(alias);
+			if (target == null) continue;   // a subcommand that has been renamed or removed
+
+			LiteralArgumentBuilder<CommandSourceStack> shortcut = Commands.literal(alias)
+					.requires(target.getRequirement())
+					.redirect(target);
+
+			// A redirect forwards the arguments but not the node's own action, so a
+			// no-argument subcommand like /vanish would otherwise parse and do nothing.
+			if (target.getCommand() != null) shortcut.executes(target.getCommand());
+
+			dispatcher.register(shortcut);
+			added.add(alias);
+		}
+
+		StaffCore.LOGGER.info("[StaffCore] Root aliases on: registered {}.",
+				added.isEmpty() ? "none" : String.join(", ", added));
+		if (!skipped.isEmpty()) {
+			// Vanilla owns /ban and /kick, so those two are always on this list on a normal
+			// server. That is the mechanism working, not a problem to solve: the vanilla
+			// command still does what anybody typing it expects.
+			StaffCore.LOGGER.warn("[StaffCore] Root aliases skipped, already taken: {}. "
+					+ "Reach those through /staff instead (/staff ban, /staff kick, ...).",
+					String.join(", ", skipped));
+		}
 	}
 
 	private static int openPanel(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {

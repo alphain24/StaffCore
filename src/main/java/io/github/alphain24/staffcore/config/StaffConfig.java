@@ -343,6 +343,21 @@ public final class StaffConfig {
 	// ---- reports -------------------------------------------------------------
 	public int reportCooldownSeconds = 60;
 
+	/**
+	 * Register {@code /ban}, {@code /kick}, {@code /vanish} and friends at the root.
+	 * <p>
+	 * Off by default, and the default is the interesting half. One entry point avoids
+	 * collisions outright, which is why it is the way round it is — but staff muscle memory
+	 * is {@code /ban}, not {@code /staff ban}, and telling somebody their reflexes are wrong
+	 * is not a design.
+	 * <p>
+	 * When this is on, each alias is registered <em>only</em> if nothing else has claimed it,
+	 * and the ones that were skipped are logged by name. Quietly overwriting another mod's
+	 * {@code /ban} would be worse than not offering the alias at all: the command would still
+	 * work and would do something other than what the person typing it expected.
+	 */
+	public boolean rootAliases = false;
+
 	// ---- security ------------------------------------------------------------
 	//
 	// Every x-ray default comes from XrayTuning rather than being written here. The numbers
