@@ -148,11 +148,26 @@ it passes on a healthy build and fails on a deliberately broken one.
 |---|---|---|
 | `build.yml` | every push and PR | Compile, JUnit, upload the jar |
 | `boot.yml` | push, PR, weekly | Boot a server, assert every hook applied |
+| `gametest.yml` | push, PR, weekly | Boot a real server and run every `@GameTest` against real players, mobs and blocks |
 | `snapshot.yml` | daily | The same boot check against the newest MC snapshot; opens an issue if it breaks, never blocks a merge |
 
 The snapshot job is *expected* to fail sometimes. That is the point: a snapshot that moves an
 injection point should surface on a schedule rather than on somebody's server the week the
 release lands.
+
+The three build jobs answer three different questions, and the third is the one that was
+missing. `build.yml` asks whether the code compiles and the headless logic is right.
+`boot.yml` asks whether every hook attached. Neither asks whether a feature *behaves* — a
+mixin can apply perfectly to a method whose logic no longer does what the feature needs, which
+is precisely how the vanish collision hook sat broken while the health check reported it
+present. `gametest.yml` boots a real server and asks a real zombie to target a vanished
+player.
+
+Run them locally with:
+
+```
+./gradlew runGametest
+```
 
 ---
 
