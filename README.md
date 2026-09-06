@@ -4,6 +4,17 @@ A staff-management suite for **Minecraft 26.2** on Fabric. Server-side only — 
 install nothing, and neither do your staff. Every tool is reachable from a chest menu, and
 every menu has a command behind it for the people who would rather type.
 
+> ### Before you download
+> | | |
+> |---|---|
+> | **Minecraft** | 26.2 |
+> | **Fabric Loader** | 0.19.3 or newer |
+> | **Java** | **25** |
+>
+> Java 25 is the one that catches people out. Most servers are on 17 or 21, and this will not
+> start on either — 26.2 itself requires 25, so the mod cannot ask for less. Check with
+> `java -version` before downloading anything.
+
 **[Read the handbook](docs/handbook.html)** for the full guide, or carry on here for the
 short version.
 
