@@ -77,18 +77,33 @@ public final class StaffConfig {
 	/**
 	 * Gamemode while on duty: {@code survival}, {@code creative} or {@code spectator}.
 	 * <p>
-	 * Creative by default, because that is what being on duty actually needs: fly to the
-	 * report, phase through the base you are inspecting, and put back the block you just
-	 * proved was griefed. Survival keeps staff visible to anti-cheat and stops them being an
-	 * item source, which is the safer choice on a server where staff are not fully trusted;
-	 * spectator is the least intrusive but blocks interaction entirely, so the staff toolset
-	 * stops working.
+	 * <b>Survival by default.</b> Creative was the old default and it is the reason four
+	 * separate containment layers exist: staff tools are refused on drop, stripped on death,
+	 * destroyed if they reach the ground, and swept every two seconds — all of it work to stop
+	 * an unlimited item source leaking into the economy. Survival removes the source rather
+	 * than containing it, and the layers stay as defence in depth.
+	 * <p>
+	 * Very little is actually lost. Flight comes from being on duty, not from creative, so
+	 * staff still fly to a report; noclip is its own toggle and still works; and putting back
+	 * a griefed block is what rollback is for. What goes is the ability to conjure items,
+	 * which is exactly the part that needed containing.
+	 * <p>
+	 * <b>Creative remains available</b> and costs three things worth knowing about: staff
+	 * become an unlimited item source, so every item they hand out is outside the economy and
+	 * indistinguishable from a duplication bug; they stop looking like ordinary players to an
+	 * anti-cheat, so their own behaviour is no longer checked; and the containment layers
+	 * become load-bearing rather than belt-and-braces.
+	 * <p>
+	 * <b>Spectator</b> is the least intrusive of the three, and the staff toolset stops
+	 * working under it: the tools are items used by right-clicking, and vanilla drops
+	 * interactions for spectators before they reach any of this mod's code. The chest menus
+	 * still work, so {@code /staff} remains usable.
 	 * <p>
 	 * Whatever this is set to, the gamemode a staff member was in before clocking on is
 	 * stored and given back when they clock off — so switching this does not strand anybody
 	 * in the wrong mode.
 	 */
-	public String staffModeGameMode = "creative";
+	public String staffModeGameMode = "survival";
 	/** Staff on duty cannot be hurt, vanished or not. */
 	public boolean staffModeInvulnerable = true;
 

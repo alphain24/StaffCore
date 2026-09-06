@@ -401,7 +401,7 @@ Changing a default in the code alone would never reach a server that has already
   // §6 gold, §l bold, §r reset, §7 grey. \n splits the two server-list lines.
   "maintenanceMotd": "§6§lSERVER IN MAINTENANCE\n§7Please wait while we update things — back shortly.",
 
-  "staffModeGameMode": "creative",     // creative | survival | spectator while on duty
+  "staffModeGameMode": "survival",     // creative | survival | spectator while on duty
   "offences": [ ... ],                 // the punish menu is built from this
   "discordInvite": "",                 // shown on the ban screen so people can appeal
   "allowInGameAppeals": true,

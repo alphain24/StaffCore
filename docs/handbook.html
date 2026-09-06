@@ -616,10 +616,24 @@
           The duty gamemode is <code>creative</code> by default, because that is what being
           on duty actually needs: fly to the report, phase through the base you are
           inspecting, and put back the block you just proved was griefed.
-          <code>staffModeGameMode</code> also takes <code>survival</code>, which keeps staff
-          visible to anti-cheat and stops them being an item source — the safer choice where
-          staff are not fully trusted — or <code>spectator</code>, which is the least
-          intrusive but blocks interaction entirely, so the staff toolset stops working.
+          <code>staffModeGameMode</code> defaults to <code>survival</code>. Creative was the
+          old default, and it is the reason four separate containment layers exist: staff
+          tools are refused on drop, stripped on death, destroyed if they reach the ground,
+          and swept every two seconds &mdash; all of it work to stop an unlimited item source
+          leaking into the economy. Survival removes the source instead of containing it, and
+          every layer stays as defence in depth.
+          </p>
+          <p>
+          Very little is lost. Flight comes from being on duty rather than from creative, so
+          staff still fly to a report; noclip is its own toggle; and putting back a griefed
+          block is what rollback is for. <strong>Creative is still available</strong> and
+          costs three things: staff become an unlimited item source, so anything they hand out
+          is outside the economy and indistinguishable from a duplication bug; they stop
+          looking like ordinary players to an anti-cheat, so their own behaviour goes
+          unchecked; and the containment layers become load-bearing rather than
+          belt-and-braces. <code>spectator</code> is the least intrusive and stops the staff
+          toolset working &mdash; the tools are items used by right-clicking, and vanilla drops
+          interactions for spectators before they reach any of this mod's code.
           Whichever you pick, the gamemode somebody was in <em>before</em> clocking on is
           stored and handed back when they clock off, so changing this strands nobody. On duty
           you are also <strong>invulnerable</strong>, vanished or not, so investigating a mob
