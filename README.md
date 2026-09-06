@@ -67,7 +67,7 @@ see [Permissions](#permissions).
 The boot log ends with a line like:
 
 ```
-[StaffCore] Health check: 14/14 hooks present, 10 verified applied.
+[StaffCore] Health check: 19/19 hooks present, 15 verified applied.
 ```
 
 If those numbers do not match, the log names which feature is affected. `/staff selftest`

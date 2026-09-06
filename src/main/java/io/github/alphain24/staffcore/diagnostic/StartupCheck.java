@@ -40,75 +40,116 @@ public final class StartupCheck {
 	 * @param mixinClass the mixin that should have contributed that handler, matched against
 	 *                Mixin's own merge metadata — see {@link #applied}
 	 */
-	private record Target(String feature, String className, String method, String handler,
-			String mixinClass, String... paramTypes) {}
+	private record Target(Tier tier, String feature, String className, String method,
+			String handler, String mixinClass, String... paramTypes) {}
+
+	/**
+	 * How much a hook failing to apply matters.
+	 * <p>
+	 * Two tiers was one too few. The login gate is {@code required: true} and takes the
+	 * server down with it; the other thirty are {@code defaultRequire: 0} and cost you a
+	 * feature. That is the right trade for command spy, and the wrong one for the hooks that
+	 * fill the grief log — because a missing logging hook does not switch a feature off, it
+	 * leaves the feature running on data that is quietly incomplete.
+	 * <p>
+	 * That distinction is the whole point. A rollback computed from a block log with the
+	 * PLACE half missing does not do nothing; it restores the wrong blocks and charges
+	 * somebody for them. Degraded operation is fine when the degradation is visible and
+	 * bounded, and unacceptable when it silently changes what a correct-looking answer means.
+	 */
+	public enum Tier {
+		/** The server must not run without it. Fails at load, loudly. */
+		REQUIRED,
+		/**
+		 * The owning feature hard-disables if this does not apply. Commands refuse and name
+		 * the broken hook; {@code InventoryGateway} rejects writes from the subsystem.
+		 */
+		IMPORTANT,
+		/** Costs you that feature and nothing else. The old behaviour for everything. */
+		OPTIONAL
+	}
 
 	private static final String MIXIN_PKG = "io.github.alphain24.staffcore.mixin.";
 
 	private static final List<Target> TARGETS = List.of(
-			new Target("Bans and maintenance login gate", "net.minecraft.server.players.PlayerList",
+			new Target(Tier.REQUIRED, "Bans and maintenance login gate", "net.minecraft.server.players.PlayerList",
 					"canPlayerLogin", "staffcore$gateLogin", MIXIN_PKG + "PlayerListMixin",
 					"java.net.SocketAddress", "net.minecraft.server.players.NameAndId"),
-			new Target("Vanish — join suppression and tab list", "net.minecraft.server.players.PlayerList",
+			new Target(Tier.OPTIONAL, "Vanish — join suppression and tab list", "net.minecraft.server.players.PlayerList",
 					"placeNewPlayer", "staffcore$restoreVanishEarly", MIXIN_PKG + "VanishJoinMixin",
 					"net.minecraft.network.Connection",
 					"net.minecraft.server.level.ServerPlayer",
 					"net.minecraft.server.network.CommonListenerCookie"),
-			new Target("Vanish — leave suppression", "net.minecraft.server.players.PlayerList",
+			new Target(Tier.OPTIONAL, "Vanish — leave suppression", "net.minecraft.server.players.PlayerList",
 					"remove", "staffcore$forgetVanishAfterLeaveLine", MIXIN_PKG + "VanishLeaveMixin",
 					"net.minecraft.server.level.ServerPlayer"),
-			new Target("Vanish — tab-list withholding", "net.minecraft.server.players.PlayerList",
+			new Target(Tier.OPTIONAL, "Vanish — tab-list withholding", "net.minecraft.server.players.PlayerList",
 					"broadcastAll", null, null, "net.minecraft.network.protocol.Packet"),
-			new Target("Vanish — announcement suppression", "net.minecraft.server.players.PlayerList",
+			new Target(Tier.OPTIONAL, "Vanish — announcement suppression", "net.minecraft.server.players.PlayerList",
 					"broadcastSystemMessage", "staffcore$suppressVanishedBroadcast",
 					MIXIN_PKG + "VanishJoinMixin",
 					"net.minecraft.network.chat.Component", "boolean"),
-			new Target("Vanish — locator bar", "net.minecraft.server.waypoints.ServerWaypointManager",
+			new Target(Tier.OPTIONAL, "Vanish — locator bar", "net.minecraft.server.waypoints.ServerWaypointManager",
 					"createConnection", null, null, "net.minecraft.server.level.ServerPlayer",
 					"net.minecraft.world.waypoints.WaypointTransmitter"),
-			new Target("Vanish — server-list ping", "net.minecraft.server.MinecraftServer",
+			new Target(Tier.OPTIONAL, "Vanish — server-list ping", "net.minecraft.server.MinecraftServer",
 					"buildPlayerStatus", "staffcore$hideFromPing",
 					MIXIN_PKG + "vanish.VanishStatusMixin"),
-			new Target("Vanish — entity collision", "net.minecraft.world.entity.Entity",
+			new Target(Tier.OPTIONAL, "Vanish — entity collision", "net.minecraft.world.entity.Entity",
 					"isPushable", null, null),
-			new Target("Vanish — block placement", "net.minecraft.world.entity.Entity",
+			new Target(Tier.OPTIONAL, "Vanish — block placement", "net.minecraft.world.entity.Entity",
 					"blocksBuilding", null, null),
 			// The one that actually makes a vanished player invisible. Worth verifying by
 			// handler rather than by target alone: the target is a public vanilla method
 			// that will not vanish, so "it exists" proves nothing about our code being in it.
-			new Target("Vanish — entity visibility", "net.minecraft.world.entity.Entity",
+			new Target(Tier.OPTIONAL, "Vanish — entity visibility", "net.minecraft.world.entity.Entity",
 					"broadcastToPlayer", "staffcore$hideFromTracker",
 					MIXIN_PKG + "vanish.VanishBroadcastMixin",
 					"net.minecraft.server.level.ServerPlayer"),
-			new Target("Vanish — /list", "net.minecraft.server.commands.ListPlayersCommand",
+			new Target(Tier.OPTIONAL, "Vanish — /list", "net.minecraft.server.commands.ListPlayersCommand",
 					"format", "staffcore$hideFromList",
 					MIXIN_PKG + "vanish.VanishPlayerListCommandMixin",
 					"net.minecraft.commands.CommandSourceStack", "java.util.function.Function"),
-			new Target("Vanish — chunk loading", "net.minecraft.server.level.DistanceManager",
+			new Target(Tier.OPTIONAL, "Vanish — chunk loading", "net.minecraft.server.level.DistanceManager",
 					"addPlayer", "staffcore$skipSpawnCounting",
 					MIXIN_PKG + "vanish.VanishSpawnChunkMixin",
 					"net.minecraft.core.SectionPos", "net.minecraft.server.level.ServerPlayer"),
-			new Target("Command spy", "net.minecraft.commands.Commands",
+			new Target(Tier.OPTIONAL, "Command spy", "net.minecraft.commands.Commands",
 					"performCommand", "staffcore$spy", MIXIN_PKG + "CommandsMixin",
 					"com.mojang.brigadier.ParseResults", "java.lang.String"),
-			new Target("Staff tools cannot be dropped", "net.minecraft.world.entity.player.Inventory",
+			new Target(Tier.IMPORTANT, "Staff tools cannot be dropped", "net.minecraft.world.entity.player.Inventory",
 					"dropAll", "staffcore$keepToolsOutOfTheWorld", MIXIN_PKG + "InventoryDropMixin"),
 			// Without this, creeper and TNT damage never reaches the log at all, and the area
 			// reads as though nothing happened there.
-			new Target("Explosion damage log", "net.minecraft.world.level.ServerExplosion",
+			new Target(Tier.IMPORTANT, "Explosion damage log", "net.minecraft.world.level.ServerExplosion",
 					"interactWithBlocks", "staffcore$recordExplosion", MIXIN_PKG + "ExplosionMixin",
 					"java.util.List"),
 			// Fire is the classic griefing tool, and without this the blocks it eats are
 			// never recorded - only the flint-and-steel that started it.
-			new Target("Fire damage log", "net.minecraft.world.level.block.FireBlock",
+			new Target(Tier.IMPORTANT, "Fire damage log", "net.minecraft.world.level.block.FireBlock",
 					"checkBurnOut", "staffcore$recordBurnToAir", MIXIN_PKG + "FireSpreadMixin",
 					"net.minecraft.world.level.Level", "net.minecraft.core.BlockPos", "int",
 					"net.minecraft.util.RandomSource", "int"),
 			// Without this, item recovery can only search the ground nearby: it misses
 			// anything already in somebody's pocket and anything in an unloaded chunk.
-			new Target("Item pickup log", "net.minecraft.world.entity.item.ItemEntity",
+			new Target(Tier.IMPORTANT, "Item pickup log", "net.minecraft.world.entity.item.ItemEntity",
 					"playerTouch", "staffcore$recordPickup", MIXIN_PKG + "ItemPickupMixin",
-					"net.minecraft.world.entity.player.Player")
+					"net.minecraft.world.entity.player.Player"),
+			// The PLACE half of the grief log. Never checked until now, which mattered more
+			// than any of the ones that were: with it missing the log records breaks and not
+			// placements, so a rollback inverts half a history. Blocks somebody put down stay
+			// down and the area is reported as though they only ever took things away.
+			new Target(Tier.IMPORTANT, "Grief log - block placement",
+					"net.minecraft.world.item.BlockItem",
+					"place", "staffcore$logPlace", MIXIN_PKG + "BlockItemMixin",
+					"net.minecraft.world.item.context.BlockPlaceContext"),
+			// What makes container theft visible. Without it the container log never learns
+			// what changed inside a chest, so the theft undo runs on nothing and reports that
+			// nothing was taken.
+			new Target(Tier.IMPORTANT, "Container log - open and close",
+					"net.minecraft.server.level.ServerPlayer",
+					"doCloseContainer", "staffcore$recordContainerChanges",
+					MIXIN_PKG + "ContainerCloseMixin")
 	);
 
 	/**
@@ -130,11 +171,53 @@ public final class StartupCheck {
 
 	/** One line of the health report, for the log and for the in-game screen alike. */
 	public record Finding(String feature, String className, String method, Health health,
-			String detail) {
+			String detail, Tier tier) {
 
 		public boolean isBroken() {
 			return health == Health.MISSING || health == Health.NOT_APPLIED;
 		}
+
+		/** Broken, and broken in a way that must stop the owning feature running. */
+		public boolean disablesFeature() {
+			return isBroken() && tier == Tier.IMPORTANT;
+		}
+	}
+
+	/**
+	 * Features that must not run, because a hook they depend on did not apply.
+	 * <p>
+	 * Feature granularity rather than a global switch, because the alternative is choosing
+	 * between two bad answers: take the whole mod down over a broken vanish hook, or let a
+	 * rollback run on a block log that is missing its PLACE half. Neither is the right
+	 * response to one injection point moving.
+	 */
+	private static java.util.Set<String> disabled = java.util.Set.of();
+
+	/** Whether a named feature has been switched off by a failed hook. */
+	public static boolean isDisabled(String feature) {
+		return disabled.contains(feature);
+	}
+
+	/** Every feature currently switched off, for a command that needs to explain itself. */
+	public static java.util.Set<String> disabledFeatures() {
+		return disabled;
+	}
+
+	/**
+	 * The reason a feature is off, phrased for somebody who has to fix it.
+	 * <p>
+	 * Naming the hook is the point. "Rollback is unavailable" sends an admin looking through
+	 * config; "BlockItemMixin did not apply to BlockItem#place" tells them it is a Minecraft
+	 * update and which injection point moved.
+	 */
+	public static String whyDisabled(String feature) {
+		for (Finding finding : report) {
+			if (finding.feature().equals(feature) && finding.disablesFeature()) {
+				return finding.feature() + " is unavailable: " + finding.detail()
+						+ " (" + finding.className() + "#" + finding.method() + ")";
+			}
+		}
+		return null;
 	}
 
 	private static List<Finding> report = List.of();
@@ -160,7 +243,7 @@ public final class StartupCheck {
 				broken.add(target.feature());
 				findings.add(new Finding(target.feature(), simple(target.className()),
 						target.method(), Health.MISSING,
-						"The method this hooks has moved or been removed."));
+						"The method this hooks has moved or been removed.", target.tier()));
 				StaffCore.LOGGER.error("[StaffCore] Missing hook: {}#{} - \"{}\" will not work",
 						simple(target.className()), target.method(), target.feature());
 				continue;
@@ -171,7 +254,7 @@ public final class StartupCheck {
 			// nothing to do with the method having moved.
 			if (target.handler() == null) {
 				findings.add(new Finding(target.feature(), simple(target.className()),
-						target.method(), Health.WORKING, "Target present."));
+						target.method(), Health.WORKING, "Target present.", target.tier()));
 				continue;
 			}
 
@@ -179,14 +262,15 @@ public final class StartupCheck {
 				case YES -> {
 					verified++;
 					findings.add(new Finding(target.feature(), simple(target.className()),
-							target.method(), Health.WORKING, "Applied and verified."));
+							target.method(), Health.WORKING, "Applied and verified.", target.tier()));
 				}
 				case NO -> {
 					broken.add(target.feature());
 					String why = MixinFailureRecorder.reasonFor(target.mixinClass());
 					findings.add(new Finding(target.feature(), simple(target.className()),
 							target.method(), Health.NOT_APPLIED,
-							why != null ? why : simple(target.mixinClass()) + " did not apply."));
+							why != null ? why : simple(target.mixinClass()) + " did not apply.",
+							target.tier()));
 
 					StaffCore.LOGGER.error(
 							"[StaffCore] \"{}\" is broken - {} did not apply to {}#{}",
@@ -201,7 +285,7 @@ public final class StartupCheck {
 					unconfirmed++;
 					findings.add(new Finding(target.feature(), simple(target.className()),
 							target.method(), Health.UNVERIFIED,
-							"Target present; could not confirm the mixin applied."));
+							"Target present; could not confirm the mixin applied.", target.tier()));
 					StaffCore.LOGGER.debug("[StaffCore] Could not confirm \"{}\" applied to {}#{}",
 							target.feature(), simple(target.className()), target.method());
 				}
@@ -217,13 +301,30 @@ public final class StartupCheck {
 			if (named) continue;
 
 			broken.add(simple(entry.getKey()));
+			// Tier unknown: nobody wrote this one an entry, so there is nothing that says how
+			// much it matters. Optional is the honest guess and the safe one — treating an
+			// unclassified failure as important would take features down on a guess.
 			findings.add(new Finding(simple(entry.getKey()), "—", "—",
-					Health.NOT_APPLIED, entry.getValue()));
+					Health.NOT_APPLIED, entry.getValue(), Tier.OPTIONAL));
 			StaffCore.LOGGER.error("[StaffCore] {} did not apply", simple(entry.getKey()));
 			StaffCore.LOGGER.error("[StaffCore]     {}", entry.getValue());
 		}
 
 		report = List.copyOf(findings);
+
+		// Anything IMPORTANT that did not apply switches its feature off here, before the
+		// first command can run against data it should not trust.
+		java.util.Set<String> off = new java.util.LinkedHashSet<>();
+		for (Finding finding : findings) {
+			if (finding.disablesFeature()) off.add(finding.feature());
+		}
+		disabled = java.util.Set.copyOf(off);
+
+		for (String feature : disabled) {
+			StaffCore.LOGGER.error("[StaffCore] DISABLED: \"{}\" will refuse to run rather than "
+					+ "work from incomplete data.", feature);
+		}
+
 		summarise(broken, verified, unconfirmed);
 		return broken;
 	}

@@ -66,7 +66,8 @@ public final class InventoryGateway {
 	 */
 	public enum Origin {
 		/** Taking items back after a rollback, to stop the repair duplicating them. */
-		ROLLBACK_DEBIT("rollback debit", "Explosion damage log", "Fire damage log",
+		ROLLBACK_DEBIT("rollback debit", "Grief log - block placement",
+				"Container log - open and close", "Explosion damage log", "Fire damage log",
 				"Item pickup log"),
 
 		/** A staff member editing another player's inventory through invsee. */
@@ -368,10 +369,11 @@ public final class InventoryGateway {
 		if (origin.requiredFeatures().isEmpty()) return null;
 
 		List<String> broken = new ArrayList<>();
-		for (StartupCheck.Finding finding : StartupCheck.report()) {
-			if (finding.isBroken() && origin.requiredFeatures().contains(finding.feature())) {
-				broken.add(finding.feature());
-			}
+		for (String feature : origin.requiredFeatures()) {
+			// Only an IMPORTANT hook stops the write. That is the distinction the tiers
+			// exist for: a broken optional hook costs a feature, a broken important one
+			// means the data this change was computed from is wrong rather than absent.
+			if (StartupCheck.isDisabled(feature)) broken.add(feature);
 		}
 		if (broken.isEmpty()) return null;
 

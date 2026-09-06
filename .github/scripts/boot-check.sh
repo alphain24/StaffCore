@@ -71,6 +71,14 @@ if [[ "${HEALTH}" != *"hooks present"* ]]; then
   exit 1
 fi
 
+# An IMPORTANT hook that did not apply switches its feature off rather than letting it run
+# on incomplete data. That is the correct behaviour and it is still a broken build.
+if grep -q "StaffCore\] DISABLED:" "${LOG}"; then
+  echo "::error::A feature hard-disabled because an important hook did not apply."
+  grep "StaffCore\] DISABLED:" "${LOG}"
+  exit 1
+fi
+
 echo "All hooks present and applied."
 
 # ------------------------------------------------------------------ self test

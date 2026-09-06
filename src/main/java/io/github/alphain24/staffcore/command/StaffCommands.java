@@ -1079,6 +1079,8 @@ public final class StaffCommands {
 			throws CommandSyntaxException {
 
 		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		if (featureBroken(ctx, ROLLBACK_HOOKS)) return 0;
+
 		int radius = IntegerArgumentType.getInteger(ctx, "radius");
 		String scope = player == null ? "everyone" : player;
 		audit(ctx, "/staff preview " + scope + " " + radius + " " + minutes);
@@ -1165,6 +1167,8 @@ public final class StaffCommands {
 	private static int rollbackArea(CommandContext<CommandSourceStack> ctx, int minutes)
 			throws CommandSyntaxException {
 
+		if (featureBroken(ctx, ROLLBACK_HOOKS)) return 0;
+
 		ServerPlayer self = ctx.getSource().getPlayerOrException();
 		int radius = IntegerArgumentType.getInteger(ctx, "radius");
 		audit(ctx, "/staff rollback area " + radius + " " + minutes);
@@ -1219,6 +1223,8 @@ public final class StaffCommands {
 
 	private static int rollback(CommandContext<CommandSourceStack> ctx, int minutes)
 			throws CommandSyntaxException {
+
+		if (featureBroken(ctx, ROLLBACK_HOOKS)) return 0;
 
 		ServerPlayer self = ctx.getSource().getPlayerOrException();
 		String player = StringArgumentType.getString(ctx, "player");
@@ -1918,6 +1924,42 @@ public final class StaffCommands {
 		}
 		return 1;
 	}
+
+	/**
+	 * Refuses a command whose hooks are broken, naming the hook.
+	 * <p>
+	 * The alternative is what used to happen: the command runs, reads a log that is missing
+	 * half its entries, and returns a confident answer built on it. A rollback computed from
+	 * a block log with no PLACE rows does not do nothing — it restores the wrong blocks and
+	 * charges somebody for them, and everything about the output looks normal.
+	 * <p>
+	 * Naming the hook rather than saying "unavailable" is the difference between an admin
+	 * searching their config and an admin knowing a Minecraft update moved an injection
+	 * point.
+	 *
+	 * @return true when the command must not run
+	 */
+	private static boolean featureBroken(CommandContext<CommandSourceStack> ctx,
+			String... features) {
+
+		for (String feature : features) {
+			String why = io.github.alphain24.staffcore.diagnostic.StartupCheck.whyDisabled(feature);
+			if (why == null) continue;
+
+			ctx.getSource().sendFailure(Theme.bad(why));
+			ctx.getSource().sendFailure(Icon.text(
+					"  Refusing rather than working from incomplete data. /staff status has "
+							+ "the full hook report.", Theme.MUTED));
+			return true;
+		}
+		return false;
+	}
+
+	/** The hooks a rollback's correctness rests on. */
+	private static final String[] ROLLBACK_HOOKS = {
+			"Grief log - block placement", "Container log - open and close",
+			"Explosion damage log", "Fire damage log", "Item pickup log"
+	};
 
 	/** True when the built-in groups are not the authority, with an explanation. */
 	private static boolean permsUnavailable(CommandContext<CommandSourceStack> ctx) {
