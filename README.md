@@ -23,7 +23,7 @@ short version.
 > **Why things are the way they are** lives in
 > **[docs/decisions.md](docs/decisions.md)** — the design notes, the porting notes, the mixin
 > post-mortems, and the measurements behind the thresholds. This file is the reference; that
-> one is the reasoning.
+> one is the reasoning. **What changed** is in [CHANGELOG.md](CHANGELOG.md).
 
 ## What it does
 
