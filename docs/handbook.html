@@ -1326,7 +1326,7 @@
         <h3>X-ray</h3>
         <p>
           The x-ray check reads the grief log rather than watching players, and it will not
-          fire at all until they have broken at least 500 blocks.
+          fire at all until they have broken at least 200 blocks.
         </p>
         <p>
           A single ratio is a bad detector, so it is not one. Four independent signals are
@@ -1357,17 +1357,19 @@
         </p>
         <div class="note caution">
           <p>
-            <span class="pill confirm">Retuned</span>
-            The alert line was 70% and the sample floor 500 blocks. Both were defensible in
-            isolation and together they meant the sweep <strong>effectively never fired</strong>:
-            on any server that is not enormous, almost nobody breaks 500 ore-plus-filler blocks
-            inside six hours, so nobody was ever scored at all. A detector that is never wrong
-            because it never speaks is not a detector. The floor is now 200 and the line 55 —
-            still high enough that no single signal can reach it alone, so an alert continues
-            to mean at least two of the four agreed.
+            <span class="pill confirm">Retuned, and this time measured</span>
+            These numbers were once moved on the grounds that the detector was too quiet.
+            That is an argument about visibility, and any bar can be lowered until a feature
+            speaks &mdash; so it was replaced with a measurement. Scoring two hundred generated
+            honest sessions and forty guided ones showed the old settings were not quiet at
+            all: the worst honest pattern scored <strong>66 against an alert line of 55</strong>,
+            so ordinary strip mining and ordinary diamond hunting at y=-54 both tripped it.
+            The line is now <strong>65</strong> with a floor of <strong>200</strong>, which sit
+            in the gap between the two populations: worst honest 50, weakest cheat 81. The run
+            is recorded in <code>docs/decisions.md</code>.
           </p>
           <p>
-            <code>xrayNoticeConfidence</code> (35) is the other half. A score above it but below
+            <code>xrayNoticeConfidence</code> (55) is the other half. A score above it but below
             the alert line produces a quiet line to staff that says plainly it is not a finding.
             Without it there is no way to tell "nobody is cheating" from "this has never once
             run", and for a long time it was the second.
@@ -2517,8 +2519,8 @@
   "presetReasons":   [ … ],           // becomes the buttons in the Reason menu
   "presetDurations": [ { "label": "7 days", "spec": "7d" }, … ],
   "reportCooldownSeconds": 60,
-  "xrayRatioThreshold": 0.04,         // ore fraction that trips the heuristic
-  "xraySampleFloor": 500,             // blocks needed before it fires at all
+  "xrayRatioThreshold": 0.12,         // ore fraction that trips the heuristic
+  "xraySampleFloor": 200,             // blocks needed before it fires at all
   "tpsAlertFloor": 17.0,
   "defaultRollbackMinutes": 60,
 
@@ -2535,8 +2537,8 @@
   "vanishLoadsChunks": true,          // false = vanish leaves no trace, and you fly into void
 
   // Shown in the server list while maintenance mode is on
-  "maintenanceMotd": "§6§lSERVER IN MAINTENANCE
-§7Please wait while we update things — back shortly."
+  // \n splits the two server-list lines; §6 gold, §l bold, §7 grey.
+  "maintenanceMotd": "§6§lSERVER IN MAINTENANCE\n§7Please wait while we update things — back shortly."
 }</code></pre>
         </div>
         <p>
@@ -2945,7 +2947,7 @@
           <h3>Detection</h3>
           <ul>
             <li><strong>Alt detection is a lead, never a verdict.</strong> It links accounts by exact address and by address range, scores each link out of a hundred from how often the address was shared and whether the two accounts have ever been online at the same moment, and shows its reasoning on the screen. A shared household still trips it. A determined evader with a clean VPN still beats it. Only an exact address match can ever ban anybody automatically.</li>
-            <li><strong>The x-ray check is a heuristic.</strong> It flags, it never acts, and by default it will not commit to a verdict below 500 mined blocks. It no longer counts ore a player placed themselves, but it is still inference drawn from a block log.</li>
+            <li><strong>The x-ray check is a heuristic.</strong> It flags, it never acts, and by default it will not commit to a verdict below 200 mined blocks. It no longer counts ore a player placed themselves, but it is still inference drawn from a block log. Its thresholds are measured against generated mining patterns, not against real player data &mdash; <code>docs/decisions.md</code> records exactly what that does and does not establish.</li>
             <li><strong>Analytics cannot read judgement.</strong> Follow-through, response time and overturn rate sit beside the raw counts now, so the leaderboard is no longer purely a volume ranking &mdash; but no number here can tell you whether a ban was the right call. Read it as a prompt to go and look at someone's work.</li>
           </ul>
           <h3>Not built</h3>

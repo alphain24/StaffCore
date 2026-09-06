@@ -3,6 +3,7 @@ package dev.lebron.staffcore.config;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import dev.lebron.staffcore.StaffCore;
+import dev.lebron.staffcore.modules.security.XrayTuning;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -289,41 +290,24 @@ public final class StaffConfig {
 	public int reportCooldownSeconds = 60;
 
 	// ---- security ------------------------------------------------------------
-	/** Diamonds-per-stone ratio above which the x-ray heuristic fires. */
-	public double xrayRatioThreshold = 0.04D;
-	/**
-	 * Ore-plus-filler blocks a player must have broken before the detector will say anything.
-	 * <p>
-	 * Lowered from 500. The old figure was defensible in isolation — thin data really does
-	 * produce nonsense — but on any server that is not enormous, almost nobody clears 500
-	 * blocks inside the six-hour window, so the sweep scored nobody and the whole feature
-	 * looked broken. A detector that is never wrong because it never speaks is not a
-	 * detector.
-	 * <p>
-	 * 200 is still enough that a handful of lucky finds cannot carry a score on their own.
-	 */
-	public int xraySampleFloor = 200;
+	//
+	// Every x-ray default comes from XrayTuning rather than being written here. The numbers
+	// carry a measurement behind them (docs/decisions.md), and having one home for them is
+	// what lets a test prove the documentation still agrees with the code — the last round of
+	// tuning left three different sample floors in circulation across the docs and the source.
+
+	/** Ore-to-total fraction above which the blunt ratio signal starts scoring. */
+	public double xrayRatioThreshold = XrayTuning.RATIO_THRESHOLD;
+	/** Ore-plus-filler blocks a player must have broken before the detector will say anything. */
+	public int xraySampleFloor = XrayTuning.SAMPLE_FLOOR;
 	/** Mean filler blocks between veins below which mining looks guided. */
-	public double xrayDirectnessFloor = 12.0D;
-	/**
-	 * Confidence at which staff are alerted automatically.
-	 * <p>
-	 * Lowered from 70. No single signal can reach this, so an alert still means at least two
-	 * of ore fraction, directness, beelines and ancient debris agreed — which is the property
-	 * worth keeping. 70 required nearly all of them at once and effectively never fired.
-	 */
-	public int xrayAlertConfidence = 55;
-	/**
-	 * Confidence at which staff get a quieter heads-up rather than an alert. 0 disables.
-	 * <p>
-	 * Exists because silence is indistinguishable from absence. Without this, a server owner
-	 * has no way to tell "nobody is cheating" from "the detector has never once run" — and
-	 * the second is what it looked like for a long time. A near miss is reported once, quietly,
-	 * and says plainly that it is not an accusation.
-	 */
-	public int xrayNoticeConfidence = 35;
+	public double xrayDirectnessFloor = XrayTuning.DIRECTNESS_FLOOR;
+	/** Confidence at which staff are alerted automatically. */
+	public int xrayAlertConfidence = XrayTuning.ALERT_CONFIDENCE;
+	/** Confidence at which staff get a quieter heads-up rather than an alert. 0 disables. */
+	public int xrayNoticeConfidence = XrayTuning.NOTICE_CONFIDENCE;
 	/** How often the background sweep scores active miners, in minutes. 0 disables. */
-	public int xraySweepMinutes = 5;
+	public int xraySweepMinutes = XrayTuning.SWEEP_MINUTES;
 	/** Skip staff who are clocked on. Staff mining off-duty are still scored. */
 	public boolean xraySkipStaffOnDuty = true;
 

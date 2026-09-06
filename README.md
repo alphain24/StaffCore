@@ -387,14 +387,14 @@ Changing a default in the code alone would never reach a server that has already
 
 ```jsonc
 {
-  "configVersion": 1,                 // managed by StaffCore; don't edit
+  "configVersion": 2,                 // managed by StaffCore; don't edit
   "discordWebhookUrl": "",            // empty = bridge off
   "requireReason": true,
   "publicPunishmentBroadcast": true,  // false = staff-only announcements
   "presetReasons":   [ … ],           // these become the buttons in the Reason menu
   "presetDurations": [ { "label": "7 days", "spec": "7d" }, … ],
   "reportCooldownSeconds": 60,
-  "xrayRatioThreshold": 0.04,         // ore fraction that trips the heuristic
+  "xrayRatioThreshold": 0.12,         // ore fraction that trips the heuristic
   "xraySampleFloor": 200,             // blocks needed before it will fire at all
   "tpsAlertFloor": 17.0,
   "defaultRollbackMinutes": 60,
@@ -444,8 +444,8 @@ Changing a default in the code alone would never reach a server that has already
   "databaseBackups": 5,                // written on every start, rotated; 0 disables
   "hideMiningNoise": true,             // keep the log readable on a busy server
   "xrayDirectnessFloor": 12.0,         // filler blocks between veins
-  "xrayAlertConfidence": 55,          // no single signal can reach this on its own
-  "xrayNoticeConfidence": 35,         // quiet heads-up below the alert line; 0 disables
+  "xrayAlertConfidence": 65,          // no single signal can reach this on its own
+  "xrayNoticeConfidence": 55,         // quiet heads-up below the alert line; 0 disables
   "xraySweepMinutes": 5,
   "xraySkipStaffOnDuty": true         // off-duty staff are still scored
 }
@@ -477,13 +477,14 @@ reason that actually applies, rather than leaving you to work it out. The candid
   their own score, so seeding a wall with iron ore to test the detector proves nothing. This
   is the one that catches people out, because it is the natural way to test.
 - **Not enough mining yet.** `xraySampleFloor` is ore-plus-filler blocks in a six-hour
-  window. **Lowered from 500 to 200** — 500 was defensible in isolation, but on any server
-  that is not enormous almost nobody cleared it, so the sweep scored nobody and the feature
-  looked broken. A detector that is never wrong because it never speaks is not a detector.
-- **Score under the bar.** Alerts start at `xrayAlertConfidence`, **lowered from 70 to 55**.
-  No single signal can reach 55, so an alert still means at least two of ore fraction,
-  directness, beelines and ancient debris agreed — which is the property worth keeping. 70
-  needed nearly all of them at once.
+  window, and it is **200** rather than anything higher on purpose. Raising it does not make
+  the detector more careful, it makes it blind to the person it is for: guided mining breaks
+  *less* cover to reach more ore, so those sessions are the small ones. At a floor of 400 the
+  measured set missed every cheat and kept every honest player in scope.
+- **Score under the bar.** Alerts start at `xrayAlertConfidence`, **65**, with a quiet notice
+  from `xrayNoticeConfidence`, **55**. Both sit in the gap measured between honest and guided
+  mining — the worst honest pattern scores 50, the best-hidden cheat 81. An alert still means
+  at least two of ore fraction, directness, detours and ancient debris agreed.
 - **The timer has not come round.** The sweep runs every `xraySweepMinutes`, now 5.
 - **You were testing as an operator.** The sweep once skipped everyone holding `staff.gui`,
   which without a permissions plugin resolves to op level — so whoever was testing was the
@@ -702,8 +703,10 @@ known gap — not a bug list.
   still trips it and a determined evader with a clean VPN still beats it. Only an exact
   match can ever auto-ban.
 - **The x-ray check is a heuristic.** It flags, it never acts, and by default it will not
-  commit to a verdict below 500 mined blocks. It no longer counts ore the player placed
-  themselves, but it is still inference from a block log.
+  commit to a verdict below 200 mined blocks. It no longer counts ore the player placed
+  themselves, but it is still inference from a block log. The thresholds are measured
+  against generated mining patterns rather than real player data — see
+  [decisions.md](docs/decisions.md), which records what that does and does not establish.
 - **Analytics cannot read judgement.** It now shows follow-through, response time and
   overturn rate beside the raw counts, so it is no longer only a volume ranking — but a
   number still cannot tell you whether a ban was the right call. Read the leaderboard as a
