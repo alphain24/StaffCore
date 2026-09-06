@@ -378,7 +378,7 @@ admin-only.
 
 ## Config — `config/staffcore.json`
 
-Written with defaults on first run; `/staffcore reload` re-reads it.
+Written with defaults on first run; `/staff reload` re-reads it.
 
 The file carries a `configVersion`. When a default changes in a way existing servers should
 inherit, the version is bumped and the value is moved **only if it still holds the old
