@@ -26,6 +26,7 @@
     "vanish.VanishBroadcastMixin",
     "vanish.VanishChunkTicketMixin",
     "vanish.VanishCollisionMixin",
+    "vanish.VanishLivingCollisionMixin",
     "vanish.VanishGameEventMixin",
     "vanish.VanishListMixin",
     "vanish.VanishMobTargetMixin",

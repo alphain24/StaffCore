@@ -95,8 +95,13 @@ public final class StartupCheck {
 			new Target(Tier.OPTIONAL, "Vanish — server-list ping", "net.minecraft.server.MinecraftServer",
 					"buildPlayerStatus", "staffcore$hideFromPing",
 					MIXIN_PKG + "vanish.VanishStatusMixin"),
-			new Target(Tier.OPTIONAL, "Vanish — entity collision", "net.minecraft.world.entity.Entity",
-					"isPushable", null, null),
+			// On LivingEntity, not Entity. It was on Entity and did nothing: LivingEntity
+			// overrides isPushable, so the override won for every player and every mob while
+			// the health check happily reported the target present.
+			new Target(Tier.OPTIONAL, "Vanish — entity collision",
+					"net.minecraft.world.entity.LivingEntity",
+					"isPushable", "staffcore$notPushable",
+					MIXIN_PKG + "vanish.VanishLivingCollisionMixin"),
 			new Target(Tier.OPTIONAL, "Vanish — block placement", "net.minecraft.world.entity.Entity",
 					"blocksBuilding", null, null),
 			// The one that actually makes a vanished player invisible. Worth verifying by

@@ -24,6 +24,24 @@ public class VanishCollisionMixin {
 		if (VanishHooks.intangible(self) || VanishHooks.intangible(other)) ci.cancel();
 	}
 
+}
+
+/**
+ * The pushability half, on {@link net.minecraft.world.entity.LivingEntity} rather than
+ * {@code Entity}.
+ * <p>
+ * It was on {@code Entity} and it did nothing, because {@code LivingEntity} overrides
+ * {@code isPushable()} — so for every player and every mob, the override won and the injection
+ * was never reached. The mixin applied cleanly, the health check reported the target present,
+ * and mobs walked into vanished staff regardless. That is the exact failure the health check
+ * cannot see: a hook that attaches perfectly to a method nothing calls.
+ * <p>
+ * Found by a gametest asking a real player whether it was pushable while vanished, which is
+ * the only question that would have caught it.
+ */
+@Mixin(net.minecraft.world.entity.LivingEntity.class)
+class VanishLivingCollisionMixin {
+
 	@Inject(method = "isPushable", at = @At("HEAD"), cancellable = true)
 	private void staffcore$notPushable(CallbackInfoReturnable<Boolean> cir) {
 		if (VanishHooks.intangible((Entity) (Object) this)) cir.setReturnValue(false);
