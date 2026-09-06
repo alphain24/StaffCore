@@ -317,7 +317,7 @@ has already logged off.
 | `/staff stats <player>` | `analytics.stats` | One staff member's totals |
 | `/staff perms [list \| set \| unset \| explain]` | `staff.perms` | Built-in groups, when no permissions mod is installed; `explain <player>` prints their resolved nodes |
 | `/staff backup` | `staff.reload` | Write a database backup now |
-| `/staff export` | `staff.reload` | Dump every table to CSV |
+| `/staff export [addresses [confirm]]` | `staff.reload` | Dump every table to CSV; addresses are redacted unless asked for |
 | `/staff selftest` | `staff.reload` | Prove the mod works, not just that it started |
 | `/staff nbt` | `security.invsee` | Read the held item's component data |
 | `/staff panel` | `staff.gui` | Open the panel |
@@ -406,8 +406,9 @@ Changing a default in the code alone would never reach a server that has already
   "discordInvite": "",                 // shown on the ban screen so people can appeal
   "allowInGameAppeals": true,
   "detectBanEvasion": true,
-  "autoBanEvaders": false,             // report by default; shared houses are real
   "altSubnetMatching": true,           // also link accounts sharing an address *range*
+  "connectionRetentionDays": 90,       // the only personal data here; 0 keeps forever
+  "hashConnectionAddresses": true,     // matching still works; the plaintext goes
   "altMinConfidence": 40,              // below this, a link is not worth an alert
   "logContainerAccess": true,          // most "griefing" is theft
   "logExplosions": true,               // creeper and TNT damage, so it can be rolled back

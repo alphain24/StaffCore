@@ -291,8 +291,6 @@ public final class StaffConfig {
 	// ---- ban evasion ---------------------------------------------------------
 	/** Alert staff when a joining account shares an address with a banned one. */
 	public boolean detectBanEvasion = true;
-	/** Automatically ban the new account too. Off by default — shared houses are real. */
-	public boolean autoBanEvaders = false;
 	/**
 	 * Also link accounts sharing an address <em>range</em> rather than an exact address.
 	 * <p>
@@ -300,9 +298,40 @@ public final class StaffConfig {
 	 * today is invisible to an exact match, which is most of what "a VPN defeats it" really
 	 * meant. A /24 (IPv4) or /64 (IPv6) match is a much weaker signal than an exact one and
 	 * is scored as such — it never reaches the confidence that an exact match does, and it
-	 * can never trigger {@link #autoBanEvaders}.
+	 * is never enough on its own to act on.
 	 */
 	public boolean altSubnetMatching = true;
+	/**
+	 * How long connection records are kept, in days. 0 keeps them forever.
+	 * <p>
+	 * An address is the only personal data this mod stores. Everything else it records is
+	 * conduct on the server, which belongs to the server in a way somebody's home address
+	 * does not — and it was the one category with no retention limit while grief logs,
+	 * snapshots, anti-cheat findings and debts all had one.
+	 * <p>
+	 * Ninety days is long enough for alt detection to be useful, since evasion happens within
+	 * days of a ban rather than months.
+	 */
+	public int connectionRetentionDays = 90;
+
+	/**
+	 * Store addresses as one-way hashes rather than in the clear.
+	 * <p>
+	 * Costs nothing, because nothing here needs to read an address — only to know whether two
+	 * accounts used the same one, which is an equality test and survives hashing exactly.
+	 * Both matching passes still work: exact matching compares the address hash, range
+	 * matching compares a separately hashed prefix.
+	 * <p>
+	 * The hash is salted with a value generated once per server and kept in the database.
+	 * IPv4 is 32 bits, so an unsalted digest of every possible address can be built in
+	 * seconds and would be an encoding rather than a hash.
+	 * <p>
+	 * Turning this on converts anything already stored, so the table cannot end up half in
+	 * each form — which would quietly stop two accounts matching because one row predates
+	 * the change.
+	 */
+	public boolean hashConnectionAddresses = true;
+
 	/** Confidence below which a linked account is not worth telling staff about. */
 	public int altMinConfidence = 40;
 

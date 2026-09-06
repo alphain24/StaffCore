@@ -1105,18 +1105,92 @@
           <p>
             <span class="pill confirm">Read as a lead</span>
             A shared address is <strong>not proof</strong>. Siblings, flatmates, schools and
-            mobile networks all put different people behind one. That is why
-            <code>autoBanEvaders</code> is <strong>off</strong> by default: auto-banning on an
-            IP match punishes the household for one member, and the player it actually
-            catches will simply use a VPN next time. What the check is good at is putting a
-            name in front of a human at the moment it is useful.
+            mobile networks all put different people behind one, and under CGNAT a single
+            address can be every customer of a provider.
           </p>
           <p>
-            Even switched on, only an <strong>exact</strong> address match can ban anybody
-            automatically. A range match means "somewhere in this provider's block", which on
-            a mobile network can be a city — automating a ban on that would eventually catch
-            a stranger. Links below <code>altMinConfidence</code> are not alerted at all, since
+            <strong>Nothing here bans anybody automatically, and there is no setting that
+            makes it.</strong> There used to be one, and it was removed rather than defaulted
+            off: an automatic ban on this evidence is wrong some fraction of the time, the
+            people it is wrong about are strangers who did nothing, and it would be wrong
+            while nobody was watching. Everything else in this handbook says alt detection is
+            a lead and not a verdict; acting on it automatically was the one place that said
+            otherwise.
+          </p>
+          <p>
+            A range match means "somewhere in this provider's block", which on
+            a mobile network can be a city — which is why it scores far lower than an exact
+            match. Links below <code>altMinConfidence</code> are not alerted at all, since
             an alert staff learn to dismiss teaches them to dismiss the ones that matter.
+          </p>
+        </div>
+
+        <h3>What is stored about a person, and for how long</h3>
+        <p class="lede">
+          One category here is personal data rather than a record of conduct. It is worth
+          being exact about.
+        </p>
+        <table>
+          <thead>
+            <tr><th>What</th><th>Where</th><th>Kept for</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Connection address, and its /24 range</td>
+              <td class="mono">connections</td>
+              <td><code>connectionRetentionDays</code>, default <strong>90 days</strong></td>
+            </tr>
+            <tr>
+              <td>Address on each join and leave</td>
+              <td class="mono">session_log</td>
+              <td><code>connectionRetentionDays</code>, default <strong>90 days</strong></td>
+            </tr>
+            <tr>
+              <td>Username and UUID</td>
+              <td>throughout</td>
+              <td>For as long as the record they belong to</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Everything else StaffCore records &mdash; punishments, notes, blocks broken, items
+          moved, commands run &mdash; is conduct on the server. That belongs to the server in a
+          way somebody's home address does not, and it follows the retention setting for its
+          own feature.
+        </p>
+        <div class="note">
+          <p>
+            <span class="pill">Addresses are hashed by default</span>
+            <code>hashConnectionAddresses</code> is on, so what lands on disk is a salted
+            SHA-256 digest rather than an address. This costs nothing, because nothing here
+            needs to <em>read</em> an address &mdash; only to know whether two accounts used the
+            same one, which is an equality test and survives hashing exactly. Both matching
+            passes still work: exact matching compares the address hash, range matching
+            compares a separately hashed prefix.
+          </p>
+          <p>
+            The salt is generated once per server and kept in the database, not the config
+            file &mdash; it is not a setting, and changing it would silently unlink every
+            account from every other. Salting matters because IPv4 is 32 bits: an unsalted
+            digest of every possible address can be built in seconds, which would make it an
+            encoding of an address rather than a hash of one. It is not magic either &mdash;
+            somebody holding both the database and the salt can still test a guess.
+          </p>
+          <p>
+            Turning it on converts anything already stored, so the table cannot end up half in
+            each form. That matters more than it sounds: two accounts sharing an address would
+            otherwise stop matching because one row predates the change, and alt detection
+            would get quietly worse with nothing to say why.
+          </p>
+        </div>
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">Export redacts addresses</span>
+            <code>/staff export</code> writes one CSV per table, and address columns come out
+            as <span class="mono">[redacted]</span>. An export is nearly always wanted for the
+            punishment history or the grief log; the addresses only came along because they
+            share a database. <code>/staff export addresses confirm</code> includes them, and
+            says first whether they are hashes or readable.
           </p>
         </div>
 
@@ -2547,6 +2621,8 @@
   "maxSnapshotsPerPlayer": 10,        // 0 keeps every one
   "snapshotRetentionDays": 30,
   "altSubnetMatching": true,          // also link accounts sharing an address range
+  "connectionRetentionDays": 90,      // the only personal data here; 0 keeps forever
+  "hashConnectionAddresses": true,    // matching still works; the plaintext goes
   "altMinConfidence": 40,             // below this, a link is not worth an alert
   "vanishLoadsChunks": true,          // false = vanish leaves no trace, and you fly into void
 

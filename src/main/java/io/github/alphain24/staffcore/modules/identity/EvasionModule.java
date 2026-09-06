@@ -7,7 +7,6 @@ import io.github.alphain24.staffcore.gui.Sfx;
 import io.github.alphain24.staffcore.gui.Theme;
 import io.github.alphain24.staffcore.module.Module;
 import io.github.alphain24.staffcore.module.Mods;
-import io.github.alphain24.staffcore.modules.punish.PunishmentType;
 import io.github.alphain24.staffcore.permission.Nodes;
 import io.github.alphain24.staffcore.permission.Permissions;
 import net.minecraft.network.chat.Component;
@@ -66,14 +65,17 @@ public class EvasionModule implements Module {
 
 		notifyStaff(server, joiner, names, strongest);
 
-		// Only an exact address match can ever ban somebody without a human involved. A
-		// range match means "somewhere in this provider's block", which on a mobile network
-		// is a city — automating a ban on that would eventually catch a stranger.
-		if (cfg.autoBanEvaders && strongest.isStrong()) {
-			Mods.punish().apply(server, joiner.nameAndId(), "StaffCore",
-					PunishmentType.BAN, null,
-					"Ban evasion — linked to " + names, "evasion");
-		}
+		// Nothing bans anybody from here, and there is no setting that makes it.
+		//
+		// The strongest signal available is "these two accounts used the same address", and
+		// under CGNAT that is every customer of a mobile network, while in a shared house it
+		// is a sibling. An automatic ban on that evidence is wrong some fraction of the time
+		// and the people it is wrong about are strangers who did nothing — which is the
+		// single most expensive mistake this mod could make, and it would make it while
+		// nobody was watching.
+		//
+		// The README has always said alt detection is a lead and not a verdict. Acting on it
+		// automatically was the one place that said otherwise.
 	}
 
 	/**

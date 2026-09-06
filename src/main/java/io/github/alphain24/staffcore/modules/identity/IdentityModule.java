@@ -39,6 +39,29 @@ public class IdentityModule implements Module {
 		return "Identity";
 	}
 
+	private boolean lifecycleRegistered;
+
+	/**
+	 * Converts anything stored in the clear, then drops what is past the retention window.
+	 * <p>
+	 * At start rather than on a timer, for the same reason the snapshot purge is: an address
+	 * a day past its window is not an emergency, and a job that runs while forty people are
+	 * online is.
+	 */
+	@Override
+	public void onEnable() {
+		if (lifecycleRegistered) return;
+		lifecycleRegistered = true;
+
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(
+				server -> {
+					java.sql.Connection c = conn();
+					if (c == null) return;
+					AddressPrivacy.convertExisting(c);
+					AddressPrivacy.purgeOlderThan(c, StaffConfig.get().connectionRetentionDays);
+				});
+	}
+
 	/** How two accounts came to be linked, strongest first. */
 	public enum Match {
 		/** Both have connected from the exact same address. */
@@ -208,8 +231,8 @@ public class IdentityModule implements Module {
 				""")) {
 			ps.setString(1, uuid.toString());
 			ps.setString(2, name);
-			ps.setString(3, ip);
-			ps.setString(4, NetAddress.prefix(ip));
+			ps.setString(3, AddressPrivacy.store(c, ip));
+			ps.setString(4, AddressPrivacy.storePrefix(c, ip));
 			ps.setLong(5, now);
 			ps.setLong(6, now);
 			ps.executeUpdate();
@@ -226,7 +249,7 @@ public class IdentityModule implements Module {
 			ps.setString(1, uuid.toString());
 			ps.setString(2, name);
 			ps.setString(3, action);
-			ps.setString(4, ip);
+			ps.setString(4, AddressPrivacy.store(c, ip));
 			ps.setLong(5, System.currentTimeMillis());
 			ps.executeUpdate();
 		} catch (SQLException e) {

@@ -1319,7 +1319,13 @@ public final class StaffCommands {
 
 		staff.then(Commands.literal("export")
 				.requires(src -> Permissions.check(src, Nodes.RELOAD))
-				.executes(StaffCommands::exportNow));
+				.executes(ctx -> exportNow(ctx, false, false))
+				// Addresses are the one thing in the database that is personal data rather
+				// than a record of conduct, so including them is a deliberate act.
+				.then(Commands.literal("addresses")
+						.executes(ctx -> exportNow(ctx, true, false))
+						.then(Commands.literal("confirm")
+								.executes(ctx -> exportNow(ctx, true, true)))));
 
 		staff.then(Commands.literal("nbt")
 				.requires(src -> Permissions.check(src, Nodes.INVSEE))
@@ -1826,19 +1832,43 @@ public final class StaffCommands {
 		return 1;
 	}
 
-	private static int exportNow(CommandContext<CommandSourceStack> ctx) {
+	private static int exportNow(CommandContext<CommandSourceStack> ctx, boolean addresses,
+			boolean confirmed) {
+
 		if (!StaffCore.storage().isReady()) {
 			return fail(ctx, "Storage is not available — there is nothing to export.");
 		}
 
-		java.nio.file.Path out = StaffCore.storage().export();
+		// An export is nearly always wanted for the punishment history or the grief log; the
+		// addresses only came along because they share a database. Asking once is the
+		// difference between a deliberate disclosure and an accidental one.
+		if (addresses && !confirmed) {
+			ctx.getSource().sendSuccess(() -> Theme.warn(
+					"This writes every address in the database to a CSV file."), false);
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					io.github.alphain24.staffcore.modules.identity.AddressPrivacy.enabled()
+							? "  They are stored hashed, so the file will contain hashes rather "
+									+ "than addresses — still enough to link two accounts."
+							: "  They are stored in the clear, so the file will contain readable "
+									+ "addresses.", Theme.MUTED), false);
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  /staff export addresses confirm  writes it anyway.", Theme.MUTED), false);
+			return 1;
+		}
+
+		java.nio.file.Path out = StaffCore.storage().export(addresses);
 		if (out == null) {
 			return fail(ctx, "Export failed. The server log says why.");
 		}
 
-		audit(ctx, "/staff export");
+		audit(ctx, "/staff export" + (addresses ? " addresses" : ""));
 		ctx.getSource().sendSuccess(() -> Icon.text(
 				"  One CSV per table, under the world folder.", Theme.MUTED), false);
+		if (!addresses) {
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  Address columns are redacted. /staff export addresses includes them.",
+					Theme.MUTED), false);
+		}
 		return ok(ctx, "Exported to " + out.getFileName());
 	}
 

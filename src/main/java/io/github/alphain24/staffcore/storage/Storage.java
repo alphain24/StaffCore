@@ -329,6 +329,22 @@ public final class Storage {
 	 * @return the folder written, or null on failure
 	 */
 	public Path export() {
+		return export(false);
+	}
+
+	/**
+	 * Dumps every table to CSV, redacting addresses unless asked not to.
+	 * <p>
+	 * The export is the one place this mod turns its database into a file that leaves the
+	 * server, and it was writing every address anybody had ever connected from into a
+	 * spreadsheet. Redacting by default is the right way round: an export is nearly always
+	 * wanted for the punishment history or the grief log, and the addresses came along only
+	 * because they happened to be in the same database.
+	 *
+	 * @param includeAddresses write addresses in whatever form they are stored. The caller is
+	 *                         responsible for having asked a human first.
+	 */
+	public Path export(boolean includeAddresses) {
 		if (conn == null || worldDir == null) return null;
 
 		Path dir = worldDir.resolve("staffcore-export")
@@ -353,14 +369,18 @@ public final class Storage {
 
 		int written = 0;
 		for (String table : tables) {
-			if (exportTable(table, dir.resolve(table + ".csv"))) written++;
+			if (exportTable(table, dir.resolve(table + ".csv"), includeAddresses)) written++;
 		}
 
 		StaffCore.LOGGER.info("[StaffCore] Exported {} table(s) to {}", written, dir);
 		return dir;
 	}
 
-	private boolean exportTable(String table, Path out) {
+	/** Columns holding an address, redacted unless the caller explicitly asked for them. */
+	private static final java.util.Set<String> ADDRESS_COLUMNS =
+			java.util.Set.of("ip", "ip_prefix", "address");
+
+	private boolean exportTable(String table, Path out, boolean includeAddresses) {
 		// Identifiers cannot be bound, and this one came from sqlite_master rather than from
 		// a user — but it is quoted anyway so a table with an odd name cannot break the SQL.
 		String sql = "SELECT * FROM \"" + table.replace("\"", "\"\"") + "\"";
@@ -372,16 +392,22 @@ public final class Storage {
 			var meta = rs.getMetaData();
 			int columns = meta.getColumnCount();
 
+			boolean[] redact = new boolean[columns + 1];
 			for (int i = 1; i <= columns; i++) {
+				String label = meta.getColumnLabel(i);
+				redact[i] = !includeAddresses
+						&& ADDRESS_COLUMNS.contains(label.toLowerCase(java.util.Locale.ROOT));
 				if (i > 1) writer.write(',');
-				writer.write(csv(meta.getColumnLabel(i)));
+				writer.write(csv(label));
 			}
 			writer.write('\n');
 
 			while (rs.next()) {
 				for (int i = 1; i <= columns; i++) {
 					if (i > 1) writer.write(',');
-					writer.write(csv(rs.getString(i)));
+					// The column stays, so the file keeps its shape and anything reading it
+					// keeps working; only the value goes.
+					writer.write(redact[i] ? csv("[redacted]") : csv(rs.getString(i)));
 				}
 				writer.write('\n');
 			}
