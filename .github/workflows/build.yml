@@ -15,6 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate the Gradle wrapper
+        # The wrapper is a checked-in jar that every build on every machine executes before
+        # any of this repository's own code runs. A swapped wrapper is the quietest supply
+        # chain there is, so its checksum is matched against Gradle's published list before
+        # it is allowed to run.
+        uses: gradle/actions/wrapper-validation@v4
+
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:

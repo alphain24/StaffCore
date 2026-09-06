@@ -84,7 +84,7 @@ live server. Both are covered in [the handbook](docs/handbook.html#health).
 | Java | `25` |
 | Fabric Loader | `0.19.3` |
 | Fabric API | `0.157.0+26.2` |
-| Loom | `1.17-SNAPSHOT` |
+| Loom | `1.17.20` |
 | Gradle | `9.7.0` |
 | Mappings | none — 26.x ships unobfuscated |
 

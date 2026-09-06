@@ -129,6 +129,27 @@ line. That is inherent to scoring a block log and is not something a threshold c
 
 ---
 
-## Namespace and build pinning
+## Pinning the build
 
-*(pending — items 5 and 6)*
+**Date:** 2026-09-06
+**Decides:** `loom_version`, and wrapper validation in CI
+
+`loom_version` was `1.17-SNAPSHOT`. A snapshot is republished under the same coordinate, so
+the same commit could build one day and fail the next with nothing in the history to blame —
+and the failure would land on whoever pulled next, not on whoever caused it. Pinned to
+**1.17.20**, the newest released 1.17.x, which is the line the snapshot was tracking.
+
+`fabric_api_version` was already exact at `0.157.0+26.2` (the `+26.2` is part of Fabric's
+version string, not a dynamic-version range), as are the loader, SQLite, JUnit and the Gradle
+distribution. Loom was the only moving part.
+
+Wrapper validation was added to all three workflows. `gradle-wrapper.jar` is a checked-in
+binary that every build executes before any code in this repository runs, which makes it the
+quietest place in the project to hide something; `gradle/actions/wrapper-validation` matches it
+against Gradle's published checksums.
+
+---
+
+## Namespace
+
+*(pending — item 6)*
