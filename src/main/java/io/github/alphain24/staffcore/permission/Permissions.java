@@ -68,6 +68,17 @@ public final class Permissions {
 
 			Boolean answer = groups.check(player.getUUID(), Mc.name(player), node);
 			if (answer != null) return answer;
+
+			// The file is in charge and has nothing to say about this player. With the
+			// bypass switched off that has to mean no.
+			//
+			// It used to fall through to the line below, which reopened the operator path
+			// that operatorsBypass:false exists to close — so turning the setting off left
+			// every op holding every node, exactly as if it were still on, and the only
+			// players it actually restricted were the ones who were not operators. A
+			// security setting that silently applies to everyone except the people it was
+			// written for is worse than not having it.
+			if (!groups.operatorsBypass) return false;
 		}
 		return Mc.isModerator(player);
 	}

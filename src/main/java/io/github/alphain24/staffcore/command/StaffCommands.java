@@ -1857,7 +1857,66 @@ public final class StaffCommands {
 												StringArgumentType.getString(ctx, "group"))))))
 				.then(Commands.literal("unset")
 						.then(Commands.argument("player", StringArgumentType.word())
-								.executes(ctx -> permsSet(ctx, null)))));
+								.executes(ctx -> permsSet(ctx, null))))
+				// Ambiguity is this file's failure mode: wildcards, inheritance and a default
+				// group are three ways for a node to reach somebody without anybody having
+				// written it next to their name.
+				.then(Commands.literal("explain")
+						.then(Commands.argument("player", StringArgumentType.word())
+								.executes(StaffCommands::permsExplain))));
+	}
+
+	/**
+	 * Prints the fully resolved node set for one player and where each entry came from.
+	 * <p>
+	 * The question this answers is "why can they do that", and before it the answer involved
+	 * reading JSON and running the resolver in your head — through wildcards, through
+	 * {@code @other} inheritance, and through whatever {@code defaultGroup} is. It also names
+	 * the two states that used to be invisible: a player whose group does not exist, and a
+	 * player the file says nothing about at all.
+	 */
+	private static int permsExplain(CommandContext<CommandSourceStack> ctx) {
+		if (permsUnavailable(ctx)) return 0;
+
+		String name = StringArgumentType.getString(ctx, "player");
+		MinecraftServer server = ctx.getSource().getServer();
+		var id = io.github.alphain24.staffcore.util.PlayerLookup.uuid(server, name);
+
+		var explanation = PermissionGroups.get().explain(id.orElse(null), name);
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(name, Theme.ACCENT))
+				.append(Icon.text(explanation.group() == null
+						? " — no group" : " — group " + explanation.group(), Theme.MUTED)), false);
+
+		for (String problem : explanation.problems()) {
+			ctx.getSource().sendSuccess(() -> Theme.warn("  " + problem), false);
+		}
+
+		if (explanation.grants().isEmpty()) {
+			boolean opFallback = PermissionGroups.get().operatorsBypass;
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					opFallback
+							? "  Holds nothing from this file. Being an operator still passes "
+									+ "every check — operatorsBypass is on."
+							: "  Holds nothing, and operatorsBypass is off, so nothing else "
+									+ "will grant it either.",
+					Theme.MUTED), false);
+			return 1;
+		}
+
+		ctx.getSource().sendSuccess(() -> Icon.text(
+				"  " + explanation.grants().size() + " node(s):", Theme.TEXT), false);
+		for (String granted : explanation.grants()) {
+			ctx.getSource().sendSuccess(() -> Icon.text("    " + granted, Theme.MUTED), false);
+		}
+
+		if (PermissionGroups.get().operatorsBypass) {
+			ctx.getSource().sendSuccess(() -> Theme.warn(
+					"  operatorsBypass is on, so any operator passes every check regardless "
+							+ "of this list."), false);
+		}
+		return 1;
 	}
 
 	/** True when the built-in groups are not the authority, with an explanation. */

@@ -88,13 +88,118 @@ public final class PermissionGroups {
 		String group = groupFor(uuid, name);
 		if (group == null) return null;
 
-		List<String> nodes = expand(group, new ArrayList<>());
-		if (nodes.isEmpty()) return null;
+		// A named group is an answer even when it turns out to be empty or to name nothing.
+		//
+		// This used to return null for both, which reads as "this file has no opinion" and
+		// falls through to the vanilla operator level. So a typo in a group name did not deny
+		// anybody — it promoted them. Somebody assigned to "moderater" got operator level,
+		// which on most servers is more than "moderator" would have given them, and the file
+		// looked correctly configured while doing the opposite of what it said.
+		if (!groups.containsKey(group.toLowerCase(Locale.ROOT))) {
+			StaffCore.LOGGER.warn("[StaffCore] {} is assigned to \"{}\", which is not a group in "
+					+ "staffcore-permissions.json. Denying, and they hold nothing until it is "
+					+ "spelled the same as one of: {}",
+					name, group, String.join(", ", groups.keySet()));
+			return false;
+		}
 
-		for (String granted : nodes) {
+		for (String granted : expand(group, new ArrayList<>())) {
 			if (grants(granted, node)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Every node a player actually ends up with, and what granted each one.
+	 * <p>
+	 * Ambiguity is this file's failure mode. Wildcards, inheritance and a default group are
+	 * three ways for a node to arrive without anybody having written it down next to that
+	 * player's name, and "why can this person do that" is otherwise answered by reading JSON
+	 * and simulating the resolver in your head.
+	 */
+	public record Explanation(String group, boolean groupExists, List<String> grants,
+			List<String> problems) {}
+
+	public Explanation explain(UUID uuid, String name) {
+		String group = groupFor(uuid, name);
+		List<String> problems = new ArrayList<>();
+
+		if (group == null) {
+			problems.add("not listed in the file, and defaultGroup is empty");
+			return new Explanation(null, false, List.of(), problems);
+		}
+		if (!groups.containsKey(group.toLowerCase(Locale.ROOT))) {
+			problems.add("assigned to \"" + group + "\", which is not a group in this file");
+			return new Explanation(group, false, List.of(), problems);
+		}
+
+		List<String> grants = new ArrayList<>();
+		for (String granted : expand(group, new ArrayList<>())) {
+			String via = granted.endsWith(".*")
+					? granted + "   (wildcard: everything under " + granted.substring(0, granted.length() - 1) + ")"
+					: granted;
+			if (!grants.contains(via)) grants.add(via);
+		}
+		if (grants.isEmpty()) problems.add("the group is defined but lists no nodes");
+		return new Explanation(group, true, grants, problems);
+	}
+
+	/**
+	 * Checks the file makes sense, at load rather than at resolution.
+	 * <p>
+	 * A cycle in {@code @other} inheritance was already survivable — the resolver keeps a
+	 * seen-list so it cannot hang — but surviving it meant silently resolving to a partial
+	 * node set, which is a permission bug that presents as a permission working sometimes.
+	 * Reporting it once at load costs nothing and is the only moment anybody is looking.
+	 *
+	 * @return one line per problem, empty when the file is coherent
+	 */
+	public List<String> validate() {
+		List<String> problems = new ArrayList<>();
+
+		for (String group : groups.keySet()) {
+			List<String> chain = new ArrayList<>();
+			String cycle = findCycle(group, chain);
+			if (cycle != null) {
+				problems.add("Inheritance cycle: " + String.join(" -> ", chain) + " -> " + cycle);
+			}
+			for (String entry : groups.getOrDefault(group, List.of())) {
+				if (entry.startsWith("@") && !groups.containsKey(
+						entry.substring(1).toLowerCase(Locale.ROOT))) {
+					problems.add("Group \"" + group + "\" inherits from \"" + entry.substring(1)
+							+ "\", which does not exist");
+				}
+			}
+		}
+
+		for (var entry : players.entrySet()) {
+			if (!groups.containsKey(entry.getValue().toLowerCase(Locale.ROOT))) {
+				problems.add("Player \"" + entry.getKey() + "\" is in group \"" + entry.getValue()
+						+ "\", which does not exist - they will hold nothing");
+			}
+		}
+
+		if (defaultGroup != null && !defaultGroup.isBlank()
+				&& !groups.containsKey(defaultGroup.toLowerCase(Locale.ROOT))) {
+			problems.add("defaultGroup is \"" + defaultGroup + "\", which does not exist");
+		}
+		return problems;
+	}
+
+	/** Walks the inheritance chain, returning the group that closes a loop. */
+	private String findCycle(String group, List<String> chain) {
+		String key = group == null ? null : group.toLowerCase(Locale.ROOT);
+		if (key == null) return null;
+		if (chain.contains(key)) return key;
+
+		chain.add(key);
+		for (String entry : groups.getOrDefault(key, List.of())) {
+			if (!entry.startsWith("@")) continue;
+			String found = findCycle(entry.substring(1), chain);
+			if (found != null) return found;
+		}
+		chain.remove(key);
+		return null;
 	}
 
 	private String groupFor(UUID uuid, String name) {
@@ -199,6 +304,12 @@ public final class PermissionGroups {
 			if (instance.players == null) instance.players = new LinkedHashMap<>();
 			StaffCore.LOGGER.info("[StaffCore] Loaded {} permission group(s) for {} player(s).",
 					instance.groups.size(), instance.players.size());
+
+			// Boot is the one moment anybody reads this. A cycle or a mistyped group name is
+			// otherwise found by a staff member discovering they cannot do their job.
+			for (String problem : instance.validate()) {
+				StaffCore.LOGGER.error("[StaffCore] staffcore-permissions.json: {}", problem);
+			}
 		} catch (IOException | RuntimeException e) {
 			// Falling back to defaults here would silently promote everyone in the file to
 			// whatever the starter groups say, so the file is treated as absent instead.

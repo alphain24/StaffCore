@@ -315,7 +315,7 @@ has already logged off.
 | `/staff appeals` | `staff.appeals` | Appeal queue |
 | `/staff rollback area <radius> [minutes]` | `grief.rollback` | Undo **everyone's** changes here |
 | `/staff stats <player>` | `analytics.stats` | One staff member's totals |
-| `/staff perms [list \| set \| unset]` | `staff.perms` | Built-in groups, when no permissions mod is installed |
+| `/staff perms [list \| set \| unset \| explain]` | `staff.perms` | Built-in groups, when no permissions mod is installed; `explain <player>` prints their resolved nodes |
 | `/staff backup` | `staff.reload` | Write a database backup now |
 | `/staff export` | `staff.reload` | Dump every table to CSV |
 | `/staff selftest` | `staff.reload` | Prove the mod works, not just that it started |
