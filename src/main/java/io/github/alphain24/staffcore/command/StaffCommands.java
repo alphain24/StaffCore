@@ -38,6 +38,7 @@ import io.github.alphain24.staffcore.modules.punish.PunishmentType;
 import io.github.alphain24.staffcore.modules.report.ReportModule;
 import io.github.alphain24.staffcore.permission.Nodes;
 import io.github.alphain24.staffcore.permission.PermissionGroups;
+import io.github.alphain24.staffcore.modules.accountability.OperationId;
 import io.github.alphain24.staffcore.permission.Actor;
 import io.github.alphain24.staffcore.permission.Permissions;
 import io.github.alphain24.staffcore.util.DurationParser;
@@ -351,8 +352,12 @@ public final class StaffCommands {
 		if (result == null) {
 			return fail(ctx, "The punishment could not be saved — check the server log.");
 		}
-		// PunishmentModule already broadcast it; no second confirmation needed here.
-		return 1;
+
+		// PunishmentModule already broadcast this to every staff member, so the line here is
+		// not a second confirmation — it is the reference, which only the person who ran the
+		// command needs and which the broadcast deliberately does not carry.
+		return okWithOp(ctx, "Recorded.",
+				OperationId.of(OperationId.Kind.PUNISHMENT, result.id()));
 	}
 
 	private static int revoke(CommandContext<CommandSourceStack> ctx, boolean bans)
@@ -444,9 +449,15 @@ public final class StaffCommands {
 				target.name() + " — " + history.size() + " record(s):"), false);
 		history.stream().limit(20).forEach(p -> ctx.getSource().sendSuccess(() ->
 				Icon.text("  " + p.type().label(), p.type().color())
-						.append(Icon.text(" · " + TimeFormat.ago(p.createdAt())
-								+ " · by " + p.staffName()
-								+ " · " + p.reasonOr("no reason"), Theme.MUTED)), false));
+						.append(Icon.text(" · ", Theme.MUTED))
+						.append(Link.time(p.createdAt()))
+						.append(Icon.text(" · by " + p.staffName()
+								+ " · " + p.reasonOr("no reason"), Theme.MUTED))
+						.append(Icon.text("  ", Theme.MUTED))
+						.append(Link.operation(
+								OperationId.of(OperationId.Kind.PUNISHMENT, p.id()).toString(),
+								OperationId.of(OperationId.Kind.PUNISHMENT, p.id()).command())),
+				false));
 		if (history.size() > 20) {
 			ctx.getSource().sendSuccess(() -> Theme.info(
 					"  … " + (history.size() - 20) + " more. Use /staff for the full list."), false);
@@ -1274,7 +1285,8 @@ public final class StaffCommands {
 						ctx.getSource().getTextName(), result.reverted(), radius));
 		Sfx.bigSuccess(self);
 		reportReclaim(ctx, result);
-		return ok(ctx, "Reverted " + result.reverted() + " change(s) by everyone here.");
+		return okWithOp(ctx, "Reverted " + result.reverted() + " change(s) by everyone here.",
+				OperationId.of(OperationId.Kind.ROLLBACK, result.pointId()));
 	}
 
 	/**
@@ -1332,7 +1344,8 @@ public final class StaffCommands {
 						ctx.getSource().getTextName(), result.reverted(), player));
 		Sfx.bigSuccess(self);
 		reportReclaim(ctx, result);
-		return ok(ctx, "Reverted " + result.reverted() + " change(s) by " + player + ".");
+		return okWithOp(ctx, "Reverted " + result.reverted() + " change(s) by " + player + ".",
+				OperationId.of(OperationId.Kind.ROLLBACK, result.pointId()));
 	}
 
 	// ------------------------------------------------------------------- server
@@ -1457,6 +1470,7 @@ public final class StaffCommands {
 				.executes(StaffCommands::selfTest));
 
 		registerCases(staff);
+		registerOperations(staff);
 		registerAccountability(staff);
 		registerPerms(staff);
 
@@ -2411,6 +2425,12 @@ public final class StaffCommands {
 		ctx.getSource().sendSuccess(() -> Theme.prefix()
 				.append(Icon.text("Permission groups", Theme.ACCENT)), false);
 
+		if (groups.groups.isEmpty()) {
+			// Said rather than left blank. A header followed by nothing reads as a command
+			// that broke halfway, and the next thing somebody does is run it again.
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  No groups defined.", Theme.MUTED), false);
+		}
 		groups.groups.forEach((name, nodes) -> ctx.getSource().sendSuccess(() -> Icon.text(
 				"  " + name + " — " + nodes.size() + " entry/entries", Theme.TEXT), false));
 
@@ -2475,6 +2495,162 @@ public final class StaffCommands {
 	 * every command picks up who was acting, from where, and under which build without each
 	 * call site having to pass any of it.
 	 */
+	// ------------------------------------------------------------ operation lookup
+
+	/**
+	 * One lookup for every reference a destructive command hands back.
+	 * <p>
+	 * The point of a single command is that staff paste what they were given without knowing
+	 * what sort of thing it is. Somebody reading a ticket that says {@code R-88} should not
+	 * first have to work out that R means rollback, and that rollbacks are looked up with a
+	 * different command from punishments.
+	 * <p>
+	 * The gate here is the general staff one and each branch re-checks its own node, which is
+	 * the right way round: knowing that {@code I-12} exists is not the same as being allowed
+	 * to read what moved.
+	 */
+	private static void registerOperations(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("op")
+				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
+				.then(Commands.argument("ref", StringArgumentType.word())
+						.executes(StaffCommands::showOperation)));
+	}
+
+	private static int showOperation(CommandContext<CommandSourceStack> ctx) {
+		String typed = StringArgumentType.getString(ctx, "ref");
+		OperationId.Ref ref = OperationId.parse(typed);
+
+		if (ref == null) {
+			return fail(ctx, "\"" + typed + "\" is not an operation reference. They look like "
+					+ "P-1234 (punishment), R-88 (rollback), I-12 (inventory change) or "
+					+ "C-4KX9QW1M (case).");
+		}
+
+		return switch (ref.kind()) {
+			case PUNISHMENT -> showPunishmentRef(ctx, ref);
+			case ROLLBACK -> showRollbackRef(ctx, ref);
+			case INVENTORY -> showInventoryRef(ctx, ref);
+			case CASE -> showCaseRef(ctx, ref);
+		};
+	}
+
+	private static int showPunishmentRef(CommandContext<CommandSourceStack> ctx,
+			OperationId.Ref ref) {
+
+		if (!Permissions.check(ctx.getSource(), Nodes.HISTORY)) {
+			return fail(ctx, ref + " is a punishment; reading those needs " + Nodes.HISTORY + ".");
+		}
+		Punishment p = Mods.punish().byId(Long.parseLong(ref.id()));
+		if (p == null) return fail(ctx, "No punishment with reference " + ref + ".");
+
+		CommandSourceStack src = ctx.getSource();
+		src.sendSuccess(() -> Theme.info("Punishment " + ref), false);
+		src.sendSuccess(() -> Icon.text("  " + p.type().name().toLowerCase(java.util.Locale.ROOT)
+				+ " on ", Theme.MUTED).append(Link.subject(p.targetName(), p.targetUuid())), false);
+		src.sendSuccess(() -> Icon.text("  " + p.reasonOr("no reason given"), Theme.TEXT), false);
+		src.sendSuccess(() -> Icon.text("  by " + p.staffName() + ", "
+				+ TimeFormat.full(p.createdAt()), Theme.MUTED), false);
+		src.sendSuccess(() -> Icon.text("  " + state(p), p.inForce() ? Theme.WARN : Theme.MUTED),
+				false);
+
+		// The appeal code is deliberately absent. It belongs to the player, it appears on
+		// their screen, and staff reading it out of a lookup is how an appeal gets filed by
+		// somebody other than the person it is about.
+		if (p.hasCase()) {
+			src.sendSuccess(() -> Icon.text("  case ", Theme.MUTED)
+					.append(Link.caseId(p.caseId())), false);
+		}
+		return 1;
+	}
+
+	private static String state(Punishment p) {
+		if (p.inForce()) return "in force, " + p.remaining();
+		if (p.revokedBy() != null) {
+			return "lifted by " + p.revokedBy() + ", " + TimeFormat.full(p.revokedAt());
+		}
+		return p.isExpired() ? "expired " + TimeFormat.words(p.expiresAt()) : "no longer in force";
+	}
+
+	private static int showRollbackRef(CommandContext<CommandSourceStack> ctx,
+			OperationId.Ref ref) {
+
+		if (!Permissions.check(ctx.getSource(), Nodes.ROLLBACK)) {
+			return fail(ctx, ref + " is a rollback; reading those needs " + Nodes.ROLLBACK + ".");
+		}
+		var point = Mods.grief().points().byId(Long.parseLong(ref.id()));
+		if (point == null) {
+			return fail(ctx, "No rollback with reference " + ref + ". Restore points are kept "
+					+ StaffConfig.get().rollbackPointRetentionDays + " day(s), so an older one "
+					+ "has been pruned rather than lost.");
+		}
+
+		CommandSourceStack src = ctx.getSource();
+		src.sendSuccess(() -> Theme.info("Rollback " + ref), false);
+		src.sendSuccess(() -> Icon.text("  by " + point.staff() + ", "
+				+ TimeFormat.full(point.createdAt()), Theme.MUTED), false);
+		src.sendSuccess(() -> Icon.text("  " + point.changes() + " change(s) within "
+				+ point.radius() + " blocks of ", Theme.TEXT)
+				.append(Link.position(point.world(), point.centre())), false);
+		src.sendSuccess(() -> point.isUndone()
+				? Icon.text("  already undone by " + point.undoneBy(), Theme.MUTED)
+				: Link.suggest("  [undo this rollback]", "/staff rollback undo " + point.id(),
+						Theme.WARN, "Fills the command in without running it"), false);
+		return 1;
+	}
+
+	private static int showInventoryRef(CommandContext<CommandSourceStack> ctx,
+			OperationId.Ref ref) {
+
+		if (!Permissions.check(ctx.getSource(), Nodes.INVSEE)) {
+			return fail(ctx, ref + " is an inventory change; reading those needs "
+					+ Nodes.INVSEE + ".");
+		}
+		long id = Long.parseLong(ref.id());
+		var reversal = io.github.alphain24.staffcore.inventory.InventoryGateway
+				.describeReversal(id);
+
+		CommandSourceStack src = ctx.getSource();
+		src.sendSuccess(() -> Theme.info("Inventory change " + ref), false);
+		src.sendSuccess(() -> Icon.text("  " + reversal.count() + " item(s)"
+				+ (reversal.items() == null || reversal.items().isBlank()
+						? "" : ": " + reversal.items()), Theme.TEXT), false);
+
+		if (reversal.targetName() != null && !reversal.targetName().isBlank()) {
+			src.sendSuccess(() -> Icon.text("  on ", Theme.MUTED)
+					.append(Link.subject(reversal.targetName(), reversal.targetId())), false);
+		}
+		src.sendSuccess(() -> reversal.possible()
+				? Link.suggest("  [give it back]", "/staff owed undo " + id, Theme.WARN,
+						"Fills the command in without running it")
+				: Icon.text("  cannot be reversed: " + reversal.problem(), Theme.MUTED), false);
+		return 1;
+	}
+
+	private static int showCaseRef(CommandContext<CommandSourceStack> ctx, OperationId.Ref ref) {
+		var found = Mods.cases().store().byId(ref.id());
+		if (found.isEmpty()) return fail(ctx, "No case with reference " + ref + ".");
+
+		audit(ctx, "/staff op " + ref, found.get().id());
+		CaseView.print(ctx.getSource(), found.get());
+		return 1;
+	}
+
+	/**
+	 * Confirms a destructive action and hands back the reference to what it did.
+	 * <p>
+	 * The reference is why this is a helper rather than each command building its own line:
+	 * an action whose id only the database knows is an action nobody can put in a ticket,
+	 * quote to the player, or ask an admin about at four in the morning.
+	 */
+	private static int okWithOp(CommandContext<CommandSourceStack> ctx, String message,
+			OperationId.Ref ref) {
+
+		ctx.getSource().sendSuccess(() -> Theme.good(message)
+				.append(Icon.text("  ", Theme.MUTED))
+				.append(Link.operation(ref.toString(), ref.command())), false);
+		return 1;
+	}
+
 	private static void audit(CommandContext<CommandSourceStack> ctx, String command) {
 		audit(ctx, command, null);
 	}

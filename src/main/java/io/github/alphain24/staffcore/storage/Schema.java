@@ -967,6 +967,21 @@ final class Schema {
 			conn -> {
 				addColumn(conn, "inventory_audit", "actor_resolved_at", "INTEGER");
 				addColumn(conn, "command_log", "actor_resolved_at", "INTEGER");
+			},
+
+			// 19 - the appeal code a banned player reads off their disconnect screen.
+			//
+			// Separate from the punishment id on purpose. The id has to appear in staff
+			// output, exports and eventually Discord embeds, and anything in those places is
+			// readable by a bystander; this identifies the right to appeal rather than the
+			// record, so filing an appeal as somebody else needs the screenshot rather than
+			// the case file. Indexed because the lookup is by code, once per appeal.
+			conn -> {
+				addColumn(conn, "punishments", "appeal_code", "TEXT");
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_punishments_appeal_code "
+							+ "ON punishments(appeal_code)");
+				}
 			}
 	);
 
@@ -1010,6 +1025,7 @@ final class Schema {
 			{"command_log", "staff_ip", "TEXT"},
 			{"command_log", "case_id", "TEXT"},
 			{"command_log", "server_version", "TEXT"},
+			{"punishments", "appeal_code", "TEXT"},
 			{"command_log", "mod_version", "TEXT"},
 			{"notes", "case_id", "TEXT"},
 			{"notes", "retracted_at", "INTEGER"},

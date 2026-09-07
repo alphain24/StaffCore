@@ -71,7 +71,7 @@ public final class CaseView {
 
 	private static MutableComponent statusLine(Case subject) {
 		MutableComponent line = Icon.text("  Opened ", Theme.MUTED)
-				.append(Icon.text(TimeFormat.ago(subject.openedAt()), Theme.TEXT))
+				.append(Icon.text(TimeFormat.full(subject.openedAt()), Theme.TEXT))
 				.append(Icon.text(" by " + subject.openedBy(), Theme.MUTED));
 
 		if (subject.assignedTo() != null) {
@@ -100,7 +100,7 @@ public final class CaseView {
 
 		for (Signal signal : ordered) {
 			to.sendSuccess(() -> Icon.text("    ", Theme.MUTED)
-					.append(Icon.text(TimeFormat.ago(signal.occurredAt()), Theme.MUTED))
+					.append(Link.time(signal.occurredAt()))
 					.append(Icon.text("  " + signal.type().label(), Theme.TEXT))
 					.append(Icon.text("  " + signal.confidence() + "%",
 							signal.confidence() >= 70 ? Theme.BAD : Theme.MUTED))
@@ -144,7 +144,7 @@ public final class CaseView {
 		to.sendSuccess(() -> Icon.text("  History:", Theme.TEXT), false);
 		for (CaseStore.Event event : events) {
 			to.sendSuccess(() -> Icon.text("    ", Theme.MUTED)
-					.append(Icon.text(TimeFormat.ago(event.at()), Theme.MUTED))
+					.append(Link.time(event.at()))
 					.append(Icon.text("  " + event.actor(), Theme.ACCENT))
 					.append(Icon.text("  " + event.kind(), Theme.TEXT))
 					.append(Icon.text(event.body() == null ? "" : "  " + event.body(),
@@ -164,8 +164,9 @@ public final class CaseView {
 				.append(Icon.text("  " + pad(String.valueOf(subject.severity()), 3),
 						severityColour(subject)))
 				.append(Icon.text("  " + pad(subject.status().stored(), 13), Theme.MUTED))
-				.append(Link.player(name))
-				.append(Icon.text("  " + TimeFormat.ago(subject.openedAt()), Theme.MUTED));
+				.append(Link.subject(name, subject.subjectId()))
+				.append(Icon.text("  ", Theme.MUTED))
+				.append(Link.time(subject.openedAt()));
 	}
 
 	private static String pad(String s, int width) {

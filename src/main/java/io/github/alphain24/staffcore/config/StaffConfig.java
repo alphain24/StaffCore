@@ -358,6 +358,22 @@ public final class StaffConfig {
 	 */
 	public boolean rootAliases = false;
 
+	// ---- display -------------------------------------------------------------
+
+	/**
+	 * The timezone staff-facing times are printed in. A zone id, such as
+	 * {@code Europe/London} or {@code America/New_York}.
+	 * <p>
+	 * Changing this changes display only. Stored times stay epoch milliseconds and log lines
+	 * stay UTC, because a log is read later by somebody in another place and one rendered in
+	 * the writer's local time carries a silent offset. Every printed time names its zone, so
+	 * nothing here can make a timestamp mean something other than what it says.
+	 * <p>
+	 * An unrecognised zone falls back to UTC and is reported at startup rather than failing
+	 * the boot: a typo here should cost a preference, not the ability to read a ban record.
+	 */
+	public String displayTimezone = "UTC";
+
 	// ---- accountability ------------------------------------------------------
 
 	/**
@@ -675,10 +691,38 @@ public final class StaffConfig {
 			StaffConfig loaded = GSON.fromJson(r, StaffConfig.class);
 			instance = loaded != null ? loaded : new StaffConfig();
 			if (migrate(instance)) save();
+			validate();
 		} catch (IOException | RuntimeException e) {
 			StaffCore.LOGGER.error("[StaffCore] Config is unreadable - falling back to defaults", e);
 			instance = new StaffConfig();
 		}
+	}
+
+	/**
+	 * Checks the values that can be wrong in a way the code cannot recover from silently.
+	 * <p>
+	 * Every complaint here names the key, what is in it, and what happens now — a warning
+	 * that says "invalid config" costs the reader a grep and tells them nothing about whether
+	 * their server is behaving. Nothing throws: a config file is edited by hand under time
+	 * pressure, and refusing to boot over a mistyped timezone is a worse failure than the
+	 * mistyped timezone.
+	 *
+	 * @return the problems found, already logged, for the self test to report
+	 */
+	public static List<String> validate() {
+		List<String> problems = new ArrayList<>();
+		StaffConfig cfg = get();
+
+		if (io.github.alphain24.staffcore.util.TimeFormat.zoneOrNull(cfg.displayTimezone) == null) {
+			problems.add("displayTimezone is \"" + cfg.displayTimezone + "\", which is not a "
+					+ "timezone id. Times are being printed in UTC. Use a region id such as "
+					+ "Europe/London or America/New_York.");
+		}
+
+		for (String problem : problems) {
+			StaffCore.LOGGER.error("[StaffCore] Config: {}", problem);
+		}
+		return problems;
 	}
 
 	/**

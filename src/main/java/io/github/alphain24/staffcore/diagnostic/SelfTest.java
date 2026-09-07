@@ -128,8 +128,14 @@ public final class SelfTest {
 
 		results.add(check("config", () -> {
 			StaffConfig cfg = StaffConfig.get();
-			return "v" + cfg.configVersion + ", staff mode gamemode " + cfg.staffModeGameMode;
-		}, detail -> true));
+			// The validation problems are already logged individually; naming the count here
+			// puts them on the one line CI reads, so a bad key cannot pass as a healthy boot.
+			java.util.List<String> problems = StaffConfig.validate();
+			String detail = "v" + cfg.configVersion + ", staff mode gamemode "
+					+ cfg.staffModeGameMode + ", times in "
+					+ io.github.alphain24.staffcore.util.TimeFormat.zone();
+			return problems.isEmpty() ? detail : detail + " - " + problems.size() + " bad key(s)";
+		}, detail -> !detail.contains("bad key")));
 
 		return results;
 	}

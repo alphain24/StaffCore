@@ -1390,10 +1390,24 @@ public class GriefModule implements Module {
 	 */
 	public record RollbackResult(int reverted, int skipped, int dropsRemoved, int itemsReturned,
 			int itemsDeferred, int bankedRemoved, int debitsQueued, List<RestoredItem> restoring,
-			Map<BlockPos, BlockState> proposed, List<LootRecovery.Charge> charges) {
+			Map<BlockPos, BlockState> proposed, List<LootRecovery.Charge> charges,
+			/**
+			 * The restore point this rollback can be undone from, or 0 when there is none.
+			 * <p>
+			 * Handed back rather than left in the database, because a rollback that cannot be
+			 * named cannot be undone by anybody who was not watching the chat when it ran.
+			 * Zero for a preview and for a rollback that reverted nothing — both are cases
+			 * where there is genuinely nothing to point at.
+			 */
+			long pointId) {
 
 		static final RollbackResult NOTHING =
-				new RollbackResult(0, 0, 0, 0, 0, 0, 0, List.of(), Map.of(), List.of());
+				new RollbackResult(0, 0, 0, 0, 0, 0, 0, List.of(), Map.of(), List.of(), 0L);
+
+		/** Whether this rollback left something {@code /staff rollback undo} could take back. */
+		public boolean isUndoable() {
+			return pointId > 0;
+		}
 	}
 
 	/**
@@ -1586,7 +1600,7 @@ public class GriefModule implements Module {
 			return new RollbackResult(reverted, skipped, 0, containerResult.restored(),
 					containerResult.deferred(), 0, 0, freeze(tally), proposed,
 					previewCharges(level, centre, radius, restored, player, windowMs,
-							owedContents));
+							owedContents), 0L);
 		}
 
 		Reclaim reclaim = reclaimDrops(level, centre, radius, restored, player, windowMs,
@@ -1599,7 +1613,8 @@ public class GriefModule implements Module {
 
 		return new RollbackResult(reverted, skipped, reclaim.fromGround() + reclaim.fromInventory(),
 				containerResult.restored(), containerResult.deferred(),
-				reclaim.fromChests(), reclaim.queued(), freeze(tally), Map.of(), List.of());
+				reclaim.fromChests(), reclaim.queued(), freeze(tally), Map.of(), List.of(),
+				reverted > 0 ? pointId : 0L);
 	}
 
 	/**

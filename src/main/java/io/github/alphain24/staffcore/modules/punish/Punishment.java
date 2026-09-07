@@ -26,8 +26,21 @@ public record Punishment(
 		/** When it was lifted, or null while it still stands. */
 		Long revokedAt,
 		/** Why it was lifted. An appeal upheld months later needs the grounds, not just a name. */
-		String revokeReason
+		String revokeReason,
+		/**
+		 * The code printed on the disconnect screen, or null for a punishment issued before
+		 * the column existed.
+		 * <p>
+		 * Null is not an error and must not be treated as one — an appeal filed against an
+		 * old ban goes through staff, the way every appeal did until this shipped.
+		 */
+		String appealCode
 ) {
+
+	/** Whether this punishment carries a code a player could appeal with. */
+	public boolean isAppealable() {
+		return appealCode != null && !appealCode.isBlank();
+	}
 
 	/** True when nobody attached this punishment to an investigation. */
 	public boolean hasCase() {
