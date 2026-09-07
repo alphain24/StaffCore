@@ -203,7 +203,8 @@ public final class ContrabandVault {
 		// standards of proof.
 		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.give(
 				owner, io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.VAULT_RETURN,
-				by, "returned from the contraband vault", java.util.List.of(stack));
+				io.github.alphain24.staffcore.permission.Actor.named(by), "returned from the contraband vault",
+				java.util.List.of(stack));
 		if (outcome.wasRefused()) return false;
 
 		return resolve(entry.id(), State.RETURNED, by);

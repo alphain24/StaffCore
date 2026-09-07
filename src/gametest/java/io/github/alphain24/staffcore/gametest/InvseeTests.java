@@ -38,7 +38,7 @@ public class InvseeTests {
 		var before = InventoryGateway.historyFor(target.getUUID(), 50).size();
 
 		var outcome = InventoryGateway.give(target, InventoryGateway.Origin.INVSEE_EDIT,
-				"TestStaff", "gametest edit", java.util.List.of(new ItemStack(Items.DIAMOND, 4)));
+				Harness.staff(), "gametest edit", java.util.List.of(new ItemStack(Items.DIAMOND, 4)));
 
 		Harness.check(helper, outcome.applied(), "the write was refused: " + outcome.refused());
 		Harness.checkEquals(helper, 4, count(target, Items.DIAMOND),
@@ -48,7 +48,9 @@ public class InvseeTests {
 		Harness.check(helper, after.size() > before,
 				"the items moved and nothing recorded it, which is the state the gateway "
 						+ "exists to make impossible");
-		Harness.check(helper, after.get(0).actor().equals("TestStaff"),
+		// The audit stores the actor's name, so this compares against that rather than
+		// against the Actor itself.
+		Harness.check(helper, after.get(0).actor().equals(Harness.staff().name()),
 				"the audit row does not name who did it");
 		Harness.check(helper, after.get(0).items().contains("diamond"),
 				"the audit row does not say what moved: " + after.get(0).items());
@@ -63,13 +65,13 @@ public class InvseeTests {
 
 		// Opening a screen and changing nothing is what staff do most of the time. A row for
 		// every one of those is a log nobody reads, which is the same as no log.
-		var quiet = InventoryGateway.beginEdit(target, "TestStaff", "looked, changed nothing");
+		var quiet = InventoryGateway.beginEdit(target, Harness.staff(), "looked, changed nothing");
 		var quietOutcome = InventoryGateway.endEdit(quiet);
 		Harness.checkEquals(helper, 0, quietOutcome.items(),
 				"a session that changed nothing wrote a row");
 
 		// A session that does change something records the net effect, not the clicks.
-		var session = InventoryGateway.beginEdit(target, "TestStaff", "took some iron");
+		var session = InventoryGateway.beginEdit(target, Harness.staff(), "took some iron");
 		target.getInventory().clearContent();
 		target.getInventory().add(new ItemStack(Items.IRON_INGOT, 3));
 		var outcome = InventoryGateway.endEdit(session);
@@ -116,7 +118,7 @@ public class InvseeTests {
 		owed.put(Items.DIAMOND, 6);
 
 		var outcome = InventoryGateway.take(target, InventoryGateway.Origin.ROLLBACK_DEBIT,
-				"TestStaff", "gametest debit", owed);
+				Harness.staff(), "gametest debit", owed);
 
 		Harness.checkEquals(helper, 6, outcome.items(), "took the wrong amount");
 		Harness.checkEquals(helper, 14, count(target, Items.DIAMOND),

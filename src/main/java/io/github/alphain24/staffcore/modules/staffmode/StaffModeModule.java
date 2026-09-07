@@ -92,7 +92,8 @@ public class StaffModeModule implements Module {
 		// "where did my inventory go".
 		io.github.alphain24.staffcore.inventory.InventoryGateway.replaceAll(player,
 				io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.STAFF_MODE_STASH,
-				Mc.name(player), "clocked on; inventory moved to the stash",
+				io.github.alphain24.staffcore.permission.Actor.of(player),
+				"clocked on; inventory moved to the stash",
 				new ItemStack[0]);
 		StaffToolset.give(player);
 		inStaffMode.add(player.getUUID());
@@ -291,7 +292,8 @@ public class StaffModeModule implements Module {
 		// every other write is: this is the path that can lose somebody's whole inventory.
 		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.replaceAll(player,
 				io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.STAFF_MODE_STASH,
-				Mc.name(player), "clocked off; stash handed back", stored);
+				io.github.alphain24.staffcore.permission.Actor.of(player),
+				"clocked off; stash handed back", stored);
 
 		if (outcome.wasRefused()) {
 			// The stash is untouched, so they can try again. Refusing to hand it back is

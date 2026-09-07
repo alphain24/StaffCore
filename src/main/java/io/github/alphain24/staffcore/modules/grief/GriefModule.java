@@ -1438,7 +1438,8 @@ public class GriefModule implements Module {
 		// of what the limit is for.
 		if (!dryRun && staff != null) {
 			ServerPlayer acting = level.getServer().getPlayerList().getPlayerByName(staff);
-			var verdict = Mods.accountability().limits().check(acting,
+			var verdict = Mods.accountability().limits().check(
+					io.github.alphain24.staffcore.permission.Actor.of(acting),
 					io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.ROLLBACK);
 
 			if (!verdict.allowed()) {

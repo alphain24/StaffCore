@@ -1,10 +1,8 @@
 package io.github.alphain24.staffcore.modules.accountability;
 
-import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.config.StaffConfig;
+import io.github.alphain24.staffcore.permission.Actor;
 import io.github.alphain24.staffcore.permission.Nodes;
-import io.github.alphain24.staffcore.permission.Permissions;
-import net.minecraft.server.level.ServerPlayer;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -82,17 +80,20 @@ public final class RateLimits {
 	 * do something slow, then act — and two staff members racing through that gap is exactly
 	 * the burst this exists to stop.
 	 */
-	public Verdict check(ServerPlayer staff, Kind kind) {
-		if (staff == null) return Verdict.OK;   // console and command blocks are not the threat
+	public Verdict check(Actor staff, Kind kind) {
+		// Nothing without an identity is counted. The console and a command block are not the
+		// threat this guards against — they are already trusted absolutely by the server owner
+		// — and there is no per-account counter to keep for something that is not an account.
+		if (staff == null || staff.id() == null) return Verdict.OK;
 
 		int allowed = kind.perMinute();
 		if (allowed <= 0) return Verdict.OK;    // 0 disables, like every other limit here
 
-		if (Permissions.check(staff, Nodes.RATE_LIMIT_EXEMPT)) return Verdict.OK;
+		if (staff.has(Nodes.RATE_LIMIT_EXEMPT)) return Verdict.OK;
 
 		long now = System.currentTimeMillis();
 		Deque<Long> times = recent
-				.computeIfAbsent(staff.getUUID(), k -> new ConcurrentHashMap<>())
+				.computeIfAbsent(staff.id(), k -> new ConcurrentHashMap<>())
 				.computeIfAbsent(kind, k -> new ArrayDeque<>());
 
 		synchronized (times) {
@@ -115,14 +116,14 @@ public final class RateLimits {
 	}
 
 	/** Forgets a staff member's history. Only for tests and for a deliberate reset. */
-	public void forget(ServerPlayer staff) {
-		if (staff != null) recent.remove(staff.getUUID());
+	public void forget(Actor staff) {
+		if (staff != null && staff.id() != null) recent.remove(staff.id());
 	}
 
 	/** How many of a kind this staff member has done in the last minute. */
-	public int recentCount(ServerPlayer staff, Kind kind) {
-		if (staff == null) return 0;
-		Deque<Long> times = recent.getOrDefault(staff.getUUID(), Map.of()).get(kind);
+	public int recentCount(Actor staff, Kind kind) {
+		if (staff == null || staff.id() == null) return 0;
+		Deque<Long> times = recent.getOrDefault(staff.id(), Map.of()).get(kind);
 		if (times == null) return 0;
 
 		long now = System.currentTimeMillis();
@@ -136,7 +137,7 @@ public final class RateLimits {
 		return Nodes.RATE_LIMIT_EXEMPT;
 	}
 
-	static String describe(ServerPlayer staff) {
-		return staff == null ? "console" : Mc.name(staff);
+	static String describe(Actor staff) {
+		return staff == null ? "console" : staff.name();
 	}
 }

@@ -92,7 +92,7 @@ public class RollbackDebitTests {
 		offender.getInventory().add(new ItemStack(Items.DIAMOND, 9));
 
 		var outcome = InventoryGateway.take(offender, InventoryGateway.Origin.ROLLBACK_DEBIT,
-				"TestStaff", "gametest debit", owed(Items.DIAMOND, 4), "ROLLBACK", 4242L);
+				Harness.staff(), "gametest debit", owed(Items.DIAMOND, 4), "ROLLBACK", 4242L);
 
 		Harness.checkEquals(helper, 4, outcome.items(), "the debit did not take what it should");
 		Harness.checkEquals(helper, 5, count(offender, Items.DIAMOND), "wrong amount left");
@@ -103,7 +103,7 @@ public class RollbackDebitTests {
 		Harness.check(helper, reversal.possible(), "the debit cannot be undone: "
 				+ reversal.problem());
 
-		var back = InventoryGateway.reverse(outcome.auditId(), offender, "TestStaff");
+		var back = InventoryGateway.reverse(outcome.auditId(), offender, Harness.staff());
 		Harness.check(helper, back.applied(), "the reversal failed: " + back.refused());
 		Harness.checkEquals(helper, 9, count(offender, Items.DIAMOND),
 				"undoing the debit did not restore what it took");
@@ -122,7 +122,7 @@ public class RollbackDebitTests {
 		offender.getInventory().add(new ItemStack(Items.OAK_LOG, 12));
 
 		long rollbackId = Math.abs(UUID.randomUUID().getLeastSignificantBits() % 100000);
-		InventoryGateway.take(offender, InventoryGateway.Origin.ROLLBACK_DEBIT, "TestStaff",
+		InventoryGateway.take(offender, InventoryGateway.Origin.ROLLBACK_DEBIT, Harness.staff(),
 				"gametest", owed(Items.OAK_LOG, 5), "ROLLBACK", rollbackId);
 
 		var debits = InventoryGateway.debitsFor("ROLLBACK", rollbackId);

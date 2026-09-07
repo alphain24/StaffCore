@@ -321,7 +321,7 @@ public class SecurityModule implements Module {
 				// rather than swept up under one audit row that names the wrong slot.
 				ItemStack leaked = stack;
 				io.github.alphain24.staffcore.inventory.InventoryGateway.removeMatching(player,
-						io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, "system",
+						io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, io.github.alphain24.staffcore.permission.Actor.system(),
 						"staff tool held outside staff mode (" + where + ")",
 						candidate -> candidate == leaked);
 

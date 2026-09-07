@@ -100,8 +100,9 @@ public class PunishmentModule implements Module {
 			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId,
 			ServerPlayer actor) {
 
-		var verdict = Mods.accountability().limits()
-				.check(actor, io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.PUNISHMENT);
+		var verdict = Mods.accountability().limits().check(
+				io.github.alphain24.staffcore.permission.Actor.of(actor),
+				io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.PUNISHMENT);
 		if (!verdict.allowed()) {
 			if (actor != null) actor.sendSystemMessage(Theme.bad(verdict.refusal()));
 			StaffCore.LOGGER.warn("[Punish] rate limit refused {} punishing {}",

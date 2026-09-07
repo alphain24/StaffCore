@@ -38,6 +38,7 @@ import io.github.alphain24.staffcore.modules.punish.PunishmentType;
 import io.github.alphain24.staffcore.modules.report.ReportModule;
 import io.github.alphain24.staffcore.permission.Nodes;
 import io.github.alphain24.staffcore.permission.PermissionGroups;
+import io.github.alphain24.staffcore.permission.Actor;
 import io.github.alphain24.staffcore.permission.Permissions;
 import io.github.alphain24.staffcore.util.DurationParser;
 import io.github.alphain24.staffcore.util.TimeFormat;
@@ -1867,7 +1868,7 @@ public final class StaffCommands {
 
 		audit(ctx, "/staff owed undo " + id);
 		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.reverse(
-				id, target, Mc.name(ctx.getSource().getPlayer()));
+				id, target, Actor.of(ctx.getSource()));
 
 		if (outcome.wasRefused()) {
 			ctx.getSource().sendFailure(Theme.bad("Refused: " + outcome.refused()));
@@ -2264,17 +2265,13 @@ public final class StaffCommands {
 	}
 
 	private static int approve(CommandContext<CommandSourceStack> ctx) {
-		ServerPlayer approver = ctx.getSource().getPlayer();
-		if (approver == null) {
-			// The console holds every permission and is nobody, so it cannot be the second
-			// pair of eyes. Letting it approve would make the whole check bypassable from a
-			// terminal, which is exactly where a compromised host would act from.
-			return fail(ctx, "Approval has to come from a player. The console cannot be the "
-					+ "second person.");
-		}
-
+		// No console special case here any more. Whether this source is answerable for an
+		// approval is one rule living in Accountable, applied inside approve() — so the
+		// command, the GUI and Phase 5's Discord path all get the same answer without any of
+		// them restating it.
 		String id = StringArgumentType.getString(ctx, "id").toUpperCase(java.util.Locale.ROOT);
-		var outcome = Mods.accountability().approvals().approve(approver, id);
+		var outcome = Mods.accountability().approvals()
+				.approve(Actor.of(ctx.getSource()), id);
 
 		if (!outcome.approved()) return fail(ctx, outcome.refusal());
 

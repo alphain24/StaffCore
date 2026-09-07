@@ -159,7 +159,7 @@ public final class LootRecovery {
 			// query turns out to have been right — so it is no longer optional, and the
 			// hand-rolled capture that used to sit here would now be a duplicate.
 			fromInventory = InventoryGateway.take(offender, InventoryGateway.Origin.ROLLBACK_DEBIT,
-					staffName == null ? "system" : staffName, reason, owed, refKind, refId).items();
+					io.github.alphain24.staffcore.permission.Actor.named(staffName == null ? "system" : staffName), reason, owed, refKind, refId).items();
 			fromEnderChest = debitContainer(offender.getEnderChestInventory(), owed);
 		}
 
@@ -210,7 +210,8 @@ public final class LootRecovery {
 		if (staff == null) return 0;
 
 		int taken = InventoryGateway.take(staff, InventoryGateway.Origin.ROLLBACK_DEBIT,
-				staffName, "picked up at the scene of a rollback", owed, refKind, refId).items();
+				io.github.alphain24.staffcore.permission.Actor.named(staffName), "picked up at the scene of a rollback", owed, refKind,
+				refId).items();
 		taken += debitContainer(staff.getEnderChestInventory(), owed);
 
 		if (taken > 0) {
@@ -278,7 +279,7 @@ public final class LootRecovery {
 			ServerPlayer picker = level.getServer().getPlayerList().getPlayerByName(name);
 			if (picker != null) {
 				int got = InventoryGateway.take(picker, InventoryGateway.Origin.ROLLBACK_DEBIT,
-						staffName == null ? "system" : staffName,
+						io.github.alphain24.staffcore.permission.Actor.named(staffName == null ? "system" : staffName),
 						"picked up items belonging to a rollback", theirs, refKind, refId).items();
 				got += debitContainer(picker.getEnderChestInventory(), theirs);
 				taken += got;

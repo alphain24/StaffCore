@@ -1,6 +1,8 @@
 package io.github.alphain24.staffcore.modules.accountability;
 
 import io.github.alphain24.staffcore.config.StaffConfig;
+import io.github.alphain24.staffcore.permission.Actor;
+import io.github.alphain24.staffcore.permission.Nodes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -159,6 +161,62 @@ class BypassAttemptTest {
 	}
 
 	@Test
+	@DisplayName("nobody without an accountable identity can approve")
+	void nobodyIsNotASecondPerson() {
+		UUID alice = UUID.randomUUID();
+		Approvals.Staged staged = stage(alice, "Alice");
+
+		// Console, RCON, a scheduled task and an unlinked Discord user are one case rather
+		// than four, and this is where that pays: none of them had to be special-cased in
+		// Approvals, and a fifth way in would be refused without anybody adding a branch.
+		for (Actor nobody : new Actor[] {
+				Actor.console(),
+				Actor.system(),
+				Actor.of(null, "rcon", Actor.Source.RCON, java.util.Set.of()),
+				Actor.of(UUID.randomUUID(), "timer", Actor.Source.SCHEDULED, java.util.Set.of()),
+				Actor.of(UUID.randomUUID(), "someone", Actor.Source.DISCORD_UNLINKED,
+						java.util.Set.of(Nodes.APPROVE)) }) {
+
+			Approvals.Outcome outcome = approvals.approve(nobody, staged.id());
+			assertFalse(outcome.approved(),
+					nobody.source() + " approved a staged action despite being nobody");
+			assertTrue(outcome.refusal().length() > 40,
+					"and the refusal should explain rather than deny: " + outcome.refusal());
+		}
+
+		// Still there afterwards — a refused approval must not consume the staged action, or
+		// a console attempt would quietly cancel somebody's pending work.
+		assertTrue(approvals.find(staged.id()).isPresent(),
+				"a refused approval consumed the staged action");
+	}
+
+	@Test
+	@DisplayName("holding the approve node does not make you accountable")
+	void permissionIsNotIdentity() {
+		UUID alice = UUID.randomUUID();
+		Approvals.Staged staged = stage(alice, "Alice");
+
+		// The console holds every node there is. If the check were a permission check, it
+		// would pass — which is exactly the confusion the rule is written to avoid.
+		assertTrue(Actor.console().has(Nodes.APPROVE), "the console does hold the node");
+		assertFalse(approvals.approve(Actor.console(), staged.id()).approved(),
+				"and still cannot approve, because the question is who is answerable");
+	}
+
+	@Test
+	@DisplayName("the console can still stage, because proposing is not approving")
+	void consoleMayPropose() {
+		// Deliberate. An automated job that proposes a mass rollback for a human to confirm
+		// is a perfectly good arrangement; it is the confirmation that needs a name behind it.
+		Approvals.Staged staged = approvals.stage(Actor.console(),
+				Approvals.Action.MASS_ROLLBACK, "nightly cleanup", "detail");
+
+		assertTrue(approvals.find(staged.id()).isPresent());
+		assertTrue(approve(UUID.randomUUID(), "Bob", staged.id()).approved(),
+				"and a person can confirm what the console proposed");
+	}
+
+	@Test
 	@DisplayName("the three guarded actions are the irreversible ones")
 	void theRightActionsAreGuarded() {
 		var actions = List.of(Approvals.Action.values());
@@ -183,11 +241,16 @@ class BypassAttemptTest {
 	 * project keeps finding, so the code moved rather than the test.
 	 */
 	private Approvals.Staged stage(UUID who, String name) {
-		return approvals.stage(who, name, Approvals.Action.MASS_ROLLBACK,
+		return approvals.stage(person(who, name), Approvals.Action.MASS_ROLLBACK,
 				"roll back 4000 blocks at spawn", "detail");
 	}
 
 	private Approvals.Outcome approve(UUID who, String name, String id) {
-		return approvals.approve(who, name, id);
+		return approvals.approve(person(who, name), id);
+	}
+
+	/** A staff member, built without a server. This is what Actor is for. */
+	private static Actor person(UUID who, String name) {
+		return Actor.of(who, name, Actor.Source.PLAYER, java.util.Set.of(Nodes.APPROVE));
 	}
 }

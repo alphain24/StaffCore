@@ -307,7 +307,8 @@ public class InventoryModule implements Module {
 		// them up — and is exactly why the state being overwritten has to be kept.
 		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.replaceAll(
 				target, io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.SNAPSHOT_RESTORE,
-				snapshot.takenBy(), "restored from a snapshot taken " + snapshot.label(), contents);
+				io.github.alphain24.staffcore.permission.Actor.named(snapshot.takenBy()),
+				"restored from a snapshot taken " + snapshot.label(), contents);
 
 		if (outcome.wasRefused()) {
 			target.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.bad(
@@ -616,7 +617,7 @@ public class InventoryModule implements Module {
 		// contraband used to be the one removal that went round the door — so handing an item
 		// back out of the vault was auditable and taking it in the first place was not.
 		var removal = io.github.alphain24.staffcore.inventory.InventoryGateway.removeMatching(
-				target, io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, by, "confiscation", doomed);
+				target, io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, io.github.alphain24.staffcore.permission.Actor.named(by), "confiscation", doomed);
 
 		if (removal.wasRefused() || removal.isEmpty()) {
 			return new Confiscation(0, 0, List.of(), List.of());
@@ -642,7 +643,7 @@ public class InventoryModule implements Module {
 		// inventory shifted between the click and here.
 		ItemStack chosen = stack;
 		var removal = io.github.alphain24.staffcore.inventory.InventoryGateway.removeMatching(target,
-				io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, by,
+				io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, io.github.alphain24.staffcore.permission.Actor.named(by),
 				"confiscated one stack", candidate -> candidate == chosen);
 
 		if (removal.wasRefused() || removal.isEmpty()) {

@@ -299,7 +299,7 @@ public final class PendingActions {
 				ItemStack stack = row.stack(server);
 				if (!stack.isEmpty()) {
 					InventoryGateway.give(player, InventoryGateway.Origin.PENDING_SETTLEMENT,
-							"system", "queued while they were offline",
+							io.github.alphain24.staffcore.permission.Actor.system(), "queued while they were offline",
 							java.util.List.of(stack));
 					given += stack.getCount();
 				}
@@ -319,7 +319,8 @@ public final class PendingActions {
 			Map<Item, Integer> owed = new HashMap<>();
 			owed.put(type, row.count());
 			int took = InventoryGateway.take(player, InventoryGateway.Origin.PENDING_SETTLEMENT,
-					"system", "settling a debt owed since they were last online", owed).items();
+					io.github.alphain24.staffcore.permission.Actor.system(),
+					"settling a debt owed since they were last online", owed).items();
 			debited += took;
 
 			int remaining = owed.getOrDefault(type, 0);

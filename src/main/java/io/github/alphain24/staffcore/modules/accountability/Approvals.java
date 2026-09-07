@@ -1,9 +1,9 @@
 package io.github.alphain24.staffcore.modules.accountability;
 
 import io.github.alphain24.staffcore.StaffCore;
-import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.config.StaffConfig;
-import net.minecraft.server.level.ServerPlayer;
+import io.github.alphain24.staffcore.permission.Accountable;
+import io.github.alphain24.staffcore.permission.Actor;
 
 import java.security.SecureRandom;
 import java.util.HexFormat;
@@ -95,30 +95,16 @@ public final class Approvals {
 	 * @param summary one line, shown to the approver — this is what they are agreeing to
 	 * @param detail  everything else, for the audit row
 	 */
-	public Staged stage(ServerPlayer staff, Action action, String summary, String detail) {
-		return stage(staff.getUUID(), Mc.name(staff), action, summary, detail);
-	}
-
-	/**
-	 * The same, by identity rather than by player.
-	 * <p>
-	 * Nothing here needs a world, a position or a connection — only who is acting. Taking the
-	 * identity directly keeps that true, and it means the decision can be exercised by a test
-	 * rather than reimplemented in one, which is the difference between a test of this code
-	 * and a test of a copy of it.
-	 */
-	public Staged stage(UUID staffId, String staffName, Action action, String summary,
-			String detail) {
-
+	public Staged stage(Actor staff, Action action, String summary, String detail) {
 		expireOld();
 
 		String id = newId();
-		Staged staged = new Staged(id, action, staffId, staffName, summary, detail,
+		Staged staged = new Staged(id, action, staff.id(), staff.name(), summary, detail,
 				System.currentTimeMillis());
 		pending.put(id, staged);
 
 		StaffCore.LOGGER.info("[Approvals] {} staged a {} ({}): {}",
-				staffName, action.label(), id, summary);
+				staff.name(), action.label(), id, summary);
 		return staged;
 	}
 
@@ -129,12 +115,17 @@ public final class Approvals {
 	 * on name, because a name can be changed and the whole point is that the same
 	 * <em>person</em> cannot do both halves.
 	 */
-	public Outcome approve(ServerPlayer approver, String id) {
-		return approve(approver.getUUID(), Mc.name(approver), id);
-	}
+	public Outcome approve(Actor approver, String id) {
+		// The accountability rule, applied once and in terms of the property rather than the
+		// mechanism. Console, RCON, a scheduled task and an unlinked Discord user are the same
+		// case: each holds every permission and belongs to no account, so each would satisfy
+		// the letter of a two-person check and none of its purpose.
+		//
+		// Stated here rather than as a `getPlayer() == null` in the command, because the
+		// command is only one of the ways in and the next one would arrive without it.
+		var accountable = Accountable.require(approver, "approve a staged action");
+		if (accountable.refused()) return Outcome.refused(accountable.refusal());
 
-	/** The same, by identity. See {@link #stage(UUID, String, Action, String, String)}. */
-	public Outcome approve(UUID approverId, String approverName, String id) {
 		expireOld();
 
 		Staged staged = pending.get(id);
@@ -144,7 +135,11 @@ public final class Approvals {
 					+ StaffConfig.get().approvalExpiryMinutes + " minutes.");
 		}
 
-		if (staged.stagedBy().equals(approverId)) {
+		// Null-safe because the stager may have had no identity: the console is allowed to
+		// propose, and nobody can be the console, so an identity-less stager can never collide
+		// with an approver — who by this point is guaranteed accountable and therefore has an
+		// id. Dereferencing it blindly was an NPE on exactly the path the design intends.
+		if (staged.stagedBy() != null && staged.stagedBy().equals(approver.id())) {
 			// Holding both nodes does not help. An approval somebody can grant themselves is
 			// a confirmation prompt wearing a costume, and the situation this exists for is
 			// exactly one account acting alone.
@@ -155,7 +150,7 @@ public final class Approvals {
 
 		pending.remove(id);
 		StaffCore.LOGGER.info("[Approvals] {} approved {}'s {} ({})",
-				approverName, staged.stagedByName(), staged.action().label(), id);
+				approver.name(), staged.stagedByName(), staged.action().label(), id);
 		return new Outcome(true, staged, null);
 	}
 

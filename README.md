@@ -371,6 +371,20 @@ open, every module that needs it degrades quietly and the rest of the mod still 
 Stated plainly rather than papered over. Everything here is a deliberate boundary or a
 known gap — not a bug list.
 
+**Accountability**
+
+- **The console can stage a two-person action but can never approve one.** Intended, not an
+  oversight. Approval exists to put a second *person* behind something irreversible, and the
+  console, RCON, a command block, a scheduled function and an unlinked Discord user are all
+  the same case: each holds every permission or none, and none of them belongs to an account
+  anybody could ask about it afterwards. An approval granted by nobody satisfies the letter of
+  the check and none of its purpose.
+- Proposing is a different matter, and still allowed — an automated job that stages a mass
+  rollback for a human to confirm is a perfectly good arrangement.
+- **The practical cost:** on a server with one admin online, a mass rollback, an IP ban and an
+  inventory edit wait until somebody else signs in. Turn it off with
+  `requireTwoPersonApproval` if that trade is wrong for you.
+
 **Recovery and evidence**
 
 - **Rollback only reaches the area and window you give it.** That is the scope you asked
