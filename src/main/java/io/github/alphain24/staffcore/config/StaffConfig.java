@@ -358,6 +358,20 @@ public final class StaffConfig {
 	 */
 	public boolean rootAliases = false;
 
+	/**
+	 * How long a confirmation prompt stays good for, in seconds. 0 disables the expiry.
+	 * <p>
+	 * A prompt shows you what an action would do. Between seeing it and confirming it the
+	 * world moves — the player logs off, another staff member handles it, the chest is
+	 * emptied — and confirming a ten-minute-old preview is confirming a description of a
+	 * server that no longer exists. That gap is where an irreversible action goes wrong.
+	 * <p>
+	 * Raising it makes a slow shift less annoying. Lowering it makes the preview a stronger
+	 * statement about the present. Setting it to 0 means a confirm screen left open over lunch
+	 * still works, which is the behaviour this replaced.
+	 */
+	public int confirmExpirySeconds = 60;
+
 	// ---- display -------------------------------------------------------------
 
 	/**

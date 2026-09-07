@@ -277,6 +277,7 @@ Changing a default in the code alone would never reach a server that has already
   "presetDurations": [ { "label": "7 days", "spec": "7d" }, … ],
   "reportCooldownSeconds": 60,
   "displayTimezone": "UTC",           // staff-facing times only; logs stay UTC
+  "confirmExpirySeconds": 60,         // how long a preview stays good for; 0 = forever
   "rootAliases": false,               // /ban, /vanish etc. at the root, if free
   "xrayRatioThreshold": 0.12,         // ore fraction that trips the heuristic
   "xraySampleFloor": 200,             // blocks needed before it will fire at all

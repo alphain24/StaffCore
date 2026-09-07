@@ -265,6 +265,12 @@ public class StaffCore implements ModInitializer {
 			Mods.security().forget(player.getUUID());
 			Mods.grief().forget(player.getUUID());
 			io.github.alphain24.staffcore.modules.staffmode.StaffToolset.forget(player.getUUID());
+			// The last player looked at, the last undoable action, a half-finished
+			// confirmation. None of it is a record — everything it points at is in the
+			// database with a reference the staff member was handed — so dropping it costs a
+			// convenience and avoids somebody returning to an /staff undo aimed at something
+			// they no longer remember doing.
+			io.github.alphain24.staffcore.command.StaffSession.forget(player.getUUID());
 			ChatRouter.onPlayerLeft(player);
 		});
 
