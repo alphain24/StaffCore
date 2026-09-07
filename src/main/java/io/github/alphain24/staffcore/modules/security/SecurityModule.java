@@ -426,6 +426,11 @@ public class SecurityModule implements Module {
 				// deposit above is the record of where the tool went.
 				container.setItem(slot, ItemStack.EMPTY);
 				container.setChanged();
+				// An alert rather than a signal, deliberately. A signal is about a person,
+				// and the person named here is whoever opened the chest — the finder, not
+				// the owner. Emitting a signal would open a case against somebody for
+				// reporting something, which is the worst possible thing to do to the person
+				// who just helped.
 				Mods.alerts().onSecurityFlag(server, Mc.name(opener),
 						"a staff tool (%s) was sitting in a container at %d, %d, %d — removed to the vault"
 								.formatted(plain(stack), pos.getX(), pos.getY(), pos.getZ()));
@@ -438,6 +443,9 @@ public class SecurityModule implements Module {
 			String key = world + ":" + pos.asLong() + ":" + Mc.itemId(stack.getItem());
 			if (containerReported.putIfAbsent(key, Boolean.TRUE) != null) continue;
 
+			// Same reasoning: the contraband is in the world, and the only name available is
+			// the person who happened to open the chest. Until a container can be attributed
+			// to whoever filled it, this stays an alert for a human to follow up.
 			Mods.alerts().onSecurityFlag(server, Mc.name(opener),
 					"a container at %d, %d, %d holds %d× %s%s — opened by %s".formatted(
 							pos.getX(), pos.getY(), pos.getZ(), stack.getCount(), plain(stack),
