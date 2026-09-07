@@ -2940,6 +2940,16 @@ public final class StaffCommands {
 			src.sendSuccess(() -> Icon.text("  case ", Theme.MUTED)
 					.append(Link.caseId(p.caseId())), false);
 		}
+
+		// Who else was on. Worded so it cannot be read as proof anybody saw anything — these
+		// are people worth asking, which is a much weaker claim than witnesses.
+		var seen = io.github.alphain24.staffcore.modules.accountability.Witnesses.forIncident(
+				io.github.alphain24.staffcore.modules.accountability.Witnesses.Kind.PUNISHMENT,
+				ref.id());
+		if (seen != null) {
+			src.sendSuccess(() -> Icon.text("  " + io.github.alphain24.staffcore.modules
+					.accountability.Witnesses.describe(seen), Theme.MUTED), false);
+		}
 		return 1;
 	}
 

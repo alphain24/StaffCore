@@ -982,6 +982,32 @@ final class Schema {
 					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_punishments_appeal_code "
 							+ "ON punishments(appeal_code)");
 				}
+			},
+
+			// 20 - who else was online when something was recorded.
+			//
+			// An appeal is an argument about a moment nobody wrote down. "Nobody else was
+			// there" and "half the server watched it" are different cases and neither is
+			// recoverable afterwards: the block log says what changed, the chat log is gone,
+			// and the only people who could say what happened have no reason to remember it.
+			// A list of names costs a few hundred bytes per incident and is occasionally the
+			// whole answer.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS incident_witness (
+							    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+							    kind    TEXT    NOT NULL,
+							    ref     TEXT    NOT NULL,
+							    at      INTEGER NOT NULL,
+							    world   TEXT,
+							    names   TEXT    NOT NULL,
+							    present INTEGER NOT NULL
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_witness_ref "
+							+ "ON incident_witness(kind, ref)");
+				}
 			}
 	);
 
@@ -1036,6 +1062,57 @@ final class Schema {
 	};
 
 	/**
+	 * Tables that must exist however the version counter got where it is.
+	 * <p>
+	 * The column reconciliation above catches a column added by a migration that did not run.
+	 * A whole <em>table</em> added by a migration has a worse version of the same problem, and
+	 * it is not hypothetical — {@code incident_witness} was written as a migration only, and a
+	 * fresh install skips every migration by design (see {@link #migrate}), so a new server
+	 * had no such table while its version counter read as fully up to date. Every read against
+	 * it failed at runtime with the schema apparently healthy.
+	 * <p>
+	 * A table added from here is created empty, which is the correct state for a fresh install
+	 * and a survivable one for a database that lost it: the alternative is a feature that
+	 * silently does nothing on exactly the servers that never upgraded into it.
+	 * <p>
+	 * <b>When adding a table, add it to both.</b> The migration is how the change is recorded
+	 * for databases that already exist; this is how a new one gets it.
+	 */
+	private static final String[] REQUIRED_TABLES = {
+			"""
+			CREATE TABLE IF NOT EXISTS incident_witness (
+			    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+			    kind    TEXT    NOT NULL,
+			    ref     TEXT    NOT NULL,
+			    at      INTEGER NOT NULL,
+			    world   TEXT,
+			    names   TEXT    NOT NULL,
+			    present INTEGER NOT NULL
+			)
+			""",
+			"CREATE INDEX IF NOT EXISTS idx_witness_ref ON incident_witness(kind, ref)",
+
+			// Created lazily by AddressPrivacy the first time a salt is needed, which works
+			// and puts one table's shape somewhere nobody looking at the schema would find it.
+			// Declared here as well so every table this mod has is described in one place.
+			"""
+			CREATE TABLE IF NOT EXISTS staffcore_meta (
+			    key   TEXT PRIMARY KEY,
+			    value TEXT NOT NULL
+			)
+			""",
+	};
+
+	/** Creates anything {@link #REQUIRED_TABLES} says should exist and does not. */
+	private static void reconcileTables(Connection conn) {
+		try (Statement st = conn.createStatement()) {
+			for (String ddl : REQUIRED_TABLES) st.executeUpdate(ddl);
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[StaffCore] Could not reconcile tables", e);
+		}
+	}
+
+	/**
 	 * Adds anything {@link #REQUIRED_COLUMNS} says should be there and is not.
 	 * <p>
 	 * Runs after the migrations, so it is a safety net rather than a substitute: migrations
@@ -1043,6 +1120,8 @@ final class Schema {
 	 * the record and the reality disagree.
 	 */
 	private static void reconcile(Connection conn) {
+		reconcileTables(conn);
+
 		int repaired = 0;
 		for (String[] required : REQUIRED_COLUMNS) {
 			if (hasColumn(conn, required[0], required[1])) continue;

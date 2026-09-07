@@ -147,6 +147,13 @@ public class PunishmentModule implements Module {
 					type.name().toLowerCase(java.util.Locale.ROOT) + " issued: " + cleanReason);
 		}
 
+		// Who else was connected, recorded here so no path can issue a punishment without
+		// it. The question that decides a contested appeal — was there anybody who could say
+		// what happened — has no record otherwise and cannot be reconstructed afterwards.
+		io.github.alphain24.staffcore.modules.accountability.Witnesses.record(server,
+				io.github.alphain24.staffcore.modules.accountability.Witnesses.Kind.PUNISHMENT,
+				String.valueOf(record.id()), record.targetName());
+
 		enforce(server, record);
 		announce(server, record);
 
@@ -392,6 +399,81 @@ public class PunishmentModule implements Module {
 
 		StaffCore.modules().get("alerts", AlertsModule.class).ifPresent(a ->
 				a.onPunishment(server, p.staffName(), p.targetName(), p.type(), p.reason()));
+	}
+
+	// -------------------------------------------------------------------- expiry
+
+	/**
+	 * Deactivates punishments whose time is up, and says so in their case.
+	 * <p>
+	 * Expiry used to happen only on read: {@code activeBan} noticed a stale row and cleared
+	 * it. That is correct for enforcement — a banned player is checked on login, so an expired
+	 * ban never keeps anybody out — and useless for everything else. A ban that ran out while
+	 * the player was offline, on a case nobody had open, left no trace of having ended at all;
+	 * the row simply stayed {@code active=1} until somebody happened to look, and the case log
+	 * skipped from "banned" to whatever came next with the ending missing.
+	 * <p>
+	 * That gap is exactly the one an appeal falls into. "It expired three weeks ago" and
+	 * "somebody lifted it" are different facts, and only one of them is anybody's decision.
+	 *
+	 * @return how many were retired
+	 */
+	public int sweepExpired(MinecraftServer server) {
+		Connection c = conn();
+		if (c == null) return 0;
+
+		long now = System.currentTimeMillis();
+		List<Punishment> expired = new java.util.ArrayList<>();
+
+		try (PreparedStatement ps = c.prepareStatement(
+				"SELECT * FROM punishments WHERE active = 1 AND expires_at IS NOT NULL "
+						+ "AND expires_at <= ?")) {
+			ps.setLong(1, now);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) expired.add(map(rs));
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Punish] expiry sweep could not read: {}", e.getMessage());
+			return 0;
+		}
+
+		for (Punishment p : expired) {
+			deactivate(p.id());
+			noteExpiry(server, p);
+		}
+		if (!expired.isEmpty()) {
+			StaffCore.LOGGER.info("[Punish] {} punishment(s) expired.", expired.size());
+		}
+		return expired.size();
+	}
+
+	/**
+	 * Writes the ending into the case, saying whether anybody was there for it.
+	 * <p>
+	 * Whether the player was online matters to whoever reads this later. A ban that ended
+	 * while they were connected is one they noticed; one that ended while they were away is a
+	 * player who does not yet know they can come back — which is worth knowing before somebody
+	 * concludes they left for good.
+	 */
+	private void noteExpiry(MinecraftServer server, Punishment p) {
+		boolean online = server != null && server.getPlayerList().getPlayer(p.targetUuid()) != null;
+
+		if (p.hasCase()) {
+			Mods.cases().store().note(p.caseId(),
+					io.github.alphain24.staffcore.modules.cases.Case.SYSTEM,
+					p.type().name().toLowerCase(java.util.Locale.ROOT) + " on " + p.targetName()
+							+ " expired after " + TimeFormat.length(
+									p.expiresAt() - p.createdAt())
+							+ (online ? ", while they were online."
+									: ", while they were offline — they may not know yet."));
+		}
+
+		if (online) {
+			ServerPlayer player = server.getPlayerList().getPlayer(p.targetUuid());
+			if (player != null && p.type() == PunishmentType.MUTE) {
+				player.sendSystemMessage(Theme.good("Your mute has expired."));
+			}
+		}
 	}
 
 	// -------------------------------------------------------------------- revoking

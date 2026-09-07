@@ -89,6 +89,13 @@ public class CaseModule implements Module {
 			return new CaseStore.Landing(signal, null, false);
 		}
 
+		// A report arrives here as a signal, so recording once covers both. The subject is
+		// left out of the list, because "the player being investigated was online" is not
+		// information anybody needs written down.
+		io.github.alphain24.staffcore.modules.accountability.Witnesses.record(server,
+				io.github.alphain24.staffcore.modules.accountability.Witnesses.Kind.SIGNAL,
+				String.valueOf(landing.signal().id()), landing.signal().subjectName());
+
 		announce(server, landing);
 		return landing;
 	}

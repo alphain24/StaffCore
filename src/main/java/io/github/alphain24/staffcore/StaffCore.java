@@ -207,6 +207,21 @@ public class StaffCore implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(mc ->
 				brokenFeatures = io.github.alphain24.staffcore.diagnostic.StartupCheck.run());
 
+		// Everything that ran out while the server was down, retired the moment it is up.
+		// Expiry used to happen only when somebody looked, so a ban that ended during a
+		// weekend of downtime stayed marked active until the next lookup and its case log
+		// skipped the ending entirely.
+		ServerLifecycleEvents.SERVER_STARTED.register(mc -> Mods.punish().sweepExpired(mc));
+
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(mc -> {
+			// A minute of lateness on a ban that has already lasted a week is nothing, and a
+			// query per tick to find that out would be absurd. Enforcement does not depend on
+			// this: a banned player is checked on login, so an expired ban never keeps anybody
+			// out regardless of when the row is retired.
+			if (mc.getTickCount() % 1200 != 0) return;
+			Mods.punish().sweepExpired(mc);
+		});
+
 		ServerLifecycleEvents.SERVER_STOPPING.register(mc -> {
 			MODULES.disableAll();
 			STORAGE.close();
@@ -294,13 +309,18 @@ public class StaffCore implements ModInitializer {
 	private void greetStaff(ServerPlayer player) {
 		if (!Permissions.check(player, Nodes.STAFF_GUI)) return;
 
-		int open = Mods.reports().openCount();
 		player.sendSystemMessage(Theme.info("StaffCore ready — /staff opens the panel."));
 
-		if (open > 0 && Permissions.check(player, Nodes.REPORT_VIEW)) {
-			player.sendSystemMessage(Theme.warn(open + " report(s) are waiting."));
-			Sfx.alertPing(player);
-		}
+		// A shift starts by finding out what happened while you were away, and the usual way
+		// is to open four screens. Three numbers, each a link, each shown only when it is not
+		// zero — a line saying "0 reports waiting" teaches everybody to ignore the line that
+		// says four.
+		var lines = io.github.alphain24.staffcore.modules.accountability.StaffBriefing.linesFor(
+				player, io.github.alphain24.staffcore.modules.accountability.StaffBriefing
+						.standing());
+
+		for (var line : lines) player.sendSystemMessage(line);
+		if (!lines.isEmpty()) Sfx.alertPing(player);
 
 		if (Mods.control().isMaintenance()) {
 			player.sendSystemMessage(Theme.warn("Maintenance mode is on — nobody else can join."));
