@@ -64,16 +64,29 @@ public class ReasonMenu extends Gui {
 			place(SLOTS[i], reasons.get(i));
 		}
 
-		set(CUSTOM, Icon.of(Items.NAME_TAG)
-				.name("Something else?", Theme.MUTED)
-				.paragraph("The panel offers presets so history stays comparable. "
-						+ "For a one-off reason, use the command:", Theme.MUTED)
+		// Clicking fills the command in rather than only naming it. A preset is a shortcut
+		// and must never be the only option, and an option somebody has to retype from a
+		// tooltip while a player waits is one they take the nearest preset instead of.
+		String command = "/staff " + commandFor() + " " + draft.target().name()
+				+ (draft.base().supportsDuration() ? " " + durationSpec() : "") + " ";
+
+		button(CUSTOM, Icon.of(Items.NAME_TAG)
+				.name("Something else?", Theme.ACCENT)
+				.paragraph("The panel offers presets so history stays comparable across a "
+						+ "team. Click to fill in the command with your own reason:", Theme.MUTED)
 				.gap()
-				.field("Command", "/staff " + commandFor() + " " + draft.target().name()
-						+ (draft.base().supportsDuration() ? " <duration>" : "") + " <reason>")
+				.field("Command", command + "<reason>")
 				.gap()
 				.lore("Add presets in config/staffcore.json.")
-				.build());
+				.build(),
+				click -> {
+					Sfx.click(viewer);
+					viewer.closeContainer();
+					viewer.sendSystemMessage(io.github.alphain24.staffcore.gui.Link.suggest(
+							"[type your own reason]", command,
+							Theme.ACCENT, "Fills the command in. Nothing happens until you "
+									+ "add a reason and send it."));
+				});
 
 		button(BACK, Theme.backButton(draft.base().supportsDuration() ? "the duration list" : "the punish menu"),
 				click -> {
@@ -82,6 +95,25 @@ public class ReasonMenu extends Gui {
 				});
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());
+	}
+
+	/**
+	 * The duration already chosen, in the form the command parses.
+	 * <p>
+	 * A duration picked on the previous screen and then retyped by hand is a duration that
+	 * can differ from the one on screen, which is the sort of discrepancy that only surfaces
+	 * in an appeal.
+	 */
+	private String durationSpec() {
+		Long ms = draft.durationMs();
+		if (ms == null) return "perm";
+
+		long seconds = ms / 1000;
+		if (seconds % 604_800 == 0) return (seconds / 604_800) + "w";
+		if (seconds % 86_400 == 0) return (seconds / 86_400) + "d";
+		if (seconds % 3_600 == 0) return (seconds / 3_600) + "h";
+		if (seconds % 60 == 0) return (seconds / 60) + "m";
+		return seconds + "s";
 	}
 
 	private String commandFor() {

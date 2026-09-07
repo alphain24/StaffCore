@@ -540,8 +540,9 @@ public final class InventoryGateway {
 					INSERT INTO inventory_audit
 					    (origin, direction, actor, target_uuid, target_name, reason,
 					     items, item_count, snapshot_id, created_at,
-					     items_data, ref_kind, ref_id, actor_resolved_at)
-					VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+					     items_data, ref_kind, ref_id, actor_resolved_at,
+					     server_version, mod_version)
+					VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 					""", java.sql.Statement.RETURN_GENERATED_KEYS)) {
 
 				ps.setString(1, origin.name());
@@ -563,6 +564,11 @@ public final class InventoryGateway {
 				// old its authority was cannot answer whether it should have been trusted.
 				if (actor == null) ps.setNull(14, java.sql.Types.INTEGER);
 				else ps.setLong(14, actor.resolvedAt());
+				// The build this happened under. An inventory change made while a hook was
+				// silently broken means something different from the same change on a healthy
+				// server, and after the fact there is no other way to tell them apart.
+				ps.setString(15, io.github.alphain24.staffcore.modules.cases.Versions.minecraft());
+				ps.setString(16, io.github.alphain24.staffcore.modules.cases.Versions.mod());
 				ps.executeUpdate();
 
 				try (var keys = ps.getGeneratedKeys()) {

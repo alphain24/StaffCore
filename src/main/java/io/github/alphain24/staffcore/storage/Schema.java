@@ -1008,6 +1008,41 @@ final class Schema {
 					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_witness_ref "
 							+ "ON incident_witness(kind, ref)");
 				}
+			},
+
+			// 21 - the build every audit row was written under, and name history.
+			//
+			// The versions matter for the same reason they do on a signal: an action taken
+			// under a build where a hook was silently broken means something different from
+			// the same action under a healthy one. command_log, cases and signals already
+			// carried them; the rows an investigation actually starts from did not.
+			//
+			// Name history is separate from connections because a name change is a fact about
+			// an account rather than about a session, and because connections is pruned on a
+			// retention schedule — the whole value here is the entry from four years ago.
+			conn -> {
+				addColumn(conn, "punishments", "server_version", "TEXT");
+				addColumn(conn, "punishments", "mod_version", "TEXT");
+				addColumn(conn, "inventory_audit", "server_version", "TEXT");
+				addColumn(conn, "inventory_audit", "mod_version", "TEXT");
+				addColumn(conn, "case_events", "server_version", "TEXT");
+				addColumn(conn, "case_events", "mod_version", "TEXT");
+				addColumn(conn, "notes", "server_version", "TEXT");
+				addColumn(conn, "notes", "mod_version", "TEXT");
+
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS name_history (
+							    uuid       TEXT    NOT NULL,
+							    name       TEXT    NOT NULL,
+							    first_seen INTEGER NOT NULL,
+							    last_seen  INTEGER NOT NULL,
+							    PRIMARY KEY (uuid, name)
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_name_history_name "
+							+ "ON name_history(name)");
+				}
 			}
 	);
 
@@ -1052,6 +1087,14 @@ final class Schema {
 			{"command_log", "case_id", "TEXT"},
 			{"command_log", "server_version", "TEXT"},
 			{"punishments", "appeal_code", "TEXT"},
+			{"punishments", "server_version", "TEXT"},
+			{"punishments", "mod_version", "TEXT"},
+			{"inventory_audit", "server_version", "TEXT"},
+			{"inventory_audit", "mod_version", "TEXT"},
+			{"case_events", "server_version", "TEXT"},
+			{"case_events", "mod_version", "TEXT"},
+			{"notes", "server_version", "TEXT"},
+			{"notes", "mod_version", "TEXT"},
 			{"command_log", "mod_version", "TEXT"},
 			{"notes", "case_id", "TEXT"},
 			{"notes", "retracted_at", "INTEGER"},
@@ -1091,6 +1134,17 @@ final class Schema {
 			)
 			""",
 			"CREATE INDEX IF NOT EXISTS idx_witness_ref ON incident_witness(kind, ref)",
+
+			"""
+			CREATE TABLE IF NOT EXISTS name_history (
+			    uuid       TEXT    NOT NULL,
+			    name       TEXT    NOT NULL,
+			    first_seen INTEGER NOT NULL,
+			    last_seen  INTEGER NOT NULL,
+			    PRIMARY KEY (uuid, name)
+			)
+			""",
+			"CREATE INDEX IF NOT EXISTS idx_name_history_name ON name_history(name)",
 
 			// Created lazily by AddressPrivacy the first time a salt is needed, which works
 			// and puts one table's shape somewhere nobody looking at the schema would find it.

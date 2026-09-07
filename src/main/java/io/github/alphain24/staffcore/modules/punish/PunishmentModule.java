@@ -627,8 +627,9 @@ public class PunishmentModule implements Module {
 		String sql = """
 				INSERT INTO punishments
 				  (target_uuid, target_name, staff_name, type, reason, duration_ms,
-				   created_at, expires_at, active, offence, case_id, points, appeal_code)
-				VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?)
+				   created_at, expires_at, active, offence, case_id, points, appeal_code,
+				   server_version, mod_version)
+				VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)
 				""";
 		long now = System.currentTimeMillis();
 
@@ -654,6 +655,11 @@ public class PunishmentModule implements Module {
 			// such would let the ladder escalate off the back of its own escalation.
 			ps.setInt(11, type == PunishmentType.WARN ? WarningPoints.defaultPoints() : 0);
 			ps.setString(12, appealCode);
+			// The build this was issued under. A punishment handed out while a detector was
+			// silently broken reads differently from the same one on a healthy server, and
+			// nothing else in the row can tell an investigation which it was.
+			ps.setString(13, io.github.alphain24.staffcore.modules.cases.Versions.minecraft());
+			ps.setString(14, io.github.alphain24.staffcore.modules.cases.Versions.mod());
 			ps.executeUpdate();
 
 			try (ResultSet keys = ps.getGeneratedKeys()) {

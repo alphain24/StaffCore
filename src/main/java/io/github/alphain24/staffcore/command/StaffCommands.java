@@ -745,6 +745,7 @@ public final class StaffCommands {
 							NameAndId target = singleProfile(ctx, "target");
 							if (target == null) return 0;   // singleProfile already said why
 							audit(ctx, "/staff alts " + target.name());
+							printNameHistory(ctx, target);
 							AltsMenu.open(viewer, target);
 							return 1;
 						})));
@@ -2873,6 +2874,33 @@ public final class StaffCommands {
 	private static String rollbackKey(ServerLevel level, BlockPos centre, int radius) {
 		return "rollback " + Mc.dimensionId(level) + " " + centre.getX() + "," + centre.getY()
 				+ "," + centre.getZ() + " r" + radius;
+	}
+
+	/**
+	 * Names this account has used, when there is more than one.
+	 * <p>
+	 * Printed to chat rather than into the alts screen, because it belongs to the same
+	 * question and outlives the screen: a rename is the cheapest way to escape a reputation,
+	 * and the only thing that survives it is a UUID nobody types, reads or remembers. An old
+	 * ban record naming somebody nobody can find any more is usually this.
+	 * <p>
+	 * A single name is the normal answer and is not worth a line.
+	 */
+	private static void printNameHistory(CommandContext<CommandSourceStack> ctx,
+			NameAndId target) {
+
+		var names = Mods.identity().namesOf(target.id());
+		if (names.size() < 2) return;
+
+		ctx.getSource().sendSuccess(() -> Theme.warn(
+				target.name() + " has used " + names.size() + " names:"), false);
+
+		for (var past : names) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  " + past.name() + " — ", Theme.TEXT)
+					.append(Link.time(past.firstSeen()))
+					.append(Icon.text(" to ", Theme.MUTED))
+					.append(Link.time(past.lastSeen())), false);
+		}
 	}
 
 	// ------------------------------------------------------------ operation lookup
