@@ -80,7 +80,13 @@ public final class InventoryGateway {
 		VAULT_RETURN("vault return"),
 
 		/** Settling a debt or delivery queued while the player was offline. */
-		PENDING_SETTLEMENT("pending settlement");
+		PENDING_SETTLEMENT("pending settlement"),
+
+		/** Taking contraband, or a staff tool that has leaked out of staff mode. */
+		CONFISCATION("confiscation"),
+
+		/** Clearing an inventory into the stash on duty, and handing it back afterwards. */
+		STAFF_MODE_STASH("staff mode stash");
 
 		private final String label;
 		private final List<String> requiredFeatures;
@@ -276,6 +282,90 @@ public final class InventoryGateway {
 			target.containerMenu.broadcastChanges();
 		}
 		return new Outcome(true, count, auditId, null);
+	}
+
+	/**
+	 * Removes everything matching a rule from a player's inventory and ender chest.
+	 * <p>
+	 * Confiscation is predicate-shaped rather than quantity-shaped — "every banned item" is
+	 * not a count of anything — so neither {@link #take} nor {@link #replaceAll} fits it, and
+	 * before this it was the one kind of removal that went round the door. That mattered more
+	 * than it looks: the vault already recorded handing an item <em>back</em> through here,
+	 * so the return was auditable and the taking was not.
+	 * <p>
+	 * The ender chest is included because it is where anything worth hiding ends up, and
+	 * leaving it out would make the audit describe half of what happened.
+	 */
+	public record Removal(List<ItemStack> taken, List<String> names, int stacks, int items,
+			long auditId, String refused) {
+
+		public boolean isEmpty() {
+			return stacks == 0;
+		}
+
+		public boolean wasRefused() {
+			return refused != null;
+		}
+	}
+
+	public static Removal removeMatching(ServerPlayer target, Origin origin, String actor,
+			String reason, java.util.function.Predicate<ItemStack> doomed) {
+
+		String refusal = whyRefused(origin);
+		if (refusal != null) {
+			refuse(origin, actor, target, reason, refusal);
+			return new Removal(List.of(), List.of(), 0, 0, 0, refusal);
+		}
+
+		// Worked out before anything is written, so the audit row names what actually went
+		// rather than what the rule matched in principle.
+		List<ItemStack> doomedStacks = new ArrayList<>();
+		List<String> names = new ArrayList<>();
+		collect(target.getInventory(), doomed, doomedStacks, names);
+		collect(target.getEnderChestInventory(), doomed, doomedStacks, names);
+
+		if (doomedStacks.isEmpty()) return new Removal(List.of(), List.of(), 0, 0, 0, null);
+
+		int count = doomedStacks.stream().mapToInt(ItemStack::getCount).sum();
+		long auditId = record(origin, Direction.TAKE, actor, target, reason,
+				describe(doomedStacks), count);
+		if (auditId < 0) {
+			String why = "the change could not be recorded, so it was not made";
+			refuse(origin, actor, target, reason, why);
+			return new Removal(List.of(), List.of(), 0, 0, 0, why);
+		}
+
+		int stacks = remove(target.getInventory(), doomed) + remove(target.getEnderChestInventory(), doomed);
+		target.getInventory().setChanged();
+		target.containerMenu.broadcastChanges();
+
+		return new Removal(List.copyOf(doomedStacks), List.copyOf(names), stacks, count,
+				auditId, null);
+	}
+
+	private static void collect(net.minecraft.world.Container container,
+			java.util.function.Predicate<ItemStack> doomed, List<ItemStack> into,
+			List<String> names) {
+
+		for (int slot = 0; slot < container.getContainerSize(); slot++) {
+			ItemStack stack = container.getItem(slot);
+			if (stack.isEmpty() || !doomed.test(stack)) continue;
+			into.add(stack.copy());
+			names.add(stack.getCount() + "× " + stack.getHoverName().getString());
+		}
+	}
+
+	private static int remove(net.minecraft.world.Container container,
+			java.util.function.Predicate<ItemStack> doomed) {
+
+		int stacks = 0;
+		for (int slot = 0; slot < container.getContainerSize(); slot++) {
+			ItemStack stack = container.getItem(slot);
+			if (stack.isEmpty() || !doomed.test(stack)) continue;
+			container.setItem(slot, ItemStack.EMPTY);
+			stacks++;
+		}
+		return stacks;
 	}
 
 	// -------------------------------------------------------------- staff editing

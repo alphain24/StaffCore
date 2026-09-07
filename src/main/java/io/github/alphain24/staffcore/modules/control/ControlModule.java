@@ -17,6 +17,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.HashSet;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -143,13 +144,32 @@ public class ControlModule implements Module {
 	 *
 	 * @return how many were disconnected
 	 */
+	/**
+	 * Who the kick would remove, without removing them.
+	 * <p>
+	 * Split out from the kick itself because the selection is where a mistake would live and
+	 * the disconnect is not. Getting this wrong either empties the server of the staff who
+	 * turned maintenance on, or kicks nobody and leaves the thing you closed the server to fix
+	 * still being played through — and neither is visible from reading the loop.
+	 * <p>
+	 * Takes the players rather than the server so it can be asked about a set that is not the
+	 * live player list, which is the only way to test it.
+	 */
+	public static List<ServerPlayer> kickTargets(Collection<ServerPlayer> players) {
+		List<ServerPlayer> targets = new java.util.ArrayList<>();
+		for (ServerPlayer player : players) {
+			if (Permissions.check(player, Nodes.MAINTENANCE)) continue;
+			targets.add(player);
+		}
+		return targets;
+	}
+
 	public int kickNonStaff(MinecraftServer server) {
 		Component screen = maintenanceScreen();
 		int removed = 0;
 
-		// Copy first: disconnecting mutates the player list we would otherwise be iterating.
-		for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) {
-			if (Permissions.check(player, Nodes.MAINTENANCE)) continue;
+		// Copied by kickTargets, because disconnecting mutates the list we would be iterating.
+		for (ServerPlayer player : kickTargets(server.getPlayerList().getPlayers())) {
 			Mc.disconnect(player, screen);
 			removed++;
 		}

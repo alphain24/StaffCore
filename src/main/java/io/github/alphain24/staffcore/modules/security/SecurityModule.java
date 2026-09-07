@@ -315,9 +315,16 @@ public class SecurityModule implements Module {
 				// it on sight throws that away along with the problem.
 				vault.deposit(player, "system", stack.copy(),
 						"Staff tool held outside staff mode (" + where + ")");
-				held.setItem(i, ItemStack.EMPTY);
-				held.setChanged();
-				player.containerMenu.broadcastChanges();
+
+				// Through the gateway like every other removal, matched by identity so a
+				// second copy of the same tool in another slot is dealt with on its own pass
+				// rather than swept up under one audit row that names the wrong slot.
+				ItemStack leaked = stack;
+				io.github.alphain24.staffcore.inventory.InventoryGateway.removeMatching(player,
+						io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, "system",
+						"staff tool held outside staff mode (" + where + ")",
+						candidate -> candidate == leaked);
+
 				alertOnce(server, player, stack.getItem(), "was keeping a staff tool ("
 						+ plain(stack) + ") in their " + where + " — removed to the vault");
 				continue;
@@ -402,6 +409,8 @@ public class SecurityModule implements Module {
 						"Staff tool found in a container at %d, %d, %d".formatted(
 								pos.getX(), pos.getY(), pos.getZ()),
 						server);
+				// gateway-exempt: a chest in the world, not a player's inventory. The vault
+				// deposit above is the record of where the tool went.
 				container.setItem(slot, ItemStack.EMPTY);
 				container.setChanged();
 				Mods.alerts().onSecurityFlag(server, Mc.name(opener),
