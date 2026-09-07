@@ -15,11 +15,38 @@ repositories {
 	mavenCentral()
 }
 
+// Gametests live in their own source set and ship in nothing.
+//
+// They have to run *inside* a real server, which means they need to be on the mod classpath
+// at runtime — so they cannot live in src/test. Keeping them out of src/main as well means
+// the release jar never carries test code, and the testmod that registers them is a separate
+// mod id that only exists in the development runtime.
+sourceSets {
+	gametest {
+		compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+		runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+	}
+}
+
 loom {
 	// Server-only mod: no client source set, no split environments.
 	runs {
 		server {
 			runDir = "run/server"
+		}
+
+		// Boots a real server, runs every @GameTest, writes JUnit XML and exits with a
+		// failure code if any of them fail. This is the only thing in the project that
+		// exercises vanish, the vault or the maintenance kick against a running game rather
+		// than reasoning about them.
+		gametest {
+			server()
+			name = "Game Test"
+			source = sourceSets.gametest
+			runDir = "run/gametest"
+
+			vmArg "-Dfabric-api.gametest"
+			vmArg "-Dfabric-api.gametest.report-file=${project.layout.buildDirectory.get()}/gametest-results.xml"
 		}
 	}
 }
@@ -38,6 +65,9 @@ dependencies {
 	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
 	testImplementation "org.junit.jupiter:junit-jupiter"
 	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+
+	// The gametest source set sees everything the mod sees, and nothing sees it.
+	gametestImplementation sourceSets.main.output
 }
 
 // Let the boot check ask the mod to prove itself: -Pselftest turns on the self test that

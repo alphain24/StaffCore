@@ -1,6 +1,6 @@
 {
 	"required": true,
-	"package": "dev.lebron.staffcore.mixin",
+	"package": "io.github.alphain24.staffcore.mixin",
 	"mixins": [
 		"PlayerListMixin"
 	],

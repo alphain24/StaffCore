@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"id": "staffcore-gametest",
+	"version": "1.0.0",
+	"name": "StaffCore Game Tests",
+	"description": "Runtime verification for StaffCore. Development only; never shipped.",
+	"license": "MIT",
+	"environment": "server",
+	"entrypoints": {
+		"fabric-gametest": [
+			"io.github.alphain24.staffcore.gametest.VanishTests",
+			"io.github.alphain24.staffcore.gametest.MaintenanceTests",
+			"io.github.alphain24.staffcore.gametest.VaultTests",
+			"io.github.alphain24.staffcore.gametest.InvseeTests",
+			"io.github.alphain24.staffcore.gametest.RollbackDebitTests"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"staffcore": "*"
+	}
+}

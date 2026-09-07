@@ -35,10 +35,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# One of our log lines has appeared in the boot log.
+seen() {
+  grep -q "StaffCore\] $1" "${LOG}" 2>/dev/null
+}
+
 # Poll rather than waiting for exit: a healthy server never exits on its own.
+#
+# Both lines, not just one. The self test is registered on SERVER_STARTED before the health
+# check is, so it always logs first — and waiting only for it meant this script went looking
+# for the health check line before it had been written. That passed on a fast local disk and
+# failed on CI, which is the worst way round: a green build at home and a red one on push,
+# with nothing wrong in the mod. Waiting for whichever comes last costs nothing and removes
+# the race rather than widening a sleep until it usually works.
 DEADLINE=$(( SECONDS + TIMEOUT ))
 while (( SECONDS < DEADLINE )); do
-  if grep -q "StaffCore\] Self test:" "${LOG}" 2>/dev/null; then
+  if seen "Self test:" && seen "Health check"; then
     break
   fi
   if ! kill -0 "${GRADLE_PID}" 2>/dev/null; then
@@ -68,6 +80,14 @@ fi
 if [[ "${HEALTH}" != *"hooks present"* ]]; then
   echo "::error::The health check reported broken features."
   grep -E "StaffCore\]" "${LOG}" | tail -20
+  exit 1
+fi
+
+# An IMPORTANT hook that did not apply switches its feature off rather than letting it run
+# on incomplete data. That is the correct behaviour and it is still a broken build.
+if grep -q "StaffCore\] DISABLED:" "${LOG}"; then
+  echo "::error::A feature hard-disabled because an important hook did not apply."
+  grep "StaffCore\] DISABLED:" "${LOG}"
   exit 1
 fi
 

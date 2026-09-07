@@ -616,10 +616,24 @@
           The duty gamemode is <code>creative</code> by default, because that is what being
           on duty actually needs: fly to the report, phase through the base you are
           inspecting, and put back the block you just proved was griefed.
-          <code>staffModeGameMode</code> also takes <code>survival</code>, which keeps staff
-          visible to anti-cheat and stops them being an item source — the safer choice where
-          staff are not fully trusted — or <code>spectator</code>, which is the least
-          intrusive but blocks interaction entirely, so the staff toolset stops working.
+          <code>staffModeGameMode</code> defaults to <code>survival</code>. Creative was the
+          old default, and it is the reason four separate containment layers exist: staff
+          tools are refused on drop, stripped on death, destroyed if they reach the ground,
+          and swept every two seconds &mdash; all of it work to stop an unlimited item source
+          leaking into the economy. Survival removes the source instead of containing it, and
+          every layer stays as defence in depth.
+          </p>
+          <p>
+          Very little is lost. Flight comes from being on duty rather than from creative, so
+          staff still fly to a report; noclip is its own toggle; and putting back a griefed
+          block is what rollback is for. <strong>Creative is still available</strong> and
+          costs three things: staff become an unlimited item source, so anything they hand out
+          is outside the economy and indistinguishable from a duplication bug; they stop
+          looking like ordinary players to an anti-cheat, so their own behaviour goes
+          unchecked; and the containment layers become load-bearing rather than
+          belt-and-braces. <code>spectator</code> is the least intrusive and stops the staff
+          toolset working &mdash; the tools are items used by right-clicking, and vanilla drops
+          interactions for spectators before they reach any of this mod's code.
           Whichever you pick, the gamemode somebody was in <em>before</em> clocking on is
           stored and handed back when they clock off, so changing this strands nobody. On duty
           you are also <strong>invulnerable</strong>, vanished or not, so investigating a mob
@@ -1091,18 +1105,92 @@
           <p>
             <span class="pill confirm">Read as a lead</span>
             A shared address is <strong>not proof</strong>. Siblings, flatmates, schools and
-            mobile networks all put different people behind one. That is why
-            <code>autoBanEvaders</code> is <strong>off</strong> by default: auto-banning on an
-            IP match punishes the household for one member, and the player it actually
-            catches will simply use a VPN next time. What the check is good at is putting a
-            name in front of a human at the moment it is useful.
+            mobile networks all put different people behind one, and under CGNAT a single
+            address can be every customer of a provider.
           </p>
           <p>
-            Even switched on, only an <strong>exact</strong> address match can ban anybody
-            automatically. A range match means "somewhere in this provider's block", which on
-            a mobile network can be a city — automating a ban on that would eventually catch
-            a stranger. Links below <code>altMinConfidence</code> are not alerted at all, since
+            <strong>Nothing here bans anybody automatically, and there is no setting that
+            makes it.</strong> There used to be one, and it was removed rather than defaulted
+            off: an automatic ban on this evidence is wrong some fraction of the time, the
+            people it is wrong about are strangers who did nothing, and it would be wrong
+            while nobody was watching. Everything else in this handbook says alt detection is
+            a lead and not a verdict; acting on it automatically was the one place that said
+            otherwise.
+          </p>
+          <p>
+            A range match means "somewhere in this provider's block", which on
+            a mobile network can be a city — which is why it scores far lower than an exact
+            match. Links below <code>altMinConfidence</code> are not alerted at all, since
             an alert staff learn to dismiss teaches them to dismiss the ones that matter.
+          </p>
+        </div>
+
+        <h3>What is stored about a person, and for how long</h3>
+        <p class="lede">
+          One category here is personal data rather than a record of conduct. It is worth
+          being exact about.
+        </p>
+        <table>
+          <thead>
+            <tr><th>What</th><th>Where</th><th>Kept for</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Connection address, and its /24 range</td>
+              <td class="mono">connections</td>
+              <td><code>connectionRetentionDays</code>, default <strong>90 days</strong></td>
+            </tr>
+            <tr>
+              <td>Address on each join and leave</td>
+              <td class="mono">session_log</td>
+              <td><code>connectionRetentionDays</code>, default <strong>90 days</strong></td>
+            </tr>
+            <tr>
+              <td>Username and UUID</td>
+              <td>throughout</td>
+              <td>For as long as the record they belong to</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Everything else StaffCore records &mdash; punishments, notes, blocks broken, items
+          moved, commands run &mdash; is conduct on the server. That belongs to the server in a
+          way somebody's home address does not, and it follows the retention setting for its
+          own feature.
+        </p>
+        <div class="note">
+          <p>
+            <span class="pill">Addresses are hashed by default</span>
+            <code>hashConnectionAddresses</code> is on, so what lands on disk is a salted
+            SHA-256 digest rather than an address. This costs nothing, because nothing here
+            needs to <em>read</em> an address &mdash; only to know whether two accounts used the
+            same one, which is an equality test and survives hashing exactly. Both matching
+            passes still work: exact matching compares the address hash, range matching
+            compares a separately hashed prefix.
+          </p>
+          <p>
+            The salt is generated once per server and kept in the database, not the config
+            file &mdash; it is not a setting, and changing it would silently unlink every
+            account from every other. Salting matters because IPv4 is 32 bits: an unsalted
+            digest of every possible address can be built in seconds, which would make it an
+            encoding of an address rather than a hash of one. It is not magic either &mdash;
+            somebody holding both the database and the salt can still test a guess.
+          </p>
+          <p>
+            Turning it on converts anything already stored, so the table cannot end up half in
+            each form. That matters more than it sounds: two accounts sharing an address would
+            otherwise stop matching because one row predates the change, and alt detection
+            would get quietly worse with nothing to say why.
+          </p>
+        </div>
+        <div class="note caution">
+          <p>
+            <span class="pill confirm">Export redacts addresses</span>
+            <code>/staff export</code> writes one CSV per table, and address columns come out
+            as <span class="mono">[redacted]</span>. An export is nearly always wanted for the
+            punishment history or the grief log; the addresses only came along because they
+            share a database. <code>/staff export addresses confirm</code> includes them, and
+            says first whether they are hashes or readable.
           </p>
         </div>
 
@@ -1326,7 +1414,7 @@
         <h3>X-ray</h3>
         <p>
           The x-ray check reads the grief log rather than watching players, and it will not
-          fire at all until they have broken at least 500 blocks.
+          fire at all until they have broken at least 200 blocks.
         </p>
         <p>
           A single ratio is a bad detector, so it is not one. Four independent signals are
@@ -1357,17 +1445,19 @@
         </p>
         <div class="note caution">
           <p>
-            <span class="pill confirm">Retuned</span>
-            The alert line was 70% and the sample floor 500 blocks. Both were defensible in
-            isolation and together they meant the sweep <strong>effectively never fired</strong>:
-            on any server that is not enormous, almost nobody breaks 500 ore-plus-filler blocks
-            inside six hours, so nobody was ever scored at all. A detector that is never wrong
-            because it never speaks is not a detector. The floor is now 200 and the line 55 —
-            still high enough that no single signal can reach it alone, so an alert continues
-            to mean at least two of the four agreed.
+            <span class="pill confirm">Retuned, and this time measured</span>
+            These numbers were once moved on the grounds that the detector was too quiet.
+            That is an argument about visibility, and any bar can be lowered until a feature
+            speaks &mdash; so it was replaced with a measurement. Scoring two hundred generated
+            honest sessions and forty guided ones showed the old settings were not quiet at
+            all: the worst honest pattern scored <strong>66 against an alert line of 55</strong>,
+            so ordinary strip mining and ordinary diamond hunting at y=-54 both tripped it.
+            The line is now <strong>65</strong> with a floor of <strong>200</strong>, which sit
+            in the gap between the two populations: worst honest 50, weakest cheat 81. The run
+            is recorded in <code>docs/decisions.md</code>.
           </p>
           <p>
-            <code>xrayNoticeConfidence</code> (35) is the other half. A score above it but below
+            <code>xrayNoticeConfidence</code> (55) is the other half. A score above it but below
             the alert line produces a quiet line to staff that says plainly it is not a finding.
             Without it there is no way to tell "nobody is cheating" from "this has never once
             run", and for a long time it was the second.
@@ -2291,8 +2381,8 @@
               <tr><td class="mono">/staff export</td><td class="mono">staff.reload</td><td class="wrap">Dump every table to CSV, one file each</td></tr>
               <tr><td class="mono">/staff selftest</td><td class="mono">staff.reload</td><td class="wrap">Prove the mod works, not just that it started &mdash; see <a href="#health">Health checks</a></td></tr>
               <tr><td class="mono">/staff panel</td><td class="mono">staff.gui</td><td class="wrap">Open the panel, same as bare <code>/staff</code></td></tr>
-              <tr><td class="mono">/staff vault</td><td class="mono">security.vault</td><td class="wrap">The contraband vault &mdash; what was taken, and what became of it</td></tr>
-              <tr><td class="mono">/staff contraband</td><td class="mono">security.contraband</td><td class="wrap">Edit the contraband rules</td></tr>
+              <tr><td class="mono">/staff vault</td><td class="mono">security.vault</td><td class="wrap">The contraband vault &mdash; what was taken, and what became of it; <span class="mono">security.vault.destroy</span> to destroy an item for good</td></tr>
+              <tr><td class="mono">/staff contraband</td><td class="mono">security.vault</td><td class="wrap">The contraband rules; <span class="mono">security.contraband.edit</span> to change them</td></tr>
               <tr><td class="mono">/staff nbt</td><td class="mono">security.invsee</td><td class="wrap">Read the held item&rsquo;s real component data</td></tr>
               <tr><td class="mono">/staff anticheat</td><td class="mono">security.check</td><td class="wrap">Bridge state and the newest findings</td></tr>
               <tr><td class="mono">/staff anticheat &lt;player&gt;</td><td class="mono">security.check</td><td class="wrap">Everything one player has been flagged for</td></tr>
@@ -2507,7 +2597,7 @@
           carries a <code>configVersion</code>: when a default changes in a way existing
           servers should inherit, the value is moved only if it still holds the old default,
           so anything you deliberately set is left alone and every change is logged.
-          <code>/staffcore reload</code> re-reads it without a restart.
+          <code>/staff reload</code> re-reads it without a restart.
         </p>
         <div class="scroller">
 <pre><code>{
@@ -2517,13 +2607,14 @@
   "presetReasons":   [ … ],           // becomes the buttons in the Reason menu
   "presetDurations": [ { "label": "7 days", "spec": "7d" }, … ],
   "reportCooldownSeconds": 60,
-  "xrayRatioThreshold": 0.04,         // ore fraction that trips the heuristic
-  "xraySampleFloor": 500,             // blocks needed before it fires at all
+  "rootAliases": false,              // /ban, /vanish etc. at the root, if free
+  "xrayRatioThreshold": 0.12,         // ore fraction that trips the heuristic
+  "xraySampleFloor": 200,             // blocks needed before it fires at all
   "tpsAlertFloor": 17.0,
   "defaultRollbackMinutes": 60,
 
   "rollbackReclaimsDrops": true,      // without this, every rollback duplicates items
-  "rollbackChasesBankedLoot": true,   // follow loot stashed in chests outside the radius
+  "rollbackChasesBankedLoot": false,  // follow loot stashed in chests outside the radius
   "rollbackPointRetentionDays": 7,    // how long a rollback stays undoable; 0 disables undo
   "watchContraband": true,            // alert the moment a player is seen holding one
   "watchContainers": true,            // check chests as they are opened and closed
@@ -2531,12 +2622,14 @@
   "maxSnapshotsPerPlayer": 10,        // 0 keeps every one
   "snapshotRetentionDays": 30,
   "altSubnetMatching": true,          // also link accounts sharing an address range
+  "connectionRetentionDays": 90,      // the only personal data here; 0 keeps forever
+  "hashConnectionAddresses": true,    // matching still works; the plaintext goes
   "altMinConfidence": 40,             // below this, a link is not worth an alert
   "vanishLoadsChunks": true,          // false = vanish leaves no trace, and you fly into void
 
   // Shown in the server list while maintenance mode is on
-  "maintenanceMotd": "§6§lSERVER IN MAINTENANCE
-§7Please wait while we update things — back shortly."
+  // \n splits the two server-list lines; §6 gold, §l bold, §7 grey.
+  "maintenanceMotd": "§6§lSERVER IN MAINTENANCE\n§7Please wait while we update things — back shortly."
 }</code></pre>
         </div>
         <p>
@@ -2813,7 +2906,7 @@
         <p>
           Every boot prints one line. On a healthy server it reads like this:
         </p>
-        <pre><code>[StaffCore] Health check: 14/14 hooks present, 10 verified applied.</code></pre>
+        <pre><code>[StaffCore] Health check: 19/19 hooks present, 15 verified applied.</code></pre>
         <p>
           <strong>Hooks present</strong> is the number of places in the game StaffCore expects
           to find. If that first number is lower than the second, an update has moved or
@@ -2945,7 +3038,7 @@
           <h3>Detection</h3>
           <ul>
             <li><strong>Alt detection is a lead, never a verdict.</strong> It links accounts by exact address and by address range, scores each link out of a hundred from how often the address was shared and whether the two accounts have ever been online at the same moment, and shows its reasoning on the screen. A shared household still trips it. A determined evader with a clean VPN still beats it. Only an exact address match can ever ban anybody automatically.</li>
-            <li><strong>The x-ray check is a heuristic.</strong> It flags, it never acts, and by default it will not commit to a verdict below 500 mined blocks. It no longer counts ore a player placed themselves, but it is still inference drawn from a block log.</li>
+            <li><strong>The x-ray check is a heuristic.</strong> It flags, it never acts, and by default it will not commit to a verdict below 200 mined blocks. It no longer counts ore a player placed themselves, but it is still inference drawn from a block log. Its thresholds are measured against generated mining patterns, not against real player data &mdash; <code>docs/decisions.md</code> records exactly what that does and does not establish.</li>
             <li><strong>Analytics cannot read judgement.</strong> Follow-through, response time and overturn rate sit beside the raw counts now, so the leaderboard is no longer purely a volume ranking &mdash; but no number here can tell you whether a ban was the right call. Read it as a prompt to go and look at someone's work.</li>
           </ul>
           <h3>Not built</h3>
