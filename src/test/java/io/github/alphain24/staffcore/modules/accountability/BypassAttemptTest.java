@@ -8,6 +8,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -252,5 +259,108 @@ class BypassAttemptTest {
 	/** A staff member, built without a server. This is what Actor is for. */
 	private static Actor person(UUID who, String name) {
 		return Actor.of(who, name, Actor.Source.PLAYER, java.util.Set.of(Nodes.APPROVE));
+	}
+
+	// ------------------------------------------------- the 2.3 guards, same door
+
+	@Test
+	@DisplayName("the rank and self guards sit in the service, beside the rate limit")
+	void theNewGuardsAreWhereTheOldOneIs() throws Exception {
+		// Same argument as the rate limit, and the same failure if it moves: a rank check in
+		// /staff ban leaves the GUI and every later path able to punish upwards, and the one
+		// that gets forgotten is the one somebody finds.
+		String punish = Files.readString(Path.of(
+				"src/main/java/io/github/alphain24/staffcore/modules/punish/PunishmentModule.java"));
+
+		assertTrue(punish.contains("Rank.mayPunish"),
+				"PunishmentModule.apply must check rank itself. Moved to the command, the "
+						+ "GUI path punishes upwards and nothing here notices.");
+
+		String grief = Files.readString(Path.of(
+				"src/main/java/io/github/alphain24/staffcore/modules/grief/GriefModule.java"));
+		assertTrue(grief.contains("RegionLock.acquire"),
+				"GriefModule.rollback must take the region lock itself, for the same reason "
+						+ "it checks its own rate limit.");
+	}
+
+	@Test
+	@DisplayName("every punishment call site hands over an identity, not a name")
+	void nothingPunishesAnonymously() throws IOException {
+		// The guards key on the acting identity. A call site passing null gets the console
+		// exemption and skips all of them — which is correct for the console and is a hole
+		// anywhere else, so the shape to check is that nobody calls the funnel without one.
+		List<String> anonymous = new ArrayList<>();
+		Path source = Path.of("src", "main", "java");
+
+		Pattern call = Pattern.compile("punish\\(\\)\\.apply\\(");
+
+		try (Stream<Path> files = Files.walk(source)) {
+			for (Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+				String relative = source.relativize(file).toString().replace('\\', '/');
+				String body = Files.readString(file, StandardCharsets.UTF_8);
+
+				Matcher m = call.matcher(body);
+				while (m.find()) {
+					String args = arguments(body, m.end() - 1);
+					if (args != null && !args.contains("Actor.of")) {
+						anonymous.add(relative + "  " + condense(args));
+					}
+				}
+			}
+		}
+
+		assertTrue(anonymous.isEmpty(),
+				"A punishment is issued without an acting identity:\n  "
+						+ String.join("\n  ", anonymous)
+						+ "\n\nThe rate limit, the rank guard and the self guard all key on it. "
+						+ "Without one the call takes the console exemption, which is right for "
+						+ "the console and a bypass anywhere else.");
+	}
+
+	@Test
+	@DisplayName("undo runs the real reversal command rather than a copy of it")
+	void undoDoesNotReimplementAnything() throws IOException {
+		// A second implementation of "put the blocks back" is a second thing that can
+		// disagree with the first, and the one that disagrees is the one nobody tested. It is
+		// also how a reversal ends up without the permission check and audit row the real
+		// command has — this test exists because the bypass test itself once had that bug.
+		String commands = Files.readString(Path.of(
+				"src/main/java/io/github/alphain24/staffcore/command/StaffCommands.java"));
+
+		assertTrue(commands.contains("performPrefixedCommand"),
+				"/staff undo should dispatch to the command that already knows how to reverse "
+						+ "each kind, so the reversal gets that command's checks and audit.");
+	}
+
+	/** The argument list of a call, given the index of its opening bracket. */
+	private static String arguments(String body, int openIndex) {
+		int depth = 0;
+		boolean inString = false;
+		boolean escaped = false;
+
+		for (int i = openIndex; i < body.length(); i++) {
+			char c = body.charAt(i);
+			if (inString) {
+				if (escaped) escaped = false;
+				else if (c == '\\') escaped = true;
+				else if (c == '"') inString = false;
+				continue;
+			}
+			switch (c) {
+				case '"' -> inString = true;
+				case '(' -> depth++;
+				case ')' -> {
+					depth--;
+					if (depth == 0) return body.substring(openIndex + 1, i);
+				}
+				default -> { }
+			}
+		}
+		return null;
+	}
+
+	private static String condense(String args) {
+		String flat = args.replaceAll("\\s+", " ").trim();
+		return flat.length() > 90 ? flat.substring(0, 87) + "..." : flat;
 	}
 }

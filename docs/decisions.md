@@ -259,6 +259,73 @@ noticing, and it dates from `68a79dd` too.
 
 ---
 
+## Phase 2.3 coverage
+
+**Date:** 2026-09-07
+
+Gate 2 asks that every item in 2.3 has a test or a documented manual check. This is that
+record, written because the honest answer is not "all of them are tested" — some of these are
+a line of chat appearing on a screen, and asserting that a component was constructed is not the
+same as knowing a person read it.
+
+Three categories, and the distinction is the point:
+
+- **Automated** — a test fails if the behaviour goes. Twenty of twenty-four.
+- **Automated in part** — the logic is tested; the rendering is not. The test would still pass
+  if the line never reached a screen.
+- **Manual** — needs eyes. Listed in the handbook under the checks worth running by hand.
+
+| # | Item | Covered by |
+|---|---|---|
+| 1 | Operation id on every destructive command | `OperationIdTest`; the echo is in one helper, `okWithOp` |
+| 2 | Zero results reported explicitly | **manual** — a scan found one unguarded list; the rest were already explicit |
+| 3 | Relative and absolute timestamps together | `TimeFormatTest` |
+| 4 | Prior-punishment count beside a name | **in part** — `Link.subject` resolves it; that staff see two different broadcast lines is manual |
+| 5 | Punishment id and appeal code on the disconnect screen | `DisconnectScreenTest`, `AppealCodeTest` |
+| 6 | Ban message states reason, length, expiry, appeal | `DisconnectScreenTest` |
+| 7 | Tab-complete offline players from the database | `KnownPlayersTest` |
+| 8 | Duration parsing, and refusing what it cannot read | `DurationParserTest` |
+| 9 | Ambiguous names refused with candidates | **in part** — `KnownPlayersTest` covers resolution; the clickable candidate list is manual |
+| 10 | Confirmations expire | `StaffSessionTest` |
+| 11 | `/staff undo` with no argument | `StaffSessionTest`, `BypassAttemptTest` |
+| 12 | The last looked-up player | `StaffSessionTest` |
+| 13 | Refuse to punish at or above your own rank | `RankTest`, `BypassAttemptTest` |
+| 14 | Refuse to punish yourself | `RankTest` |
+| 15 | Warn on a rollback overlapping spawn | `RollbackWarningTests` (gametest) |
+| 16 | Warn above `rollbackWarnBlocks` | `RollbackWarningTests` (gametest) |
+| 17 | Region lock for the duration of a rollback | `RegionLockTest`, `RollbackWarningTests` |
+| 18 | Staff mode survives a restart | `StaffModePersistenceTest` |
+| 19 | Three briefing lines on staff join | **in part** — `StaffBriefingTest` covers the counts and the silence; the lines appearing is manual |
+| 20 | Online player list recorded against an incident | `WitnessesTest`, `AccountabilityTests` (gametest) |
+| 21 | A ban expiring while offline noted in the case | `ExpirySweepTest`, `AccountabilityTests` (gametest) |
+| 22 | `server_version` and `mod_version` on every audit row | `AuditVersionsTest` |
+| 23 | Reason is always free text | **manual** — the command path is exercised throughout; the one-click fill from the panel is a screen |
+| 24 | Name history with timestamps | `NameHistoryTest`, `AccountabilityTests` (gametest) |
+
+### What the "in part" rows actually mean
+
+Each of them has a real test of the thing that can be wrong in a way nobody notices — the
+count, the resolution, the silence when there is nothing to say — and no test of the last inch,
+where a component is handed to a player. That inch fails visibly: a missing line is missing on
+every join, to every staff member, immediately. It is the arithmetic behind it that fails
+quietly, and that is the half with tests under it.
+
+### Two guards added while doing this
+
+Both were written after being bitten, not before.
+
+**`FreshInstallTest`.** A new database skips every migration by design and is stamped up to
+date, so `incident_witness` — written only as a migration — did not exist on a fresh server
+while the version counter read as current. That is the second time this shape has appeared;
+the first was `block_log.gamemode`, in the mirror direction. The test now opens a new database,
+scans the source for every table the code reads or writes, and checks they are all there.
+
+**`GametestRegistrationTest`.** The gametest entrypoint list is written by hand, so adding a
+test file is two steps and only one of them fails loudly if it is missed. `AccountabilityTests`
+was written, compiled, and ran zero times, and the suite reported success — which is the one
+result a test must never be able to give.
+---
+
 # Moved from the README
 
 The README had grown to eight hundred lines, and the reasoning was the best material in it and
