@@ -2,6 +2,7 @@ package io.github.alphain24.staffcore.modules.punish;
 
 import net.minecraft.server.players.NameAndId;
 import io.github.alphain24.staffcore.StaffCore;
+import io.github.alphain24.staffcore.module.Mods;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.config.StaffConfig;
 import io.github.alphain24.staffcore.gui.Icon;
@@ -57,20 +58,46 @@ public class PunishmentModule implements Module {
 	 */
 	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
 			PunishmentType base, Long durationMs, String reason) {
-		return apply(server, target, staffName, base, durationMs, reason, null);
+		return apply(server, target, staffName, base, durationMs, reason, null, null);
 	}
 
 	/** As above, tagged with the offence ladder it came from so escalation can count it. */
 	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
 			PunishmentType base, Long durationMs, String reason, String offenceId) {
+		return apply(server, target, staffName, base, durationMs, reason, offenceId, null);
+	}
+
+	/**
+	 * As above, attached to the case it came out of.
+	 * <p>
+	 * Still the only way anybody gets punished. The case is optional and stays optional: a
+	 * punishment issued directly records null rather than being refused, because a staff
+	 * member watching somebody grief in front of them should not have to open a case first.
+	 * What matters is that the null is <em>recorded</em> and shown, so "how often do we punish
+	 * without evidence attached" is a question with an answer.
+	 *
+	 * @param caseId the case this came from, or null when issued directly
+	 */
+	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
+			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId) {
 
 		PunishmentType type = base.withDuration(durationMs);
 		Long expiresAt = durationMs == null ? null : System.currentTimeMillis() + durationMs;
 		String cleanReason = (reason == null || reason.isBlank()) ? "No reason given" : reason.trim();
 
 		Punishment record = record(target.id(), target.name(), staffName, type,
-				cleanReason, expiresAt, offenceId);
+				cleanReason, expiresAt, offenceId, caseId);
 		if (record == null) return null;
+
+		// Linked from both ends. The punishment row says which case it came from; the case
+		// gets a link and an event, so its log reads as the story of what was done rather
+		// than needing a join to find out.
+		if (record.hasCase()) {
+			var cases = Mods.cases().store();
+			cases.link(caseId, "punishment", String.valueOf(record.id()), staffName);
+			cases.note(caseId, staffName,
+					type.name().toLowerCase(java.util.Locale.ROOT) + " issued: " + cleanReason);
+		}
 
 		enforce(server, record);
 		announce(server, record);
@@ -194,15 +221,50 @@ public class PunishmentModule implements Module {
 
 	/** Lifts an active ban or mute. Returns the number of rows affected. */
 	public int revoke(MinecraftServer server, UUID target, String staffName, boolean bans) {
+		return revoke(server, target, staffName, bans, null);
+	}
+
+	/**
+	 * Lifts an active ban or mute, on stated grounds.
+	 * <p>
+	 * <b>Never deletes.</b> The row is marked reversed with who, when and why, and stays
+	 * exactly where it was. A punishment that disappears on reversal takes the history with
+	 * it: the player's record silently improves, an appeal that was upheld leaves no trace of
+	 * having been upheld, and "has this happened before" quietly starts returning the wrong
+	 * answer.
+	 * <p>
+	 * The linked case, if there is one, gets an event for the reversal as well as for the
+	 * punishment — so its log reads as both halves of what happened rather than only the part
+	 * that stuck.
+	 *
+	 * @return the number of punishments lifted
+	 */
+	public int revoke(MinecraftServer server, UUID target, String staffName, boolean bans,
+			String reason) {
+
 		String types = bans ? "('BAN','TEMPBAN')" : "('MUTE','TEMPMUTE')";
 		Connection c = conn();
 		if (c == null) return 0;
 
+		// Read before writing, so the case events can name what was actually lifted.
+		List<Punishment> lifting = activeOfTypes(target, types);
+
 		try (PreparedStatement ps = c.prepareStatement(
-				"UPDATE punishments SET active=0, revoked_by=? WHERE target_uuid=? AND active=1 AND type IN " + types)) {
+				"UPDATE punishments SET active=0, revoked_by=?, revoked_at=?, revoke_reason=? "
+						+ "WHERE target_uuid=? AND active=1 AND type IN " + types)) {
 			ps.setString(1, staffName);
-			ps.setString(2, target.toString());
+			ps.setLong(2, System.currentTimeMillis());
+			ps.setString(3, reason);
+			ps.setString(4, target.toString());
 			int n = ps.executeUpdate();
+
+			for (Punishment lifted : lifting) {
+				if (!lifted.hasCase()) continue;
+				Mods.cases().store().note(lifted.caseId(), staffName,
+						lifted.type().name().toLowerCase(java.util.Locale.ROOT) + " #"
+								+ lifted.id() + " reversed"
+								+ (reason == null || reason.isBlank() ? "" : ": " + reason));
+			}
 
 			if (n > 0 && !bans) {
 				ServerPlayer online = server.getPlayerList().getPlayer(target);
@@ -295,14 +357,19 @@ public class PunishmentModule implements Module {
 
 	public Punishment record(UUID target, String targetName, String staffName,
 			PunishmentType type, String reason, Long expiresAt, String offenceId) {
+		return record(target, targetName, staffName, type, reason, expiresAt, offenceId, null);
+	}
+
+	public Punishment record(UUID target, String targetName, String staffName,
+			PunishmentType type, String reason, Long expiresAt, String offenceId, String caseId) {
 		Connection c = conn();
 		if (c == null) return null;
 
 		String sql = """
 				INSERT INTO punishments
 				  (target_uuid, target_name, staff_name, type, reason, duration_ms,
-				   created_at, expires_at, active, offence)
-				VALUES (?,?,?,?,?,?,?,?,1,?)
+				   created_at, expires_at, active, offence, case_id)
+				VALUES (?,?,?,?,?,?,?,?,1,?,?)
 				""";
 		long now = System.currentTimeMillis();
 		try (PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -317,11 +384,13 @@ public class PunishmentModule implements Module {
 			if (expiresAt == null) ps.setNull(8, java.sql.Types.INTEGER);
 			else ps.setLong(8, expiresAt);
 			ps.setString(9, offenceId);
+			ps.setString(10, caseId);
 			ps.executeUpdate();
 
 			try (ResultSet keys = ps.getGeneratedKeys()) {
 				long id = keys.next() ? keys.getLong(1) : -1;
-				return new Punishment(id, target, targetName, staffName, type, reason, now, expiresAt, true, null);
+				return new Punishment(id, target, targetName, staffName, type, reason, now,
+						expiresAt, true, null, caseId, null, null);
 			}
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Punish] record failed", e);
@@ -357,6 +426,30 @@ public class PunishmentModule implements Module {
 		return StaffCore.storage().isReady() ? StaffCore.storage().conn() : null;
 	}
 
+	private static Long revokedAt(ResultSet rs) throws SQLException {
+		long at = rs.getLong("revoked_at");
+		return rs.wasNull() ? null : at;
+	}
+
+	/** The punishments a revoke is about to lift, read before it lifts them. */
+	private List<Punishment> activeOfTypes(UUID target, String types) {
+		List<Punishment> out = new java.util.ArrayList<>();
+		Connection c = conn();
+		if (c == null) return out;
+
+		try (PreparedStatement ps = c.prepareStatement(
+				"SELECT * FROM punishments WHERE target_uuid=? AND active=1 AND type IN " + types)) {
+			ps.setString(1, target.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) out.add(map(rs));
+			}
+		} catch (SQLException e) {
+			// Losing the case note is a smaller failure than refusing the reversal.
+			StaffCore.LOGGER.warn("[Punish] could not read what is being revoked: {}", e.getMessage());
+		}
+		return out;
+	}
+
 	private Punishment map(ResultSet rs) throws SQLException {
 		long exp = rs.getLong("expires_at");
 		Long expires = rs.wasNull() ? null : exp;
@@ -370,6 +463,9 @@ public class PunishmentModule implements Module {
 				rs.getLong("created_at"),
 				expires,
 				rs.getInt("active") == 1,
-				rs.getString("revoked_by"));
+				rs.getString("revoked_by"),
+				rs.getString("case_id"),
+				revokedAt(rs),
+				rs.getString("revoke_reason"));
 	}
 }

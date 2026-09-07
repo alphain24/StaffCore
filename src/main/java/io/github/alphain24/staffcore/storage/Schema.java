@@ -67,7 +67,9 @@ final class Schema {
 				    revoked_by    TEXT,
 				    offence       TEXT,
 				    silent        INTEGER NOT NULL DEFAULT 0,
-				    case_id       TEXT
+				    case_id       TEXT,
+				    revoked_at    INTEGER,
+				    revoke_reason TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_punish_target ON punishments(target_uuid, active)");
@@ -900,6 +902,17 @@ final class Schema {
 				// about the record, and the case view showing "no case" is the useful answer
 				// anyway: it says how often staff punish without evidence attached.
 				addColumn(conn, "punishments", "case_id", "TEXT");
+			},
+
+			// 14 - a reversal says when and why, not just who.
+			//
+			// Reversing a punishment was already a mark rather than a delete, which is the
+			// important half. What it could not answer was "when was this lifted, and on what
+			// grounds" — and for an appeal that is upheld months later, those are the two
+			// things somebody actually wants.
+			conn -> {
+				addColumn(conn, "punishments", "revoked_at", "INTEGER");
+				addColumn(conn, "punishments", "revoke_reason", "TEXT");
 			}
 	);
 
@@ -937,6 +950,8 @@ final class Schema {
 			{"inventory_audit", "reversed_at", "INTEGER"},
 			{"inventory_audit", "reversed_by", "TEXT"},
 			{"punishments", "case_id", "TEXT"},
+			{"punishments", "revoked_at", "INTEGER"},
+			{"punishments", "revoke_reason", "TEXT"},
 	};
 
 	/**
