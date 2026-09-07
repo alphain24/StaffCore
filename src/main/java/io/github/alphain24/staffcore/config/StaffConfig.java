@@ -385,6 +385,20 @@ public final class StaffConfig {
 	 */
 	public int rollbackWarnBlocks = 500;
 
+	/**
+	 * The smallest excavation worth scoring, in blocks of rock within reach.
+	 * <p>
+	 * A volume gate rather than a block-count one, and the difference is where the old
+	 * detector's false positives lived. Somebody who removed thirty blocks from a pocket of
+	 * forty has drawn almost all of it; the statistics on a population that small are
+	 * confident and meaningless, and confident meaningless output is what gets acted on.
+	 * <p>
+	 * Raising it means only substantial digs are scored. Lowering it does not find more
+	 * cheating — it finds more noise, because the arithmetic below a few hundred blocks
+	 * cannot separate luck from anything.
+	 */
+	public int xrayMinimumVolume = 512;
+
 	// ---- canaries ------------------------------------------------------------
 
 	/**

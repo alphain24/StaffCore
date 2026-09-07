@@ -834,6 +834,17 @@ public class GriefModule implements Module {
 	 * The fallback is deliberately an empty result rather than nothing at all. An empty
 	 * screen next to a logged error is diagnosable; a hung one is not.
 	 */
+	/**
+	 * The same worker, for anything else that needs to read the log without stopping the tick.
+	 * <p>
+	 * Shared rather than duplicated: a second pool would double the connections against a
+	 * database whose whole concurrency story is one connection and a write lock.
+	 */
+	public <T> void readOffThread(MinecraftServer server, java.util.function.Supplier<T> read,
+			T onFailure, Consumer<T> onDone) {
+		readAsync(server, read, onFailure, onDone);
+	}
+
 	private <T> void readAsync(MinecraftServer server, java.util.function.Supplier<T> read,
 			T onFailure, Consumer<T> onDone) {
 
