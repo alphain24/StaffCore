@@ -1,6 +1,7 @@
 package io.github.alphain24.staffcore.gui.menu;
 
 import net.minecraft.server.players.NameAndId;
+import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.gui.Guis;
 import io.github.alphain24.staffcore.gui.Icon;
 import io.github.alphain24.staffcore.gui.PagedGui;
@@ -81,11 +82,12 @@ public class NotesMenu extends PagedGui<NotesModule.Note> {
 						.paragraph(note.text(), Theme.MUTED)
 						.build(),
 				() -> {
-					if (Mods.notes().remove(note.id())) {
-						viewer.sendSystemMessage(Theme.info("Note deleted."));
+					if (Mods.notes().retract(note.id(), Mc.name(viewer))) {
+						viewer.sendSystemMessage(Theme.info(
+								"Note retracted — it stays on the record, marked as withdrawn."));
 						Sfx.success(viewer);
 					} else {
-						viewer.sendSystemMessage(Theme.bad("That note was already gone."));
+						viewer.sendSystemMessage(Theme.bad("That note was already retracted."));
 						Sfx.deny(viewer);
 					}
 					open(viewer, target);

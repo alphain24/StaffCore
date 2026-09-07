@@ -129,7 +129,45 @@ public class PunishmentModule implements Module {
 
 		enforce(server, record);
 		announce(server, record);
+
+		if (type == PunishmentType.WARN) suggestEscalation(server, record, actor);
 		return record;
+	}
+
+	/**
+	 * Tells the staff member the ladder thinks this player has crossed a line.
+	 * <p>
+	 * A suggestion, and it stays one. Nothing here calls {@link #apply} — it prints a command
+	 * the staff member can click, with the reason pre-filled, and stops. An automatic
+	 * escalation fires on a count rather than a judgement, and the case where a count is most
+	 * likely to be wrong is a player being warned repeatedly by one staff member with a
+	 * grudge, which is exactly where a human in the loop is the only safeguard.
+	 * <p>
+	 * Shown only to whoever issued the warning. Broadcasting it to staff chat would turn a
+	 * private prompt into pressure to act.
+	 */
+	private void suggestEscalation(MinecraftServer server, Punishment warning, ServerPlayer actor) {
+		if (actor == null) return;
+
+		var standing = WarningPoints.standingOf(warning.targetUuid());
+		if (!standing.escalates()) return;
+
+		actor.sendSystemMessage(Theme.warn("%s is at %d/%d warning points — %s."
+				.formatted(warning.targetName(), standing.points(), standing.threshold(),
+						standing.reason())));
+
+		String suggestion = "/staff %s %s %s".formatted(
+				standing.suggested().name().toLowerCase(java.util.Locale.ROOT),
+				warning.targetName(),
+				"repeated warnings (" + standing.points() + " points)");
+
+		actor.sendSystemMessage(io.github.alphain24.staffcore.gui.Icon.text("  ", Theme.MUTED)
+				.append(io.github.alphain24.staffcore.gui.Link.suggest(
+						"[" + standing.suggested().name().toLowerCase(java.util.Locale.ROOT) + "]",
+						suggestion, Theme.ACCENT,
+						"Fills in the command. Nothing happens until you send it.")));
+		actor.sendSystemMessage(io.github.alphain24.staffcore.gui.Icon.text(
+				"  A suggestion, not a rule. Ignore it if it does not fit.", Theme.MUTED));
 	}
 
 	/** How many times this player has already been done for this offence. */
@@ -396,8 +434,8 @@ public class PunishmentModule implements Module {
 		String sql = """
 				INSERT INTO punishments
 				  (target_uuid, target_name, staff_name, type, reason, duration_ms,
-				   created_at, expires_at, active, offence, case_id)
-				VALUES (?,?,?,?,?,?,?,?,1,?,?)
+				   created_at, expires_at, active, offence, case_id, points)
+				VALUES (?,?,?,?,?,?,?,?,1,?,?,?)
 				""";
 		long now = System.currentTimeMillis();
 		try (PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -413,6 +451,9 @@ public class PunishmentModule implements Module {
 			else ps.setLong(8, expiresAt);
 			ps.setString(9, offenceId);
 			ps.setString(10, caseId);
+			// Only warnings carry points. A ban is not three warnings, and counting it as
+			// such would let the ladder escalate off the back of its own escalation.
+			ps.setInt(11, type == PunishmentType.WARN ? WarningPoints.defaultPoints() : 0);
 			ps.executeUpdate();
 
 			try (ResultSet keys = ps.getGeneratedKeys()) {

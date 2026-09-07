@@ -397,6 +397,39 @@ public final class StaffConfig {
 	/** How long a staged action waits for its second signature, in minutes. */
 	public int approvalExpiryMinutes = 10;
 
+	// ---- warnings ------------------------------------------------------------
+
+	/**
+	 * Points a warning is worth when nobody says otherwise.
+	 * <p>
+	 * One, so the total reads as a count of warnings until somebody wants finer grain. A
+	 * scale that starts complicated is one nobody tunes.
+	 */
+	public int warnPointsDefault = 1;
+
+	/**
+	 * Days before a warning stops counting towards escalation. 0 keeps them forever.
+	 * <p>
+	 * Decay is not softness. A player warned three times in a week is a different person from
+	 * one warned three times across two years, and a ladder that cannot tell those apart
+	 * eventually bans somebody for having been around a long time. The warning itself is
+	 * never deleted — only its weight in the total goes.
+	 */
+	public int warnDecayDays = 90;
+
+	/**
+	 * Points at which the ladder starts suggesting something heavier. 0 disables it.
+	 * <p>
+	 * A <b>suggestion</b>, always. Crossing this never punishes anybody — it puts a
+	 * recommendation in front of a staff member who confirms or ignores it.
+	 * <p>
+	 * That is deliberate and worth not "fixing" later. An automatic ladder fires on a count
+	 * rather than a judgement, it is a rule players learn to sit just underneath, and the case
+	 * where it is most likely to be wrong — somebody warned repeatedly by one staff member
+	 * with a grudge — is exactly the case where a second human is the only safeguard there is.
+	 */
+	public int warnEscalationPoints = 3;
+
 	// ---- cases ---------------------------------------------------------------
 
 	/**

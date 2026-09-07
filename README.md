@@ -193,6 +193,7 @@ has already logged off.
 | `/staff appeals` | `staff.appeals` | Appeal queue |
 | `/staff rollback area <radius> [minutes]` | `grief.rollback` | Undo **everyone's** changes here |
 | `/staff stats <player>` | `analytics.stats` | One staff member's totals |
+| `/staff note <player> <text>` | `staff.notes` | Attributed, timestamped, never deleted |
 | `/staff audit <staff> [days]` | `staff.audit` | Everything a staff member did, with case links |
 | `/staff audit <staff> origins` | `staff.audit.addresses` | Where they acted from — admin-only, hashed |
 | `/staff approve [id]` | `staff.approve` | Confirm somebody else's staged mass rollback, IP ban or inventory edit |

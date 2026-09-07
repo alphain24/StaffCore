@@ -69,7 +69,8 @@ final class Schema {
 				    silent        INTEGER NOT NULL DEFAULT 0,
 				    case_id       TEXT,
 				    revoked_at    INTEGER,
-				    revoke_reason TEXT
+				    revoke_reason TEXT,
+				    points        INTEGER NOT NULL DEFAULT 0
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_punish_target ON punishments(target_uuid, active)");
@@ -78,11 +79,14 @@ final class Schema {
 	private static void notes(Statement st) throws SQLException {
 		st.executeUpdate("""
 				CREATE TABLE IF NOT EXISTS notes (
-				    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-				    target_uuid TEXT    NOT NULL,
-				    author_name TEXT    NOT NULL,
-				    text        TEXT    NOT NULL,
-				    created_at  INTEGER NOT NULL
+				    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+				    target_uuid  TEXT    NOT NULL,
+				    author_name  TEXT    NOT NULL,
+				    text         TEXT    NOT NULL,
+				    created_at   INTEGER NOT NULL,
+				    case_id      TEXT,
+				    retracted_at INTEGER,
+				    retracted_by TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_notes_target ON notes(target_uuid)");
@@ -933,6 +937,23 @@ final class Schema {
 				addColumn(conn, "command_log", "case_id", "TEXT");
 				addColumn(conn, "command_log", "server_version", "TEXT");
 				addColumn(conn, "command_log", "mod_version", "TEXT");
+			},
+
+			// 16 - notes are retracted rather than deleted, and can point at a case.
+			//
+			// A note said something about a player at a moment, and a note that vanishes takes
+			// that with it: the record silently improves, and "what did we know at the time"
+			// stops having an answer. Retracting says a staff member no longer stands behind
+			// it, which is a different and more honest claim than the note never existing.
+			conn -> {
+				addColumn(conn, "notes", "case_id", "TEXT");
+				addColumn(conn, "notes", "retracted_at", "INTEGER");
+				addColumn(conn, "notes", "retracted_by", "TEXT");
+			},
+
+			// 17 - warning points, so a ladder can count them and they can decay.
+			conn -> {
+				addColumn(conn, "punishments", "points", "INTEGER NOT NULL DEFAULT 0");
 			}
 	);
 
@@ -977,6 +998,10 @@ final class Schema {
 			{"command_log", "case_id", "TEXT"},
 			{"command_log", "server_version", "TEXT"},
 			{"command_log", "mod_version", "TEXT"},
+			{"notes", "case_id", "TEXT"},
+			{"notes", "retracted_at", "INTEGER"},
+			{"notes", "retracted_by", "TEXT"},
+			{"punishments", "points", "INTEGER NOT NULL DEFAULT 0"},
 	};
 
 	/**

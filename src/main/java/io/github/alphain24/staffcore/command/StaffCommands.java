@@ -265,6 +265,15 @@ public final class StaffCommands {
 	// -------------------------------------------------------------- punishments
 
 	private static void punishments(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		// A root command, not just a GUI screen. The commonest note is written one-handed
+		// while something else is happening, and a note that needs four clicks is one that
+		// does not get written.
+		staff.then(Commands.literal("note")
+				.requires(src -> Permissions.check(src, Nodes.NOTES))
+				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.then(Commands.argument("text", StringArgumentType.greedyString())
+								.executes(StaffCommands::addNote))));
+
 		staff.then(Commands.literal("warn")
 				.requires(src -> Permissions.check(src, Nodes.WARN))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
@@ -410,11 +419,14 @@ public final class StaffCommands {
 											NameAndId target = singleProfile(ctx, "target");
 											if (target == null) return fail(ctx, "Unknown player.");
 											int index = IntegerArgumentType.getInteger(ctx, "index");
-											audit(ctx, "/staff notes " + target.name() + " remove " + index);
+											audit(ctx, "/staff notes " + target.name() + " retract " + index);
 
-											return Mods.notes().removeByIndex(target.id(), index)
-													? ok(ctx, "Note " + index + " deleted.")
-													: fail(ctx, "There is no note " + index + ".");
+											return Mods.notes().retractByIndex(target.id(), index,
+															Mc.name(ctx.getSource().getPlayer()))
+													? ok(ctx, "Note " + index + " retracted. It stays "
+															+ "on the record marked as withdrawn.")
+													: fail(ctx, "There is no note " + index
+															+ ", or it was already retracted.");
 										})))));
 	}
 
@@ -2102,6 +2114,47 @@ public final class StaffCommands {
 	}
 
 	/** Auditing staff, and the two-person approval flow. */
+	/**
+	 * Writes a note against a player, attributed and timestamped.
+	 * <p>
+	 * Attached to whatever case is open about them, if there is one, and to nothing if there
+	 * is not. Requiring a case would either produce empty cases or stop the note being
+	 * written, and most notes are context rather than evidence.
+	 */
+	private static int addNote(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+
+		NameAndId target = singleProfile(ctx, "target");
+		if (target == null) return fail(ctx, "Could not work out who you meant.");
+
+		String text = StringArgumentType.getString(ctx, "text");
+		String author = Mc.name(ctx.getSource().getPlayer());
+
+		String caseId = Mods.cases().store().openCaseFor(target.id())
+				.map(io.github.alphain24.staffcore.modules.cases.Case::id).orElse(null);
+
+		if (!Mods.notes().add(target.id(), author, text, caseId)) {
+			return fail(ctx, "The note could not be saved. The server log says why.");
+		}
+
+		if (caseId != null) {
+			Mods.cases().store().note(caseId, author, "note on " + target.name() + ": " + text);
+		}
+
+		audit(ctx, "/staff note " + target.name(), caseId);
+
+		int total = Mods.notes().count(target.id());
+		ctx.getSource().sendSuccess(() -> Theme.good(
+				"Noted on " + target.name() + " (" + total + " total)."), false);
+
+		if (caseId != null) {
+			final String linked = caseId;
+			ctx.getSource().sendSuccess(() -> Icon.text("  Attached to case ", Theme.MUTED)
+					.append(Link.caseId(linked)), false);
+		}
+		return 1;
+	}
+
 	private static void registerAccountability(LiteralArgumentBuilder<CommandSourceStack> staff) {
 		staff.then(Commands.literal("audit")
 				.requires(src -> Permissions.check(src, Nodes.AUDIT))
