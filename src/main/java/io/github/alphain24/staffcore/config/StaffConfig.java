@@ -358,6 +358,45 @@ public final class StaffConfig {
 	 */
 	public boolean rootAliases = false;
 
+	// ---- accountability ------------------------------------------------------
+
+	/**
+	 * Punishments one staff member may issue in a minute. 0 disables.
+	 * <p>
+	 * Not about ordinary busy shifts — four a minute is a great deal of moderating. This is
+	 * what stands between a compromised staff account and the whole player base: forty bans in
+	 * a minute is a dead server, four is a bad evening, and only one of those is recoverable.
+	 * <p>
+	 * Enforced inside {@code PunishmentModule.apply} rather than in the command, so the GUI,
+	 * the API and any future path get it without being told about it.
+	 */
+	public int maxPunishmentsPerMinute = 6;
+
+	/**
+	 * Rollbacks one staff member may run in a minute. 0 disables.
+	 * <p>
+	 * Lower than punishments because each one is bigger: a rollback rewrites an area and
+	 * charges people for what it puts back, and running several in quick succession is far
+	 * more often a mistake being repeated than a job being done.
+	 */
+	public int maxRollbacksPerMinute = 3;
+
+	/**
+	 * Require a second staff member to confirm a mass rollback, IP ban or inventory edit.
+	 * <p>
+	 * <b>Read the cost before turning this off, and before leaving it on.</b> With it on, a
+	 * server with one admin online cannot do any of those three until somebody else logs in —
+	 * and a staff member holding every permission still cannot approve their own, because an
+	 * approval you can grant yourself is a confirmation prompt with extra steps.
+	 * <p>
+	 * The value is not the permission check. It is a second person reading what is about to
+	 * happen while the first says it out loud.
+	 */
+	public boolean requireTwoPersonApproval = true;
+
+	/** How long a staged action waits for its second signature, in minutes. */
+	public int approvalExpiryMinutes = 10;
+
 	// ---- cases ---------------------------------------------------------------
 
 	/**

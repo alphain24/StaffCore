@@ -1429,6 +1429,28 @@ public class GriefModule implements Module {
 
 		if (!StaffCore.storage().isReady()) return RollbackResult.NOTHING;
 
+		// Rate limited here rather than in the command, for the same reason punishments are:
+		// this is the funnel every path already goes through, so the GUI and anything added
+		// later are covered without anybody having to remember them.
+		//
+		// A dry run is exempt. Previewing costs nothing and refusing it would push people
+		// towards running the real thing to find out what it would do, which is the opposite
+		// of what the limit is for.
+		if (!dryRun && staff != null) {
+			ServerPlayer acting = level.getServer().getPlayerList().getPlayerByName(staff);
+			var verdict = Mods.accountability().limits().check(acting,
+					io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.ROLLBACK);
+
+			if (!verdict.allowed()) {
+				if (acting != null) {
+					acting.sendSystemMessage(
+							io.github.alphain24.staffcore.gui.Theme.bad(verdict.refusal()));
+				}
+				StaffCore.LOGGER.warn("[Grief] rate limit refused a rollback by {}", staff);
+				return RollbackResult.NOTHING;
+			}
+		}
+
 		String world = Mc.dimensionId(level);
 		long cutoff = System.currentTimeMillis() - windowMs;
 

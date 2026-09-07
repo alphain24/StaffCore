@@ -165,10 +165,15 @@ final class Schema {
 
 		st.executeUpdate("""
 				CREATE TABLE IF NOT EXISTS command_log (
-				    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-				    staff_name TEXT    NOT NULL,
-				    command    TEXT    NOT NULL,
-				    created_at INTEGER NOT NULL
+				    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+				    staff_name     TEXT    NOT NULL,
+				    command        TEXT    NOT NULL,
+				    created_at     INTEGER NOT NULL,
+				    staff_uuid     TEXT,
+				    staff_ip       TEXT,
+				    case_id        TEXT,
+				    server_version TEXT,
+				    mod_version    TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cmdlog_staff ON command_log(staff_name, created_at)");
@@ -913,6 +918,21 @@ final class Schema {
 			conn -> {
 				addColumn(conn, "punishments", "revoked_at", "INTEGER");
 				addColumn(conn, "punishments", "revoke_reason", "TEXT");
+			},
+
+			// 15 - the audit trail grows the columns an investigation into staff needs.
+			//
+			// staff_ip is the uncomfortable one and it is deliberate: the thing you cannot
+			// establish after the fact is which of two people holding the same account was at
+			// the keyboard. It is stored through the same hashing as every other address, so
+			// it still compares against the connections table and is still not readable, and
+			// it is gated behind its own node on the way out.
+			conn -> {
+				addColumn(conn, "command_log", "staff_uuid", "TEXT");
+				addColumn(conn, "command_log", "staff_ip", "TEXT");
+				addColumn(conn, "command_log", "case_id", "TEXT");
+				addColumn(conn, "command_log", "server_version", "TEXT");
+				addColumn(conn, "command_log", "mod_version", "TEXT");
 			}
 	);
 
@@ -952,6 +972,11 @@ final class Schema {
 			{"punishments", "case_id", "TEXT"},
 			{"punishments", "revoked_at", "INTEGER"},
 			{"punishments", "revoke_reason", "TEXT"},
+			{"command_log", "staff_uuid", "TEXT"},
+			{"command_log", "staff_ip", "TEXT"},
+			{"command_log", "case_id", "TEXT"},
+			{"command_log", "server_version", "TEXT"},
+			{"command_log", "mod_version", "TEXT"},
 	};
 
 	/**

@@ -36,6 +36,12 @@ public final class Mods {
 				io.github.alphain24.staffcore.modules.cases.CaseModule.class);
 	}
 
+	/** Staff audit, rate limits and two-person approval. */
+	public static io.github.alphain24.staffcore.modules.accountability.AccountabilityModule accountability() {
+		return StaffCore.modules().require("accountability",
+				io.github.alphain24.staffcore.modules.accountability.AccountabilityModule.class);
+	}
+
 	public static StaffModeModule staffMode() {
 		return StaffCore.modules().require("staff_mode", StaffModeModule.class);
 	}

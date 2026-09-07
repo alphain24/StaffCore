@@ -28,6 +28,7 @@ import io.github.alphain24.staffcore.module.Mods;
 import io.github.alphain24.staffcore.modules.cases.Case;
 import io.github.alphain24.staffcore.modules.cases.CaseId;
 import io.github.alphain24.staffcore.modules.cases.CaseView;
+import io.github.alphain24.staffcore.gui.Link;
 import io.github.alphain24.staffcore.modules.grief.GriefModule;
 import io.github.alphain24.staffcore.modules.grief.LogQuery;
 import io.github.alphain24.staffcore.modules.notes.NotesModule;
@@ -1443,6 +1444,7 @@ public final class StaffCommands {
 				.executes(StaffCommands::selfTest));
 
 		registerCases(staff);
+		registerAccountability(staff);
 		registerPerms(staff);
 
 		staff.then(Commands.literal("reload")
@@ -2025,7 +2027,7 @@ public final class StaffCommands {
 		Case found = requireCase(ctx);
 		if (found == null) return 0;
 
-		audit(ctx, "/staff case " + found.id());
+		audit(ctx, "/staff case " + found.id(), found.id());
 		CaseView.print(ctx.getSource(), found);
 		return 1;
 	}
@@ -2062,7 +2064,7 @@ public final class StaffCommands {
 		String actor = Mc.name(ctx.getSource().getPlayer());
 		Mods.cases().store().note(found.id(), actor, text);
 
-		audit(ctx, "/staff case " + found.id() + " note");
+		audit(ctx, "/staff case " + found.id() + " note", found.id());
 		return ok(ctx, "Noted on case " + found.id() + ".");
 	}
 
@@ -2071,7 +2073,7 @@ public final class StaffCommands {
 		if (found == null) return 0;
 
 		Mods.cases().store().assign(found.id(), assignee, Mc.name(ctx.getSource().getPlayer()));
-		audit(ctx, "/staff case " + found.id() + " assign " + assignee);
+		audit(ctx, "/staff case " + found.id() + " assign " + assignee, found.id());
 		return ok(ctx, "Case " + found.id() + " assigned to " + assignee + ".");
 	}
 
@@ -2084,7 +2086,7 @@ public final class StaffCommands {
 		String actor = Mc.name(ctx.getSource().getPlayer());
 		Mods.cases().store().setStatus(found.id(), status, actor, reason);
 
-		audit(ctx, "/staff case " + found.id() + " " + status.stored());
+		audit(ctx, "/staff case " + found.id() + " " + status.stored(), found.id());
 		ctx.getSource().sendSuccess(() -> Theme.good(
 				"Case " + found.id() + " is now " + status.stored() + "."), false);
 
@@ -2096,6 +2098,139 @@ public final class StaffCommands {
 					"  Kept as an example of what should not have been flagged.",
 					Theme.MUTED), false);
 		}
+		return 1;
+	}
+
+	/** Auditing staff, and the two-person approval flow. */
+	private static void registerAccountability(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("audit")
+				.requires(src -> Permissions.check(src, Nodes.AUDIT))
+				.then(Commands.argument("staff", StringArgumentType.word())
+						.executes(ctx -> auditStaff(ctx, 7))
+						.then(Commands.argument("days", IntegerArgumentType.integer(1, 365))
+								.executes(ctx -> auditStaff(ctx,
+										IntegerArgumentType.getInteger(ctx, "days"))))
+						// Separate subcommand behind its own node, so reaching the addresses
+						// is a thing somebody chose to do rather than a column that came along.
+						.then(Commands.literal("origins")
+								.requires(src -> Permissions.check(src, Nodes.AUDIT_ADDRESSES))
+								.executes(ctx -> auditOrigins(ctx, 30)))));
+
+		staff.then(Commands.literal("approve")
+				.requires(src -> Permissions.check(src, Nodes.APPROVE))
+				.executes(StaffCommands::approvalList)
+				.then(Commands.argument("id", StringArgumentType.word())
+						.executes(StaffCommands::approve)));
+	}
+
+	private static int auditStaff(CommandContext<CommandSourceStack> ctx, int days) {
+		String who = StringArgumentType.getString(ctx, "staff");
+		var entries = Mods.accountability().audit().forStaff(who, days, 40);
+
+		if (entries.isEmpty()) {
+			// Said rather than printed as nothing: silence reads as a broken command, and
+			// "this person did nothing" is a real and useful answer.
+			return ok(ctx, who + " has done nothing recorded in the last " + days + " day(s).");
+		}
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(who, Theme.ACCENT))
+				.append(Icon.text("  " + entries.size() + " action(s), last " + days + " day(s)",
+						Theme.MUTED)), false);
+
+		for (var entry : entries) {
+			ctx.getSource().sendSuccess(() -> {
+				var line = Icon.text("  " + TimeFormat.ago(entry.at()), Theme.MUTED)
+						.append(Icon.text("  " + entry.kind(), Theme.TEXT))
+						.append(Icon.text("  " + entry.detail(), Theme.MUTED));
+				if (entry.isCaseWork()) {
+					line.append(Icon.text("  ", Theme.MUTED))
+							.append(Link.caseId(entry.caseId()));
+				}
+				return line;
+			}, false);
+		}
+
+		audit(ctx, "/staff audit " + who);
+		return 1;
+	}
+
+	/**
+	 * Where a staff member acted from.
+	 * <p>
+	 * Behind its own node and its own subcommand. An account acting from an address it has
+	 * never used, in a week it did something out of character, is the difference between a
+	 * staff member who has gone bad and one whose account was taken — and that is worth being
+	 * able to establish without every staff member being able to ask it about their colleagues.
+	 */
+	private static int auditOrigins(CommandContext<CommandSourceStack> ctx, int days) {
+		String who = StringArgumentType.getString(ctx, "staff");
+		var origins = Mods.accountability().audit().addressesFor(who, days);
+
+		if (origins.isEmpty()) {
+			return ok(ctx, "No recorded origins for " + who + " in the last " + days + " day(s).");
+		}
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(who + " acted from " + origins.size() + " address(es)",
+						Theme.ACCENT)), false);
+		ctx.getSource().sendSuccess(() -> Icon.text(
+				"  Addresses are stored hashed. Compare them, do not read them.",
+				Theme.MUTED), false);
+
+		for (var origin : origins) {
+			var accounts = Mods.accountability().audit().accountsAt(origin.hashedAddress());
+			ctx.getSource().sendSuccess(() -> Icon.text("  " + origin.display(), Theme.TEXT)
+					.append(Icon.text("  " + origin.actions() + " action(s)", Theme.MUTED))
+					.append(Icon.text("  last " + TimeFormat.ago(origin.lastSeen()), Theme.MUTED))
+					.append(Icon.text(accounts.isEmpty() ? ""
+							: "  accounts: " + String.join(", ", accounts), Theme.MUTED)), false);
+		}
+
+		audit(ctx, "/staff audit " + who + " origins");
+		return 1;
+	}
+
+	private static int approvalList(CommandContext<CommandSourceStack> ctx) {
+		var waiting = Mods.accountability().approvals().waiting();
+		if (waiting.isEmpty()) return ok(ctx, "Nothing is waiting for approval.");
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(waiting.size() + " waiting for a second signature",
+						Theme.ACCENT)), false);
+
+		for (var staged : waiting) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  ", Theme.MUTED)
+					.append(Link.run(staged.id(), "/staff approve " + staged.id(), Theme.ACCENT,
+							"Approve this " + staged.action().label()))
+					.append(Icon.text("  " + staged.action().label(), Theme.TEXT))
+					.append(Icon.text("  by " + staged.stagedByName(), Theme.MUTED))
+					.append(Icon.text("  " + staged.summary(), Theme.MUTED)), false);
+		}
+		return 1;
+	}
+
+	private static int approve(CommandContext<CommandSourceStack> ctx) {
+		ServerPlayer approver = ctx.getSource().getPlayer();
+		if (approver == null) {
+			// The console holds every permission and is nobody, so it cannot be the second
+			// pair of eyes. Letting it approve would make the whole check bypassable from a
+			// terminal, which is exactly where a compromised host would act from.
+			return fail(ctx, "Approval has to come from a player. The console cannot be the "
+					+ "second person.");
+		}
+
+		String id = StringArgumentType.getString(ctx, "id").toUpperCase(java.util.Locale.ROOT);
+		var outcome = Mods.accountability().approvals().approve(approver, id);
+
+		if (!outcome.approved()) return fail(ctx, outcome.refusal());
+
+		audit(ctx, "/staff approve " + id);
+		ctx.getSource().sendSuccess(() -> Theme.good(
+				"Approved " + outcome.staged().action().label() + " staged by "
+						+ outcome.staged().stagedByName() + "."), true);
+		ctx.getSource().sendSuccess(() -> Icon.text(
+				"  " + outcome.staged().summary(), Theme.MUTED), false);
 		return 1;
 	}
 
@@ -2283,8 +2418,21 @@ public final class StaffCommands {
 				: player + " is now " + group + ".");
 	}
 
+	/**
+	 * Records a staff command.
+	 * <p>
+	 * Goes through the accountability audit rather than straight to the analytics log, so
+	 * every command picks up who was acting, from where, and under which build without each
+	 * call site having to pass any of it.
+	 */
 	private static void audit(CommandContext<CommandSourceStack> ctx, String command) {
-		Mods.analytics().logCommand(ctx.getSource().getTextName(), command);
+		audit(ctx, command, null);
+	}
+
+	/** As above, tied to the case the action was taken on. */
+	private static void audit(CommandContext<CommandSourceStack> ctx, String command, String caseId) {
+		Mods.accountability().audit().record(
+				ctx.getSource().getPlayer(), ctx.getSource().getTextName(), command, caseId);
 
 		MinecraftServer server = ctx.getSource().getServer();
 		if (server != null) {

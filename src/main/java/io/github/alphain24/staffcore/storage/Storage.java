@@ -378,7 +378,7 @@ public final class Storage {
 
 	/** Columns holding an address, redacted unless the caller explicitly asked for them. */
 	private static final java.util.Set<String> ADDRESS_COLUMNS =
-			java.util.Set.of("ip", "ip_prefix", "address");
+			java.util.Set.of("ip", "ip_prefix", "address", "staff_ip");
 
 	private boolean exportTable(String table, Path out, boolean includeAddresses) {
 		// Identifiers cannot be bound, and this one came from sqlite_master rather than from

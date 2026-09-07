@@ -81,6 +81,34 @@ public class PunishmentModule implements Module {
 	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
 			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId) {
 
+		return apply(server, target, staffName, base, durationMs, reason, offenceId, caseId,
+				server == null ? null : server.getPlayerList().getPlayerByName(staffName));
+	}
+
+	/**
+	 * The one door. Every punishment in the mod arrives here.
+	 * <p>
+	 * The rate limit is checked <em>here</em> rather than in the command, and that placement
+	 * is the point: a check in {@code /staff ban} would leave the GUI, the API and any future
+	 * Discord path unlimited, each of them a way in somebody would have to remember to close.
+	 * A new caller gets the limit without being told about it.
+	 *
+	 * @param actor the staff member acting, for the rate limit and the audit. Null for the
+	 *              console, which is not the threat this guards against
+	 */
+	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
+			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId,
+			ServerPlayer actor) {
+
+		var verdict = Mods.accountability().limits()
+				.check(actor, io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.PUNISHMENT);
+		if (!verdict.allowed()) {
+			if (actor != null) actor.sendSystemMessage(Theme.bad(verdict.refusal()));
+			StaffCore.LOGGER.warn("[Punish] rate limit refused {} punishing {}",
+					staffName, target.name());
+			return null;
+		}
+
 		PunishmentType type = base.withDuration(durationMs);
 		Long expiresAt = durationMs == null ? null : System.currentTimeMillis() + durationMs;
 		String cleanReason = (reason == null || reason.isBlank()) ? "No reason given" : reason.trim();
