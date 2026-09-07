@@ -199,6 +199,8 @@ has already logged off.
 | `/staff selftest` | `staff.reload` | Prove the mod works, not just that it started |
 | `/staff nbt` | `security.invsee` | Read the held item's component data |
 | `/staff panel` | `staff.gui` | Open the panel |
+| `/staff cases [status \| mine]` | `staff.gui` | Open cases, strongest first |
+| `/staff case <id>` | `staff.gui` | Read one case; add `note`, `assign`, `claim`, `investigating`, `cleared`, `actioned` |
 | `/staff vault` | `security.vault` | The contraband vault; `security.vault.destroy` to destroy an item for good |
 | `/staff contraband` | `security.vault` | The contraband rules; `security.contraband.edit` to change them |
 | `/staff anticheat [player]` | `security.check` | Bridge state, or one player's findings |
