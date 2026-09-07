@@ -49,7 +49,7 @@ Everything it records goes in a SQLite file next to your world, backed up on eve
 
 1. Install **Fabric Loader 0.19.3 or newer** for Minecraft 26.2.
 2. Drop **[Fabric API](https://modrinth.com/mod/fabric-api)** into `mods/`.
-3. Drop `staffcore-1.0.0.jar` into `mods/`.
+3. Drop `staffcore-<version>.jar` into `mods/`.
 4. Start the server.
 
 SQLite is bundled inside the jar (~12 MB, mostly native libraries), so there is nothing else
@@ -112,7 +112,7 @@ the class names in this source are the real ones.
 The Gradle wrapper is committed, so:
 
 ```bash
-./gradlew build         # compile + tests -> build/libs/staffcore-1.0.0.jar
+./gradlew build         # compile + tests -> build/libs/staffcore-<version>.jar
 ./gradlew test          # the JUnit suite on its own
 ./gradlew runServer     # dev server with the mod loaded
 ```

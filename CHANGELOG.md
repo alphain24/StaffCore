@@ -1,6 +1,10 @@
 # Changelog
 
-## 1.0.0 — unreleased
+## 1.1.0 — unreleased
+
+The case model and everything that hangs off it. In progress.
+
+## 1.0.0
 
 First release. Everything below is from the correctness and trust pass that preceded it.
 
