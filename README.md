@@ -424,6 +424,17 @@ known gap — not a bug list.
 
 **Structural**
 
+- **A permission node written by hand, rather than taken from `Nodes`, fails in a shape that
+  looks like success.** `Actor` resolves permissions by walking the nodes declared in `Nodes`,
+  so a string that is not one of them is in nobody's resolved set — denied to every player, and
+  granted to operators through the operator fallback. It therefore works perfectly for whoever
+  is testing it, because whoever is testing it is opped, and is silently missing for everyone
+  else. A typo has the same shape: `staff.punsh` compiles, resolves to nothing, and quietly
+  removes a permission from every non-operator. `NodeLiteralTest` fails the build on a literal
+  at a permission check, so the source tree is covered. The shape is still worth recognising
+  on sight, because it applies to every node written by hand outside it — a permissions
+  plugin's group definition, an LuckPerms command, a wiki page somebody copies from — and
+  no test here can reach any of those.
 - **Almost every mixin is non-fatal.** Exactly one (the login gate behind bans and
   maintenance) is required; the rest use `defaultRequire: 0`, so an update that moves an
   injection point costs you that feature rather than your server. The startup check now asks

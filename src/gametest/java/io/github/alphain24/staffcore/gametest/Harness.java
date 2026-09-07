@@ -79,6 +79,21 @@ final class Harness {
 				io.github.alphain24.staffcore.permission.Actor.all());
 	}
 
+	/**
+	 * A second staff identity, for the cases where two different people touch one thing.
+	 * <p>
+	 * An invsee screen is opened by one staff member and can be closed by the server — or, once
+	 * a Discord bridge exists, acted on by someone else entirely. Having two identities to hand
+	 * is what lets a test tell "the same person finished what they started" apart from "somebody
+	 * else did", which is the distinction the audit row exists to record.
+	 */
+	static io.github.alphain24.staffcore.permission.Actor otherStaff() {
+		return io.github.alphain24.staffcore.permission.Actor.of(
+				java.util.UUID.nameUUIDFromBytes("OtherStaff".getBytes()), "OtherStaff",
+				io.github.alphain24.staffcore.permission.Actor.Source.PLAYER,
+				io.github.alphain24.staffcore.permission.Actor.all());
+	}
+
 	static GameType survival() {
 		return GameType.SURVIVAL;
 	}

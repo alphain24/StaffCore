@@ -382,14 +382,22 @@ public final class InventoryGateway {
 	 * So the unit of record is the session. The before-picture is taken when the screen opens
 	 * and the difference is worked out when it closes, which produces one row saying what
 	 * actually changed rather than forty saying how it was carried.
+	 *
+	 * @param openedById   the identity that opened the screen, <b>not</b> a resolved
+	 *                     {@link Actor}. A session outlives its own construction by however
+	 *                     long somebody leaves the screen open, and an {@code Actor} carries a
+	 *                     permission set read at that earlier moment — so holding one here
+	 *                     would mean any check added later silently authorised itself against
+	 *                     minutes-old permissions. Identity does not go stale; permissions do.
+	 * @param snapshotId   taken at open, because the before-picture is genuinely about then
 	 */
-	public record EditSession(ServerPlayer target, Actor actor, String reason,
-			Map<Item, Integer> before, Long snapshotId) {}
+	public record EditSession(ServerPlayer target, java.util.UUID openedById, String openedByName,
+			String reason, Map<Item, Integer> before, Long snapshotId) {}
 
-	/** Snapshots the target and remembers what they had. */
+	/** Snapshots the target and remembers what they had, and who was looking. */
 	public static EditSession beginEdit(ServerPlayer target, Actor actor, String reason) {
 		Long snapshot = snapshotBefore(Origin.INVSEE_EDIT, target, actor);
-		return new EditSession(target, actor, reason, tally(target), snapshot);
+		return new EditSession(target, actor.id(), actor.name(), reason, tally(target), snapshot);
 	}
 
 	/**
@@ -399,8 +407,14 @@ public final class InventoryGateway {
 	 * to look far more often than to change it, and a log full of "opened, changed nothing"
 	 * is a log nobody reads.
 	 */
-	public static Outcome endEdit(EditSession session) {
+	public static Outcome endEdit(EditSession session, Actor closer) {
 		if (session == null) return new Outcome(true, 0, 0, null);
+
+		// Resolved now, not when the screen opened. The same rule Approvals follows: the
+		// session remembers who, and what they hold is read at the moment the record is
+		// written. Nothing here checks a permission today — but the whole reason this is
+		// shaped this way is that there is no stale set for a future check to find.
+		Actor acting = closer != null ? closer : Actor.named(session.openedByName());
 
 		Map<Item, Integer> after = tally(session.target());
 		List<String> added = new ArrayList<>();
@@ -425,8 +439,17 @@ public final class InventoryGateway {
 		Direction direction = added.stream().mapToInt(x -> 1).sum() >= removed.size()
 				? Direction.GIVE : Direction.TAKE;
 
-		long auditId = record(Origin.INVSEE_EDIT, direction, session.actor(), session.target(),
-				session.reason(), items, moved);
+		// A screen belongs to one viewer, so these should be the same person. If they ever
+		// are not, the record says so rather than quietly attributing somebody's edit to
+		// whoever happened to be holding the screen at the end.
+		String reason = session.reason();
+		if (session.openedById() != null && acting.id() != null
+				&& !session.openedById().equals(acting.id())) {
+			reason = reason + " (opened by " + session.openedByName() + ")";
+		}
+
+		long auditId = record(Origin.INVSEE_EDIT, direction, acting, session.target(),
+				reason, items, moved);
 		return auditId < 0
 				? Outcome.refused("the edit happened but could not be recorded")
 				: new Outcome(true, moved, auditId, null);

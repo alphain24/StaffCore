@@ -7,7 +7,11 @@ import java.lang.reflect.RecordComponent;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -160,6 +164,118 @@ class ActorBoundaryTest {
 		assertTrue(old.isStale(60_000),
 				"an hour-old permission set should be reportable as stale");
 		assertFalse(old.isStale(0), "0 disables the check, like every other window here");
+	}
+
+	// ------------------------------------------------------------- actor retention
+
+	/**
+	 * A field carrying a modifier that only a field can carry.
+	 * <p>
+	 * {@code private}, {@code static} and friends are illegal on a local variable, so a line
+	 * holding one is a declaration at class level however deeply it is indented.
+	 */
+	private static final Pattern FIELD = Pattern.compile(
+			"(?m)^[ \\t]*(?:private|protected|public|static|volatile|transient)"
+					+ "(?:[ \\t]+\\w+)*[ \\t]+Actor[ \\t]+\\w+[ \\t]*[;=]");
+
+	/**
+	 * A package-private field, which carries no modifier at all.
+	 * <p>
+	 * Anchored to exactly one tab, because that is class-body depth and a local is always
+	 * deeper. The gap this leaves is a bare field inside a nested class — covered in practice
+	 * by {@link #COMPONENT}, since the two that were actually found were both record
+	 * components.
+	 */
+	private static final Pattern BARE_FIELD = Pattern.compile(
+			"(?m)^\\t(?:final[ \\t]+)?Actor[ \\t]+\\w+[ \\t]*[;=]");
+
+	/** An Actor as a type argument — held in a cache, a queue, or a pending map. */
+	private static final Pattern IN_COLLECTION = Pattern.compile(
+			"(?:Map|List|Set|Optional|Deque|Queue|Collection|AtomicReference)"
+					+ "\\s*<[^>]*\\bActor\\b");
+
+	/** A record component, which is how both of the ones actually found were written. */
+	private static final Pattern COMPONENT = Pattern.compile(
+			"record\\s+\\w+\\s*\\([^)]*\\bActor\\s+\\w+");
+
+	/** {@code File.separatorChar} without importing it for one character. */
+	private static final char SEPARATOR = java.io.File.separatorChar;
+
+	@Test
+	@DisplayName("nothing retains an Actor beyond the call that built it")
+	void actorsAreNeverStored() throws Exception {
+		// Staged and EditSession were each found by a different route — one by reading the
+		// approval path, one by reading the gateway — which is the sort of coincidence that
+		// suggests a third. Rather than looking harder, this makes the property enforceable:
+		// an Actor may be a parameter and a local, never a field, a record component, or a
+		// value in a collection.
+		//
+		// The rule matters because an Actor is a permission snapshot with an age. Retained
+		// anywhere it goes stale, and a check added against it later authorises using
+		// permissions read at some earlier moment. That is the bug EditSession would have had.
+		List<String> retained = new ArrayList<>();
+		Path source = Path.of("src", "main", "java");
+
+		try (Stream<Path> files = Files.walk(source)) {
+			for (Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+				String relative = source.relativize(file).toString().replace(SEPARATOR, '/');
+				if (relative.endsWith("permission/Actor.java")) continue;
+
+				String body = Files.readString(file, StandardCharsets.UTF_8);
+				if (FIELD.matcher(body).find() || BARE_FIELD.matcher(body).find()) {
+					retained.add(relative + " (field)");
+				}
+				if (IN_COLLECTION.matcher(body).find()) retained.add(relative + " (collection)");
+				if (COMPONENT.matcher(body).find()) retained.add(relative + " (record component)");
+			}
+		}
+
+		assertTrue(retained.isEmpty(),
+				"An Actor is retained beyond the call that built it:\n  "
+						+ String.join("\n  ", retained)
+						+ "\n\nAn Actor is a permission snapshot with an age. Held in a field, "
+						+ "a record or a collection it goes stale, and any check added against "
+						+ "it later authorises using permissions read at some earlier moment. "
+						+ "Hold the identity and resolve at the point of the decision, the way "
+						+ "Approvals.Staged and InventoryGateway.EditSession both now do.");
+	}
+
+	@Test
+	@DisplayName("the retention scan catches every shape it claims to, and no locals")
+	void theRetentionScanIsNotVacuous() {
+		// The scan above passes trivially if its patterns have stopped matching Java. Handing
+		// them the shapes they exist to catch is the cheapest way to know they still do.
+		assertTrue(FIELD.matcher("	private final Actor opener;").find(), "a private field");
+		assertTrue(FIELD.matcher("		static Actor last = null;").find(), "a nested static one");
+		assertTrue(BARE_FIELD.matcher("	Actor cached = null;").find(), "a package-private field");
+		assertTrue(IN_COLLECTION.matcher("Map<UUID, Actor> pending;").find(), "a map value");
+		assertTrue(COMPONENT.matcher("record Session(Actor by, String why) {}").find(),
+				"a record component");
+
+		// And the other half: a local is fine, and flagging one would train everybody to
+		// silence the test rather than read it.
+		String local = "		Actor acting = closer != null ? closer : Actor.named(name);";
+		assertFalse(FIELD.matcher(local).find(), "a local variable is not retention");
+		assertFalse(BARE_FIELD.matcher(local).find(), "a local variable is not retention");
+		assertFalse(FIELD.matcher("	public static Actor of(ServerPlayer player) {").find(),
+				"a factory method is not a field");
+	}
+
+	@Test
+	@DisplayName("the edit session holds identity, not a resolved permission set")
+	void editSessionsResolveAtClose() {
+		// The one that was actually wrong. An invsee screen stays open for as long as somebody
+		// leaves it open, so an Actor built when it opened is arbitrarily old by the time the
+		// edit is written. It holds a UUID and a name now, and endEdit resolves the closer.
+		for (RecordComponent part :
+				io.github.alphain24.staffcore.inventory.InventoryGateway.EditSession.class
+						.getRecordComponents()) {
+
+			assertFalse(part.getType() == Actor.class,
+					"InventoryGateway.EditSession." + part.getName() + " is an Actor, so its "
+							+ "permissions were read when the screen opened rather than when "
+							+ "the edit was written.");
+		}
 	}
 
 	// -------------------------------------------------------- the accountability rule
