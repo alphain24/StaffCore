@@ -39,10 +39,12 @@ import io.github.alphain24.staffcore.modules.report.ReportModule;
 import io.github.alphain24.staffcore.permission.Nodes;
 import io.github.alphain24.staffcore.permission.PermissionGroups;
 import io.github.alphain24.staffcore.modules.accountability.OperationId;
+import io.github.alphain24.staffcore.modules.grief.RollbackWarnings;
 import io.github.alphain24.staffcore.permission.Actor;
 import io.github.alphain24.staffcore.permission.Permissions;
 import io.github.alphain24.staffcore.util.DurationParser;
 import io.github.alphain24.staffcore.util.TimeFormat;
+import net.minecraft.core.BlockPos;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
@@ -390,7 +392,8 @@ public final class StaffCommands {
 		audit(ctx, "/staff " + base.name().toLowerCase(java.util.Locale.ROOT)
 				+ " " + target.name() + " " + reason);
 
-		Punishment result = Mods.punish().apply(server, target, staff, base, durationMs, reason);
+		Punishment result = Mods.punish().apply(server, target, staff, base, durationMs,
+				reason, null, null, Actor.of(ctx.getSource()));
 		if (result == null) {
 			return fail(ctx, "The punishment could not be saved — check the server log.");
 		}
@@ -1256,7 +1259,8 @@ public final class StaffCommands {
 		audit(ctx, "/staff preview " + scope + " " + radius + " " + minutes);
 
 		GriefModule.RollbackResult r = Mods.grief().rollback(
-				self.level(), player, self.blockPosition(), radius, minutes * 60_000L, true);
+				self.level(), player, self.blockPosition(), radius, minutes * 60_000L, true,
+				Actor.of(ctx.getSource()));
 
 		if (r.reverted() == 0 && r.itemsReturned() == 0) {
 			return fail(ctx, "Nothing to roll back within " + radius + " blocks.");
@@ -1292,6 +1296,8 @@ public final class StaffCommands {
 		// is: a list of numbers tells you how big the rollback is, and the blocks in front of
 		// you tell you whether it is the right one. The second is the question a radius
 		// actually poses.
+		warnAbout(ctx, (ServerLevel) self.level(), self.blockPosition(), radius, r.reverted());
+
 		int drawn = Mods.grief().preview().show(self, (ServerLevel) self.level(), r.proposed());
 		if (drawn > 0) {
 			ctx.getSource().sendSuccess(() -> Icon.text(
@@ -1343,9 +1349,13 @@ public final class StaffCommands {
 		int radius = IntegerArgumentType.getInteger(ctx, "radius");
 		audit(ctx, "/staff rollback area " + radius + " " + minutes);
 
+		if (needsPreviewFirst(ctx, (ServerLevel) self.level(), self.blockPosition(), radius)) {
+			return 0;
+		}
+
 		GriefModule.RollbackResult result = Mods.grief().rollback(
 				self.level(), null, self.blockPosition(), radius, minutes * 60_000L, false,
-				ctx.getSource().getTextName());
+				Actor.of(ctx.getSource()));
 
 		if (result.reverted() == 0) {
 			return fail(ctx, "Nothing to roll back within " + radius + " blocks.");
@@ -1402,9 +1412,13 @@ public final class StaffCommands {
 		int radius = IntegerArgumentType.getInteger(ctx, "radius");
 		audit(ctx, "/staff rollback " + player + " " + radius + " " + minutes);
 
+		if (needsPreviewFirst(ctx, (ServerLevel) self.level(), self.blockPosition(), radius)) {
+			return 0;
+		}
+
 		GriefModule.RollbackResult result = Mods.grief().rollback(
 				self.level(), player, self.blockPosition(), radius, minutes * 60_000L, false,
-				ctx.getSource().getTextName());
+				Actor.of(ctx.getSource()));
 
 		if (result.reverted() == 0) {
 			return fail(ctx, "Nothing of " + player + "'s to roll back within " + radius + " blocks.");
@@ -2788,6 +2802,77 @@ public final class StaffCommands {
 		return lifted == 0
 				? fail(ctx, "Nothing was lifted — it may have expired between the check and now.")
 				: ok(ctx, "Lifted " + ref + " on " + p.targetName() + ".");
+	}
+
+	// ------------------------------------------------------------ rollback warnings
+
+	/**
+	 * Prints what is unusual about a rollback, and stages the confirmation for it.
+	 * <p>
+	 * Called from the preview, because the preview is where a rollback is actually decided.
+	 * The block count is only knowable from a dry run, which is precisely what a preview is —
+	 * so this is the one moment the size can be reported before anything has been written.
+	 */
+	private static void warnAbout(CommandContext<CommandSourceStack> ctx, ServerLevel level,
+			BlockPos centre, int radius, int changes) {
+
+		var warnings = RollbackWarnings.forArea(level, centre, radius, changes);
+		for (var warning : warnings) {
+			ctx.getSource().sendSuccess(() -> warning.severe()
+					? Theme.bad("  " + warning.text())
+					: Theme.warn("  " + warning.text()), false);
+		}
+
+		// Staged whether or not anything was warned about, so the rollback that follows can
+		// tell "previewed and went ahead" from "typed straight in".
+		StaffSession.staged(Actor.of(ctx.getSource()), rollbackKey(level, centre, radius),
+				changes + " change(s) within " + radius + " blocks");
+	}
+
+	/**
+	 * Refuses a rollback over sensitive ground that nobody has previewed.
+	 * <p>
+	 * Only for the severe cases — overlapping spawn, or a size well past the warning line.
+	 * Everything else runs as it always did, because a confirmation step in front of every
+	 * rollback is a confirmation step everybody learns to type without reading, and then the
+	 * one that mattered goes through unread too.
+	 * <p>
+	 * The staged confirmation carries the same expiry as every other one, so a preview from
+	 * twenty minutes ago does not authorise a rollback now: what it described was the ground
+	 * as it was then.
+	 *
+	 * @return true when the command must not proceed
+	 */
+	private static boolean needsPreviewFirst(CommandContext<CommandSourceStack> ctx,
+			ServerLevel level, BlockPos centre, int radius) {
+
+		// Changes are not known yet — nothing has been read. Passing 0 asks only the
+		// geometric questions, which are the ones answerable before doing the work.
+		var severe = RollbackWarnings.forArea(level, centre, radius, 0).stream()
+				.filter(RollbackWarnings.Warning::severe).toList();
+		if (severe.isEmpty()) return false;
+
+		var confirmation = StaffSession.claim(Actor.of(ctx.getSource()),
+				rollbackKey(level, centre, radius));
+		if (confirmation.allowed()) return false;
+
+		ctx.getSource().sendFailure(Theme.bad("Not running this without a preview first."));
+		for (var warning : severe) {
+			ctx.getSource().sendSuccess(() -> Theme.warn("  " + warning.text()), false);
+		}
+		ctx.getSource().sendSuccess(() -> Icon.text("  " + confirmation.refusal(), Theme.MUTED),
+				false);
+		ctx.getSource().sendSuccess(() -> Icon.text("  ", Theme.MUTED)
+				.append(Link.suggest("[preview it]", "/staff preview area " + radius,
+						Theme.ACCENT, "Fills in the preview without running it")), false);
+		playerSound(ctx, false);
+		return true;
+	}
+
+	/** Identifies one rollback area, so a preview of one cannot confirm another. */
+	private static String rollbackKey(ServerLevel level, BlockPos centre, int radius) {
+		return "rollback " + Mc.dimensionId(level) + " " + centre.getX() + "," + centre.getY()
+				+ "," + centre.getZ() + " r" + radius;
 	}
 
 	// ------------------------------------------------------------ operation lookup

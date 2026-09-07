@@ -138,7 +138,8 @@ public class ReasonMenu extends Gui {
 		if (server == null) return;
 
 		Punishment result = Mods.punish().apply(server, finished.target(), Mc.name(viewer),
-				finished.base(), finished.durationMs(), finished.reason());
+				finished.base(), finished.durationMs(), finished.reason(), null, null,
+				io.github.alphain24.staffcore.permission.Actor.of(viewer));
 
 		if (result == null) {
 			viewer.sendSystemMessage(Theme.bad("The punishment could not be saved — check the server log."));

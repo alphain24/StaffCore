@@ -82,32 +82,50 @@ public class PunishmentModule implements Module {
 	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
 			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId) {
 
+		// Resolved to an identity here rather than carried as a player object. Everything
+		// downstream is policy — a rate limit, a rank comparison, an audit row — and none of
+		// it wants a world, a position or a connection.
+		ServerPlayer acting = server == null ? null
+				: server.getPlayerList().getPlayerByName(staffName);
 		return apply(server, target, staffName, base, durationMs, reason, offenceId, caseId,
-				server == null ? null : server.getPlayerList().getPlayerByName(staffName));
+				acting == null ? io.github.alphain24.staffcore.permission.Actor.named(staffName)
+						: io.github.alphain24.staffcore.permission.Actor.of(acting));
 	}
 
 	/**
 	 * The one door. Every punishment in the mod arrives here.
 	 * <p>
-	 * The rate limit is checked <em>here</em> rather than in the command, and that placement
-	 * is the point: a check in {@code /staff ban} would leave the GUI, the API and any future
-	 * Discord path unlimited, each of them a way in somebody would have to remember to close.
-	 * A new caller gets the limit without being told about it.
+	 * The rate limit, the self-punishment guard and the rank guard are all checked <em>here</em>
+	 * rather than in the command, and that placement is the point: a check in {@code /staff ban}
+	 * would leave the GUI, the API and any future Discord path unguarded, each of them a way in
+	 * somebody would have to remember to close. A new caller gets all three without being told
+	 * they exist.
 	 *
-	 * @param actor the staff member acting, for the rate limit and the audit. Null for the
-	 *              console, which is not the threat this guards against
+	 * @param actor who is acting, as identity rather than as a player object. Null or
+	 *              identity-less means the console, which is the server owner's own hand and is
+	 *              exempt from the guards that exist to hold staff to each other
 	 */
 	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
 			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId,
-			ServerPlayer actor) {
+			io.github.alphain24.staffcore.permission.Actor actor) {
 
-		var verdict = Mods.accountability().limits().check(
-				io.github.alphain24.staffcore.permission.Actor.of(actor),
+		var verdict = Mods.accountability().limits().check(actor,
 				io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.PUNISHMENT);
 		if (!verdict.allowed()) {
-			if (actor != null) actor.sendSystemMessage(Theme.bad(verdict.refusal()));
+			refuse(server, actor, verdict.refusal());
 			StaffCore.LOGGER.warn("[Punish] rate limit refused {} punishing {}",
 					staffName, target.name());
+			return null;
+		}
+
+		// Checked before anything is written, and refused rather than logged, because the
+		// damage from punishing upwards is done the moment it takes effect.
+		var ranking = io.github.alphain24.staffcore.permission.Rank.mayPunish(
+				actor, server, target.id(), target.name());
+		if (!ranking.allowed()) {
+			refuse(server, actor, ranking.refusal());
+			StaffCore.LOGGER.warn("[Punish] refused {} punishing {}: rank", staffName,
+					target.name());
 			return null;
 		}
 
@@ -132,8 +150,31 @@ public class PunishmentModule implements Module {
 		enforce(server, record);
 		announce(server, record);
 
-		if (type == PunishmentType.WARN) suggestEscalation(server, record, actor);
+		if (type == PunishmentType.WARN) suggestEscalation(server, record, online(server, actor));
 		return record;
+	}
+
+	/**
+	 * Tells the acting staff member why this did not happen.
+	 * <p>
+	 * The refusal has to reach a person, and the identity that authorised the action is not a
+	 * person until it is looked up. Console refusals go to the log, where the console is
+	 * reading anyway.
+	 */
+	private void refuse(MinecraftServer server,
+			io.github.alphain24.staffcore.permission.Actor actor, String why) {
+
+		ServerPlayer online = online(server, actor);
+		if (online != null) online.sendSystemMessage(Theme.bad(why));
+		else StaffCore.LOGGER.warn("[Punish] {}", why);
+	}
+
+	/** The player behind an identity, if they are here. Only ever for showing them something. */
+	private ServerPlayer online(MinecraftServer server,
+			io.github.alphain24.staffcore.permission.Actor actor) {
+
+		if (server == null || actor == null || actor.id() == null) return null;
+		return server.getPlayerList().getPlayer(actor.id());
 	}
 
 	/**

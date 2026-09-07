@@ -278,6 +278,7 @@ Changing a default in the code alone would never reach a server that has already
   "reportCooldownSeconds": 60,
   "displayTimezone": "UTC",           // staff-facing times only; logs stay UTC
   "confirmExpirySeconds": 60,         // how long a preview stays good for; 0 = forever
+  "rollbackWarnBlocks": 500,          // preview says so loudly above this; 0 = never
   "rootAliases": false,               // /ban, /vanish etc. at the root, if free
   "xrayRatioThreshold": 0.12,         // ore fraction that trips the heuristic
   "xraySampleFloor": 200,             // blocks needed before it will fire at all
@@ -386,9 +387,28 @@ known gap — not a bug list.
 - **The practical cost:** on a server with one admin online, a mass rollback, an IP ban and an
   inventory edit wait until somebody else signs in. Turn it off with
   `requireTwoPersonApproval` if that trade is wrong for you.
+- **Staff cannot punish sideways or upwards, and the console can.** Rank is not a field
+  anywhere — it is the set of StaffCore nodes somebody holds, so it cannot drift from the
+  permissions actually granted. You may punish someone whose nodes are a strict subset of
+  yours; equal sets and two sets that merely differ are both refused, because inventing an
+  order between them would be inventing the authority the rule exists to check. The case it
+  is for is a staff member removing the person who was about to remove them, which is
+  unrecoverable by the time anyone notices. **The escape hatch is the console**, which is the
+  server owner's own hand and is audited like everything else — without it, two admins who
+  had fallen out would leave a server nobody could fix.
+- **An offline staff member cannot be punished when permissions live in a plugin.** A
+  permissions API answers about a connected player, so their rank is unknowable while they
+  are offline and the action is refused rather than guessed at. Waiting is recoverable;
+  banning the admin is not. With StaffCore's own group file there is no such gap.
 
 **Recovery and evidence**
 
+- **Rollback warns about spawn, not about claims.** A rollback overlapping world spawn or its
+  vanilla `spawn-protection` radius is called out and needs a preview first, because spawn is
+  built by staff over months and is logged exactly the way griefing is. Claims belonging to
+  GriefPrevention, FTB Chunks or anything similar are invisible from here — StaffCore does not
+  depend on any claims mod, and a check that appeared to cover claims while covering none of
+  them would be worse than not offering one.
 - **Rollback only reaches the area and window you give it.** That is the scope you asked
   for, and widening it silently would be worse than not widening it. What *is* chased
   beyond the radius is the offender's own loot: ground drops are reclaimed, a live

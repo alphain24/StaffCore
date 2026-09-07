@@ -372,6 +372,19 @@ public final class StaffConfig {
 	 */
 	public int confirmExpirySeconds = 60;
 
+	/**
+	 * Block changes above which a rollback preview says so loudly. 0 disables the warning.
+	 * <p>
+	 * Not a limit — nothing is refused for being big, because the rollback that undoes a real
+	 * raid is enormous and refusing it would be refusing the tool's main purpose. This is only
+	 * the line above which the size is worth reading twice.
+	 * <p>
+	 * Raising it makes big rollbacks routine. Lowering it makes the warning appear on ordinary
+	 * ones, which is the failure to avoid: a warning that fires every time teaches everybody to
+	 * press through it, and then the one that mattered goes past unread too.
+	 */
+	public int rollbackWarnBlocks = 500;
+
 	// ---- display -------------------------------------------------------------
 
 	/**
