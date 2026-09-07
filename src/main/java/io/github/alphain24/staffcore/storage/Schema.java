@@ -66,7 +66,8 @@ final class Schema {
 				    active        INTEGER NOT NULL DEFAULT 1,
 				    revoked_by    TEXT,
 				    offence       TEXT,
-				    silent        INTEGER NOT NULL DEFAULT 0
+				    silent        INTEGER NOT NULL DEFAULT 0,
+				    case_id       TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_punish_target ON punishments(target_uuid, active)");
@@ -525,6 +526,90 @@ final class Schema {
 				+ "ON inventory_audit(target_uuid, created_at)");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_inventory_audit_origin "
 				+ "ON inventory_audit(origin, created_at)");
+
+		// ------------------------------------------------------------------ cases
+		//
+		// The spine. Appeals reference cases, Discord renders them, replay opens from them and
+		// accountability audits actions taken on them — so everything downstream depends on
+		// this shape being right, and on nothing here ever being deleted.
+		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS cases (
+				    id             TEXT    PRIMARY KEY,
+				    subject_uuid   TEXT    NOT NULL,
+				    subject_name   TEXT,
+				    status         TEXT    NOT NULL DEFAULT 'open',
+				    severity       INTEGER NOT NULL DEFAULT 0,
+				    summary        TEXT,
+				    opened_at      INTEGER NOT NULL,
+				    opened_by      TEXT    NOT NULL,
+				    assigned_to    TEXT,
+				    closed_at      INTEGER,
+				    closed_by      TEXT,
+				    resolution     TEXT,
+				    server_version TEXT,
+				    mod_version    TEXT
+				)
+				""");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cases_subject "
+				+ "ON cases(subject_uuid, opened_at DESC)");
+		// The list screen sorts by severity then recency, so the index it reads has to be in
+		// that order or it sorts the whole table on every page.
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cases_open "
+				+ "ON cases(status, severity DESC, opened_at DESC)");
+
+		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS signals (
+				    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+				    case_id        TEXT,
+				    type           TEXT    NOT NULL,
+				    subject_uuid   TEXT    NOT NULL,
+				    subject_name   TEXT,
+				    occurred_at    INTEGER NOT NULL,
+				    confidence     INTEGER NOT NULL DEFAULT 0,
+				    evidence_json  TEXT,
+				    source_module  TEXT    NOT NULL,
+				    server_version TEXT,
+				    mod_version    TEXT
+				)
+				""");
+		// Nullable case_id is the point: a signal below the auto-open threshold is kept and
+		// shown in the player context panel without creating a case nobody asked for.
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_case ON signals(case_id, occurred_at)");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_subject "
+				+ "ON signals(subject_uuid, occurred_at DESC)");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_unattached "
+				+ "ON signals(subject_uuid, case_id, occurred_at DESC)");
+
+		// Append only. Status changes, assignments, notes and actions all land here as new
+		// rows; nothing updates or deletes one. That is what makes a case answerable months
+		// later — the current state of a case is a replay of its events, not a field somebody
+		// overwrote.
+		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS case_events (
+				    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+				    case_id TEXT    NOT NULL,
+				    at      INTEGER NOT NULL,
+				    actor   TEXT    NOT NULL,
+				    kind    TEXT    NOT NULL,
+				    body    TEXT
+				)
+				""");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_case_events ON case_events(case_id, at)");
+
+		// A case points at punishments, reports, appeals, rollbacks, snapshots and debits by
+		// type and id rather than by six nullable columns, so a new kind of evidence needs no
+		// migration.
+		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS case_links (
+				    case_id     TEXT    NOT NULL,
+				    entity_type TEXT    NOT NULL,
+				    entity_id   TEXT    NOT NULL,
+				    linked_at   INTEGER NOT NULL,
+				    PRIMARY KEY (case_id, entity_type, entity_id)
+				)
+				""");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_case_links_entity "
+				+ "ON case_links(entity_type, entity_id)");
 	}
 
 	// ------------------------------------------------------------------ upgrades
@@ -733,6 +818,88 @@ final class Schema {
 				addColumn(conn, "inventory_audit", "ref_id", "INTEGER");
 				addColumn(conn, "inventory_audit", "reversed_at", "INTEGER");
 				addColumn(conn, "inventory_audit", "reversed_by", "TEXT");
+			},
+
+			// 13 - the case model. Cases, the signals that feed them, an append-only event
+			// log, and links out to whatever a case is about.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS cases (
+							    id             TEXT    PRIMARY KEY,
+							    subject_uuid   TEXT    NOT NULL,
+							    subject_name   TEXT,
+							    status         TEXT    NOT NULL DEFAULT 'open',
+							    severity       INTEGER NOT NULL DEFAULT 0,
+							    summary        TEXT,
+							    opened_at      INTEGER NOT NULL,
+							    opened_by      TEXT    NOT NULL,
+							    assigned_to    TEXT,
+							    closed_at      INTEGER,
+							    closed_by      TEXT,
+							    resolution     TEXT,
+							    server_version TEXT,
+							    mod_version    TEXT
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cases_subject "
+							+ "ON cases(subject_uuid, opened_at DESC)");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cases_open "
+							+ "ON cases(status, severity DESC, opened_at DESC)");
+
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS signals (
+							    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+							    case_id        TEXT,
+							    type           TEXT    NOT NULL,
+							    subject_uuid   TEXT    NOT NULL,
+							    subject_name   TEXT,
+							    occurred_at    INTEGER NOT NULL,
+							    confidence     INTEGER NOT NULL DEFAULT 0,
+							    evidence_json  TEXT,
+							    source_module  TEXT    NOT NULL,
+							    server_version TEXT,
+							    mod_version    TEXT
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_case "
+							+ "ON signals(case_id, occurred_at)");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_subject "
+							+ "ON signals(subject_uuid, occurred_at DESC)");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_unattached "
+							+ "ON signals(subject_uuid, case_id, occurred_at DESC)");
+
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS case_events (
+							    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+							    case_id TEXT    NOT NULL,
+							    at      INTEGER NOT NULL,
+							    actor   TEXT    NOT NULL,
+							    kind    TEXT    NOT NULL,
+							    body    TEXT
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_case_events "
+							+ "ON case_events(case_id, at)");
+
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS case_links (
+							    case_id     TEXT    NOT NULL,
+							    entity_type TEXT    NOT NULL,
+							    entity_id   TEXT    NOT NULL,
+							    linked_at   INTEGER NOT NULL,
+							    PRIMARY KEY (case_id, entity_type, entity_id)
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_case_links_entity "
+							+ "ON case_links(entity_type, entity_id)");
+				}
+
+				// Existing punishments are backfilled as null rather than given invented
+				// cases. A case that nobody opened and nothing investigated would be a lie
+				// about the record, and the case view showing "no case" is the useful answer
+				// anyway: it says how often staff punish without evidence attached.
+				addColumn(conn, "punishments", "case_id", "TEXT");
 			}
 	);
 
@@ -769,6 +936,7 @@ final class Schema {
 			{"inventory_audit", "ref_id", "INTEGER"},
 			{"inventory_audit", "reversed_at", "INTEGER"},
 			{"inventory_audit", "reversed_by", "TEXT"},
+			{"punishments", "case_id", "TEXT"},
 	};
 
 	/**
