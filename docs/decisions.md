@@ -207,6 +207,36 @@ they should be read as recollection rather than record.
 
 ---
 
+## Inventory mutation paths
+
+**Date:** 2026-09-07
+
+Remediation item 7 described "four independent paths" that write to player inventories:
+rollback debit, invsee edit, snapshot restore, vault return. That enumeration was **wrong**,
+and the Gate 0 audit is what established it — five more paths were writing directly, outside
+the gateway entirely.
+
+The guarantee worth stating is not "there are four paths". It is **every mutation goes through
+one door**, which is now enforced mechanically by `GatewayIsTheOnlyDoorTest` rather than
+asserted in prose.
+
+There are seven mutation origins:
+
+| Origin | What it is | Named in item 7? |
+|---|---|---|
+| `ROLLBACK_DEBIT` | taking items back after a rollback | yes |
+| `INVSEE_EDIT` | a staff member editing an inventory | yes |
+| `SNAPSHOT_RESTORE` | writing a recorded inventory back | yes |
+| `VAULT_RETURN` | handing a confiscated item back | yes |
+| `CONFISCATION` | taking contraband, or a leaked staff tool | **no — found by Gate 0** |
+| `STAFF_MODE_STASH` | clearing on clock-on, restoring on clock-off | **no — found by Gate 0** |
+| `PENDING_SETTLEMENT` | delivering or collecting while offline | **no — found by Gate 0** |
+
+The vault showed the asymmetry best: handing an item *back* was audited through the gateway
+while *taking* it was not.
+
+---
+
 # Moved from the README
 
 The README had grown to eight hundred lines, and the reasoning was the best material in it and

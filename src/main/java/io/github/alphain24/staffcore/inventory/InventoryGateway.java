@@ -517,8 +517,8 @@ public final class InventoryGateway {
 					INSERT INTO inventory_audit
 					    (origin, direction, actor, target_uuid, target_name, reason,
 					     items, item_count, snapshot_id, created_at,
-					     items_data, ref_kind, ref_id)
-					VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+					     items_data, ref_kind, ref_id, actor_resolved_at)
+					VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 					""", java.sql.Statement.RETURN_GENERATED_KEYS)) {
 
 				ps.setString(1, origin.name());
@@ -536,6 +536,10 @@ public final class InventoryGateway {
 				ps.setString(12, refKind);
 				if (refId == null) ps.setNull(13, java.sql.Types.INTEGER);
 				else ps.setLong(13, refId);
+				// When this actor's permissions were read. An audit row that cannot say how
+				// old its authority was cannot answer whether it should have been trusted.
+				if (actor == null) ps.setNull(14, java.sql.Types.INTEGER);
+				else ps.setLong(14, actor.resolvedAt());
 				ps.executeUpdate();
 
 				try (var keys = ps.getGeneratedKeys()) {

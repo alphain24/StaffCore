@@ -44,8 +44,12 @@ class ActorBoundaryTest {
 							+ "unconstructible in a test and unreachable from a Discord thread.");
 		}
 
-		// UUID, String, enum, Set, boolean — all plain data.
-		assertEquals(5, Actor.class.getRecordComponents().length,
+		// UUID, String, enum, Set, boolean, long — all plain data.
+		//
+		// The count is asserted so that adding a component is a decision somebody makes
+		// deliberately: this test failed when resolvedAt was added, which is exactly the
+		// prompt to check the new field is not a live object.
+		assertEquals(6, Actor.class.getRecordComponents().length,
 				"Actor gained a component; check it is not something live");
 	}
 
@@ -117,6 +121,45 @@ class ActorBoundaryTest {
 				.count();
 		assertEquals(declared, all.size(),
 				"the enumeration missed a node; anything it misses is denied to everyone");
+	}
+
+	// ---------------------------------------------------------- permission lifetime
+
+	@Test
+	@DisplayName("the staging record holds an identity, never a resolved Actor")
+	void stagingDoesNotFreezePermissions() {
+		// The failure this rules out: if Staged held an Actor, the approver's — or the
+		// stager's — permissions would be the ones read when the action was staged. A staff
+		// member demoted between staging and approval would still pass, because the check
+		// would be reading a snapshot taken while they still held the node.
+		//
+		// It holds a UUID and a name instead, so permissions are whatever they are at the
+		// moment somebody approves.
+		for (RecordComponent component :
+				io.github.alphain24.staffcore.modules.accountability.Approvals.Staged.class
+						.getRecordComponents()) {
+
+			assertFalse(component.getType() == Actor.class,
+					"Approvals.Staged." + component.getName() + " is an Actor. Its permission "
+							+ "set was resolved when the action was staged, so somebody "
+							+ "demoted in between would still approve successfully.");
+		}
+	}
+
+	@Test
+	@DisplayName("an Actor records when its permissions were read")
+	void resolutionIsTimestamped() {
+		Actor actor = Actor.of(UUID.randomUUID(), "Alice", Actor.Source.PLAYER, Set.of());
+
+		assertTrue(actor.resolvedAt() > 0, "an unstamped resolution has no auditable age");
+		assertTrue(actor.ageMillis() >= 0);
+		assertFalse(actor.isStale(60_000), "a fresh actor is not stale");
+
+		Actor old = new Actor(UUID.randomUUID(), "Bob", Actor.Source.PLAYER, Set.of(), false,
+				System.currentTimeMillis() - 3_600_000L);
+		assertTrue(old.isStale(60_000),
+				"an hour-old permission set should be reportable as stale");
+		assertFalse(old.isStale(0), "0 disables the check, like every other window here");
 	}
 
 	// -------------------------------------------------------- the accountability rule

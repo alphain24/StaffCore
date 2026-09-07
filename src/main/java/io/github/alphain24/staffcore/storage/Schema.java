@@ -177,7 +177,8 @@ final class Schema {
 				    staff_ip       TEXT,
 				    case_id        TEXT,
 				    server_version TEXT,
-				    mod_version    TEXT
+				    mod_version    TEXT,
+				    actor_resolved_at INTEGER
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cmdlog_staff ON command_log(staff_name, created_at)");
@@ -526,6 +527,7 @@ final class Schema {
 				    item_count   INTEGER NOT NULL,
 				    snapshot_id  INTEGER,
 				    created_at   INTEGER NOT NULL,
+				    actor_resolved_at INTEGER,
 				    items_data   TEXT,
 				    ref_kind     TEXT,
 				    ref_id       INTEGER,
@@ -954,6 +956,17 @@ final class Schema {
 			// 17 - warning points, so a ladder can count them and they can decay.
 			conn -> {
 				addColumn(conn, "punishments", "points", "INTEGER NOT NULL DEFAULT 0");
+			},
+
+			// 18 - when the acting identity's permissions were read.
+			//
+			// A permission set is a snapshot and a snapshot has an age. Recording it makes
+			// "was this authorised by a permission set read four seconds ago or forty minutes
+			// ago" answerable from the data rather than by reading the call graph — which is
+			// the only way to notice an actor that outlived its resolution after the fact.
+			conn -> {
+				addColumn(conn, "inventory_audit", "actor_resolved_at", "INTEGER");
+				addColumn(conn, "command_log", "actor_resolved_at", "INTEGER");
 			}
 	);
 
@@ -1002,6 +1015,8 @@ final class Schema {
 			{"notes", "retracted_at", "INTEGER"},
 			{"notes", "retracted_by", "TEXT"},
 			{"punishments", "points", "INTEGER NOT NULL DEFAULT 0"},
+			{"inventory_audit", "actor_resolved_at", "INTEGER"},
+			{"command_log", "actor_resolved_at", "INTEGER"},
 	};
 
 	/**

@@ -62,12 +62,21 @@ public final class StaffAudit {
 	 * something different from the same action under a healthy one.
 	 */
 	public void record(ServerPlayer staff, String staffName, String command, String caseId) {
+		record(io.github.alphain24.staffcore.permission.Actor.of(staff), staff, staffName,
+				command, caseId);
+	}
+
+	/** As above, with the identity whose permissions authorised it. */
+	public void record(io.github.alphain24.staffcore.permission.Actor actor, ServerPlayer staff,
+			String staffName, String command, String caseId) {
+
 		if (!ready()) return;
 
 		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement("""
 				INSERT INTO command_log (staff_name, command, created_at, staff_uuid, staff_ip,
-				                         case_id, server_version, mod_version)
-				VALUES (?,?,?,?,?,?,?,?)
+				                         case_id, server_version, mod_version,
+				                         actor_resolved_at)
+				VALUES (?,?,?,?,?,?,?,?,?)
 				""")) {
 			ps.setString(1, staffName);
 			ps.setString(2, command.length() > 256 ? command.substring(0, 256) : command);
@@ -77,6 +86,8 @@ public final class StaffAudit {
 			ps.setString(6, caseId);
 			ps.setString(7, Versions.minecraft());
 			ps.setString(8, Versions.mod());
+			if (actor == null) ps.setNull(9, java.sql.Types.INTEGER);
+			else ps.setLong(9, actor.resolvedAt());
 			ps.executeUpdate();
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Audit] could not record a staff command", e);

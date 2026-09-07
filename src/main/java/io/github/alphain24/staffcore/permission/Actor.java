@@ -39,7 +39,29 @@ import java.util.UUID;
  * @param operator the vanilla fallback, kept separately because it is not a node and some
  *                 checks care about the difference
  */
-public record Actor(UUID id, String name, Source source, Set<String> nodes, boolean operator) {
+public record Actor(UUID id, String name, Source source, Set<String> nodes, boolean operator,
+		long resolvedAt) {
+
+	/**
+	 * How old this resolution is.
+	 * <p>
+	 * Permissions are a snapshot, and a snapshot has an age. Every audit row records this so
+	 * that "was this action authorised by a permission set read four seconds ago or forty
+	 * minutes ago" is answerable after the fact rather than by reading the call graph.
+	 * <p>
+	 * The failure it makes visible: an actor resolved when a screen opened and used when it
+	 * closed carries permissions from before whatever happened in between. That is fine while
+	 * it is only attribution and quietly wrong the moment somebody adds a check.
+	 */
+	public long ageMillis() {
+		return System.currentTimeMillis() - resolvedAt;
+	}
+
+	/** True when this resolution is old enough that a decision should not lean on it. */
+	public boolean isStale(long maxAgeMillis) {
+		return maxAgeMillis > 0 && ageMillis() > maxAgeMillis;
+	}
+
 
 	/**
 	 * Where an instruction came from.
@@ -104,7 +126,7 @@ public record Actor(UUID id, String name, Source source, Set<String> nodes, bool
 	public static Actor of(ServerPlayer player) {
 		if (player == null) return console();
 		return new Actor(player.getUUID(), Mc.name(player), Source.PLAYER,
-				resolve(player), Mc.isModerator(player));
+				resolve(player), Mc.isModerator(player), System.currentTimeMillis());
 	}
 
 	/**
@@ -119,17 +141,20 @@ public record Actor(UUID id, String name, Source source, Set<String> nodes, bool
 		ServerPlayer player = source.getPlayer();
 		if (player != null) return of(player);
 
-		return new Actor(null, source.getTextName(), Source.CONSOLE, all(), true);
+		return new Actor(null, source.getTextName(), Source.CONSOLE, all(), true,
+				System.currentTimeMillis());
 	}
 
 	/** The console: every permission, no identity. */
 	public static Actor console() {
-		return new Actor(null, "Console", Source.CONSOLE, all(), true);
+		return new Actor(null, "Console", Source.CONSOLE, all(), true,
+				System.currentTimeMillis());
 	}
 
 	/** StaffCore itself, for things nobody asked for directly. */
 	public static Actor system() {
-		return new Actor(null, "SYSTEM", Source.SYSTEM, all(), true);
+		return new Actor(null, "SYSTEM", Source.SYSTEM, all(), true,
+				System.currentTimeMillis());
 	}
 
 	/**
@@ -140,7 +165,8 @@ public record Actor(UUID id, String name, Source source, Set<String> nodes, bool
 	 * point of the type.
 	 */
 	public static Actor of(UUID id, String name, Source source, Set<String> nodes) {
-		return new Actor(id, name, source, Set.copyOf(nodes), false);
+		return new Actor(id, name, source, Set.copyOf(nodes), false,
+				System.currentTimeMillis());
 	}
 
 	/**
@@ -158,7 +184,8 @@ public record Actor(UUID id, String name, Source source, Set<String> nodes, bool
 	 * identity first.
 	 */
 	public static Actor named(String name) {
-		return new Actor(null, name == null ? "unknown" : name, Source.SYSTEM, Set.of(), false);
+		return new Actor(null, name == null ? "unknown" : name, Source.SYSTEM, Set.of(),
+				false, System.currentTimeMillis());
 	}
 
 	// ------------------------------------------------------------------ plumbing
