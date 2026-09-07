@@ -9,7 +9,6 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import io.github.alphain24.staffcore.StaffCore;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.config.StaffConfig;
-import io.github.alphain24.staffcore.modules.security.XrayDetector;
 import io.github.alphain24.staffcore.gui.Icon;
 import io.github.alphain24.staffcore.gui.Sfx;
 import io.github.alphain24.staffcore.gui.Theme;
@@ -1121,127 +1120,81 @@ public final class StaffCommands {
 		String name = StringArgumentType.getString(ctx, "player");
 		audit(ctx, "/staff xray " + name);
 
-		StaffConfig cfg = StaffConfig.get();
-		XrayDetector.Report report = XrayDetector.explain(name, hours * 3_600_000L);
-		int sample = report.oreCount() + report.fillerCount();
+		MinecraftServer server = ctx.getSource().getServer();
+		long window = hours * 3_600_000L;
+		var findings = io.github.alphain24.staffcore.modules.security.XraySweep
+				.forPlayer(server, name, window);
 
 		ctx.getSource().sendSuccess(() -> Theme.prefix()
-				.append(Icon.text("X-ray report for ", Theme.MUTED))
+				.append(Icon.text("Mining report for ", Theme.MUTED))
 				.append(Icon.text(name, Theme.ACCENT))
 				.append(Icon.text(" — last " + hours + "h", Theme.MUTED)), false);
 
-		ctx.getSource().sendSuccess(() -> Icon.text("  Confidence: ", Theme.MUTED)
-				.append(Icon.text(report.confidence() + "%",
-						report.confidence() >= cfg.xrayAlertConfidence ? Theme.BAD
-								: report.confidence() > 0 ? Theme.WARN : Theme.GOOD))
-				.append(Icon.text("  (alerts at " + cfg.xrayAlertConfidence + "%)", Theme.MUTED)), false);
+		if (findings.isEmpty()) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  Nothing to report.", Theme.GOOD), false);
+			ctx.getSource().sendSuccess(() -> Icon.text("  "
+					+ io.github.alphain24.staffcore.modules.security.XraySweep
+							.whyNothing(server, name, window), Theme.MUTED), false);
+			return 1;
+		}
 
+		// Worst first. A session that produced four segments is usually one interesting dig
+		// and three ordinary ones, and burying the interesting one under a list sorted by
+		// depth is how it gets skimmed past.
+		var sorted = findings.stream()
+				.sorted(java.util.Comparator.comparingDouble(
+						io.github.alphain24.staffcore.modules.security.XraySweep.Finding::pValue))
+				.toList();
+
+		for (var finding : sorted) {
+			int confidence = io.github.alphain24.staffcore.modules.security.Hypergeometric
+					.confidence(finding.pValue());
+
+			ctx.getSource().sendSuccess(() -> Icon.text("  " + finding.world() + ", "
+					+ "y " + finding.band() + " to "
+					+ (finding.band() + io.github.alphain24.staffcore.modules.security.Excavation
+							.BAND_HEIGHT - 1), Theme.TEXT), false);
+
+			// The p-value is the finding. Everything under it is the arithmetic that produced
+			// it, printed so a staff member can check the claim rather than take it — and so
+			// the player it is about can argue with the numbers rather than the verdict.
+			ctx.getSource().sendSuccess(() -> Icon.text("    "
+					+ io.github.alphain24.staffcore.modules.security.Hypergeometric
+							.describe(finding.pValue()),
+					confidence >= StaffConfig.get().xrayAlertConfidence ? Theme.BAD
+							: confidence >= StaffConfig.get().xrayNoticeConfidence ? Theme.WARN
+							: Theme.MUTED), false);
+
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"    Took %d of the %d ore within reach, from %d blocks of a %d-block dig."
+							.formatted(finding.found(), finding.ores(), finding.drawn(),
+									finding.population()), Theme.MUTED), false);
+		}
+
+		explainTheModel(ctx);
+		return 1;
+	}
+
+	/**
+	 * What the number does and does not claim.
+	 * <p>
+	 * Printed every time, under every report, because this is the screen a staff member reads
+	 * immediately before deciding whether to ban somebody. The model assumes a miner who picks
+	 * blocks without regard to ore, and real miners follow veins — so a legitimate player who
+	 * found one and followed it scores as luckier than random, because they were.
+	 */
+	private static void explainTheModel(CommandContext<CommandSourceStack> ctx) {
 		ctx.getSource().sendSuccess(() -> Icon.text(
-				"  Sample: %d blocks (%d ore, %d filler)".formatted(sample, report.oreCount(), report.fillerCount()),
-				Theme.MUTED), false);
-
-		// What they found, not just how much. This line answers the question staff actually
-		// have — "is this a lot of diamond or a lot of coal" — which the percentage cannot.
-		if (report.oreCount() > 0) {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  Ore: " + report.oreBreakdown(6), Theme.TEXT), false);
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  Rarity: %.1f of 10 (an ordinary session sits near 2)"
-							.formatted(report.rarityIndex()), Theme.MUTED), false);
-		}
-
-		if (sample < cfg.xraySampleFloor) {
-			ctx.getSource().sendSuccess(() -> Theme.warn(
-					"  Below the sample floor of " + cfg.xraySampleFloor + " — the automatic sweep "
-							+ "stays silent on this player until they mine more."), false);
-		}
-
-		if (report.reasons().isEmpty()) {
-			ctx.getSource().sendSuccess(() -> Icon.text("  Nothing unusual.", Theme.GOOD), false);
-		} else {
-			report.reasons().forEach(r ->
-					ctx.getSource().sendSuccess(() -> Icon.text("  • " + r, Theme.TEXT), false));
-		}
-
-		explainSilence(ctx, report, sample, cfg);
-		windowComparison(ctx, name, cfg);
-		return Math.max(1, report.confidence());
-	}
-
-	/**
-	 * The same player scored over an hour, six hours, a day and a week.
-	 * <p>
-	 * One window hides two opposite things. Short, and an honest hour either side of a
-	 * cheating run drowns it; long, and a twenty-minute burst of pure diamond averages into
-	 * nothing. Four spans side by side make the shape obvious, and a row that is far worse
-	 * than the ones around it is a timestamp — it tells staff which session to go and read.
-	 */
-	private static void windowComparison(CommandContext<CommandSourceStack> ctx, String name,
-			StaffConfig cfg) {
-
-		var windows = XrayDetector.acrossWindows(name);
-		var worst = XrayDetector.worst(windows);
-		if (worst.report().confidence() == 0) return;
-
-		ctx.getSource().sendSuccess(() -> Icon.text("  Across time:", Theme.MUTED), false);
-		for (var window : windows) {
-			var report = window.report();
-			int sample = report.oreCount() + report.fillerCount();
-			ctx.getSource().sendSuccess(() -> Icon.text("    %-13s %3d%%  (%d blocks)"
-									.formatted(window.label(), report.confidence(), sample),
-							report.confidence() >= cfg.xrayAlertConfidence ? Theme.BAD
-									: report.confidence() >= cfg.xrayNoticeConfidence ? Theme.WARN
-									: Theme.MUTED),
-					false);
-		}
-
-		if (worst.report().confidence() >= cfg.xrayNoticeConfidence) {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"    Worst span: " + worst.label() + " — start there.", Theme.TEXT), false);
-		}
-	}
-
-	/**
-	 * Says which of the three things is keeping the detector quiet about this player.
-	 * <p>
-	 * Silence is the detector's normal state, and that makes a quiet server and a broken
-	 * feature look identical from the outside. There are only ever three reasons — not enough
-	 * mining, a score under the line, or the sweep being switched off — and naming the one
-	 * that applies is the difference between trusting the tool and assuming it never ran.
-	 */
-	private static void explainSilence(CommandContext<CommandSourceStack> ctx,
-			XrayDetector.Report report, int sample, StaffConfig cfg) {
-
-		if (report.confidence() >= cfg.xrayAlertConfidence) return;   // it would have alerted
-
-		ctx.getSource().sendSuccess(() -> Icon.text("  Why you have not been alerted:",
-				Theme.MUTED), false);
-
-		if (cfg.xraySweepMinutes <= 0) {
-			ctx.getSource().sendSuccess(() -> Theme.warn(
-					"    The automatic sweep is off (xraySweepMinutes is 0)."), false);
-		} else if (sample < cfg.xraySampleFloor) {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"    Only %d of the %d blocks the sweep needs before it will commit."
-							.formatted(sample, cfg.xraySampleFloor), Theme.MUTED), false);
-		} else if (report.confidence() == 0) {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"    Enough data, and nothing in it looks guided.", Theme.GOOD), false);
-		} else {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"    %d%% is under the %d%% alert line%s."
-							.formatted(report.confidence(), cfg.xrayAlertConfidence,
-									cfg.xrayNoticeConfidence > 0
-											&& report.confidence() >= cfg.xrayNoticeConfidence
-											? " — staff did get the quiet notice" : ""),
-					Theme.MUTED), false);
-		}
+				"  This is how unlikely the result is for somebody digging without knowing "
+						+ "where the ore was.", Theme.MUTED), false);
+		ctx.getSource().sendSuccess(() -> Icon.text(
+				"  It is not a verdict. Following a vein you legitimately found looks lucky "
+						+ "too — go and look at the tunnel.", Theme.MUTED), false);
 
 		// The one that catches people out, because it is the natural way to test.
 		ctx.getSource().sendSuccess(() -> Icon.text(
-				"    Note: ore they placed themselves is excluded, so seeding a wall", Theme.MUTED), false);
-		ctx.getSource().sendSuccess(() -> Icon.text(
-				"    with ore and mining it back proves nothing.", Theme.MUTED), false);
+				"  Testing note: ore you placed yourself is excluded, so placing ore and "
+						+ "mining it back proves nothing.", Theme.MUTED), false);
 	}
 
 	/**

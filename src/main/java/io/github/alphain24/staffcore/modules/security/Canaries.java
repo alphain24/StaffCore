@@ -24,7 +24,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * A handful of ores that are not there, shown to one player, in rock nothing can see into.
  *
  * <h2>Why this is worth having when the detector already exists</h2>
- * {@link XrayDetector} reads the break log and scores how much somebody's mining looks like
+ * {@link XraySweep} reads the break log and works out how unlikely somebody's mining is
  * cheating. It is inference: good inference, with the evidence attached, and still a judgement
  * about a pattern. A canary is not a judgement. The block was never there, only this player was
  * told about it, and no legitimate route to it exists — so walking to it is not evidence that

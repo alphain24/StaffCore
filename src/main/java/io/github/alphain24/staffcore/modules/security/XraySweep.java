@@ -100,17 +100,34 @@ public final class XraySweep {
 	 * a build is not mining, and their block count would swamp everybody else's.
 	 */
 	static Map<String, List<Excavation.Dig>> loadDigs(long windowMs) {
+		return loadDigs(windowMs, null);
+	}
+
+	/**
+	 * @param onlyPlayer one name, or null for everybody
+	 *                   <p>
+	 *                   Filtered in the query rather than afterwards. Reading the whole
+	 *                   server's mining to answer a question about one player is the shape of
+	 *                   thing that is invisible until somebody runs it on a database with a
+	 *                   year of history in it.
+	 */
+	static Map<String, List<Excavation.Dig>> loadDigs(long windowMs, String onlyPlayer) {
 		Map<String, List<Excavation.Dig>> byPlayer = new LinkedHashMap<>();
 		if (!StaffCore.storage().isReady()) return byPlayer;
 
-		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement("""
+		String sql = """
 				SELECT player_name, block, world, x, y, z, created_at
 				FROM block_log
 				WHERE action = 'BREAK' AND created_at >= ?
 				  AND (gamemode IS NULL OR gamemode <> 'creative')
-				ORDER BY player_name, created_at
-				""")) {
+				"""
+				+ (onlyPlayer == null ? "" : "  AND player_name = ? COLLATE NOCASE"
+						+ System.lineSeparator())
+				+ "ORDER BY player_name, created_at";
+
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(sql)) {
 			ps.setLong(1, System.currentTimeMillis() - windowMs);
+			if (onlyPlayer != null) ps.setString(2, onlyPlayer);
 
 			try (ResultSet rs = ps.executeQuery()) {
 				while (rs.next()) {
@@ -177,6 +194,56 @@ public final class XraySweep {
 		return findings;
 	}
 
+	/**
+	 * Scores one player on demand, synchronously.
+	 * <p>
+	 * The same path the sweep takes, for one name and one window. Sharing it is the point:
+	 * two scorers that agree today are two scorers that drift, and the first anybody hears of
+	 * the drift is a staff member seeing one number on a screen and a different one in a case.
+	 * <p>
+	 * Synchronous because a staff member typed a command and is waiting for the answer. The
+	 * read is one indexed query for one player, which is a different proposition from the
+	 * sweep's scan of everybody.
+	 */
+	public static List<Finding> forPlayer(MinecraftServer server, String player, long windowMs) {
+		if (server == null || player == null || !StaffCore.storage().isReady()) return List.of();
+
+		long start = System.nanoTime();
+		Map<String, List<Excavation.Dig>> theirs = loadDigs(windowMs, player);
+
+		// Timed even though this path is synchronous. Reporting nought would read as free
+		// rather than as unmeasured, and this is the number Gate 3 is about.
+		return analyse(server, theirs, (System.nanoTime() - start) / 1000);
+	}
+
+	/**
+	 * Why this player has produced no finding, in the words of whichever reason applies.
+	 * <p>
+	 * Silence is the normal state, which makes a quiet server and a broken feature look
+	 * identical from the outside. There are only ever three reasons — nothing mined, too small
+	 * a volume to say anything about, or a result that is simply unremarkable — and naming the
+	 * one that applies is the difference between trusting the tool and assuming it never ran.
+	 */
+	public static String whyNothing(MinecraftServer server, String player, long windowMs) {
+		List<Excavation.Dig> theirs = loadDigs(windowMs, player).values().stream()
+				.findFirst().orElse(null);
+
+		if (theirs == null || theirs.isEmpty()) {
+			return "They have broken nothing in this window, so there is nothing to score.";
+		}
+
+		int biggest = Excavation.segment(theirs).stream()
+				.mapToInt(Excavation.Segment::population).max().orElse(0);
+		int floor = StaffConfig.get().xrayMinimumVolume;
+
+		if (biggest < floor) {
+			return "Their largest dig reaches " + biggest + " blocks of rock, under the "
+					+ floor + " this needs. Below that the arithmetic is confident and "
+					+ "meaningless, which is worse than saying nothing.";
+		}
+		return "Enough digging to score, and nothing in it is more than chance would give.";
+	}
+
 	/** How much ore is still standing, and how many blocks it took to find out. */
 	private record Census(int remaining, int read) {}
 
@@ -190,16 +257,14 @@ public final class XraySweep {
 	private static Census census(ServerLevel level, Excavation.Segment segment) {
 		int remaining = 0;
 		int read = 0;
+		var targets = Excavation.targetBlocks();
 
 		for (BlockPos pos : segment.shell()) {
 			if (!level.isLoaded(pos)) continue;
 
 			read++;
 			BlockState state = level.getBlockState(pos);
-			String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
-					.getKey(state.getBlock()).toString();
-
-			if (Excavation.targets().contains(id)) remaining++;
+			if (targets.contains(state.getBlock())) remaining++;
 		}
 		return new Census(remaining, read);
 	}

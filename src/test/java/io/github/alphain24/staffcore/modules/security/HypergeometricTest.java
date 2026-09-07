@@ -134,6 +134,40 @@ class HypergeometricTest {
 	}
 
 	@Test
+	@DisplayName("a blatant case is small but never zero, so it cannot be a silent underflow")
+	void theExtremeTailDoesNotCollapse() {
+		// The failure this guards against passed the test above it. An implementation that
+		// underflows to exactly zero satisfies "p < 1e-50" and reads downstream as certainty
+		// of guilt — the one answer this must never give for a numerical reason rather than
+		// an evidential one.
+		double p = Hypergeometric.atLeast(100_000, 200, 300, 60);
+
+		assertTrue(p > 0,
+				"the extreme tail collapsed to exactly zero, which is an underflow wearing the "
+						+ "shape of a conclusion");
+		assertTrue(p < 1e-50, "and it still has to separate: p=" + p);
+	}
+
+	@Test
+	@DisplayName("the sum is stable whichever end of the range the answer sits at")
+	void bothEndsAgree() {
+		// Terms rise towards the mode before they fall, so an implementation that walks the
+		// range and stops early gets a different answer depending on where it started. Asking
+		// for the whole tail from zero must give exactly one however it is computed.
+		assertEquals(1.0, Hypergeometric.atLeast(5000, 50, 200, 1)
+				+ tailBelow(5000, 50, 200, 1), 1e-9);
+	}
+
+	/** Everything the tail from k excludes, summed independently. */
+	private static double tailBelow(int population, int ores, int drawn, int k) {
+		double total = 0;
+		for (int i = 0; i < k; i++) {
+			total += Math.exp(Hypergeometric.logProbability(population, ores, drawn, i));
+		}
+		return total;
+	}
+
+	@Test
 	@DisplayName("the description is a sentence somebody could say out loud")
 	void plainWords() {
 		// "0.00003" is not a thing to say to a player. "About one in thirty thousand" is the
@@ -142,5 +176,10 @@ class HypergeometricTest {
 		assertTrue(Hypergeometric.describe(0.01).contains("one in 100"));
 		assertTrue(Hypergeometric.describe(1e-5).contains("thousand"));
 		assertTrue(Hypergeometric.describe(1e-8).contains("million"));
+
+		// Past a billion to one, "one in 9223372036854 million" is a long overflowing rather
+		// than a number, and the honest answer is that the model has run out of meaning.
+		assertEquals("far beyond chance", Hypergeometric.describe(1e-40));
+		assertEquals("far beyond chance", Hypergeometric.describe(0.0));
 	}
 }

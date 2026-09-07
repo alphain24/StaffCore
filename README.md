@@ -286,8 +286,6 @@ Changing a default in the code alone would never reach a server that has already
   "canaryRadius": 48,                 // must be inside their render distance
   "canaryCaseThreshold": 3,           // hits in a session before a case opens
   "rootAliases": false,               // /ban, /vanish etc. at the root, if free
-  "xrayRatioThreshold": 0.12,         // ore fraction that trips the heuristic
-  "xraySampleFloor": 200,             // blocks needed before it will fire at all
   "tpsAlertFloor": 17.0,
   "defaultRollbackMinutes": 60,
 
@@ -336,7 +334,6 @@ Changing a default in the code alone would never reach a server that has already
   "autoSnapshotBeforeDebit": true,     // before a rollback takes items back off somebody
   "databaseBackups": 5,                // written on every start, rotated; 0 disables
   "hideMiningNoise": true,             // keep the log readable on a busy server
-  "xrayDirectnessFloor": 12.0,         // filler blocks between veins
   "xrayAlertConfidence": 65,          // no single signal can reach this on its own
   "xrayNoticeConfidence": 55,         // quiet heads-up below the alert line; 0 disables
   "xraySweepMinutes": 5,
@@ -458,7 +455,7 @@ known gap — not a bug list.
   still trips it and a determined evader with a clean VPN still beats it. Only an exact
   match can ever auto-ban.
 - **The x-ray check is a heuristic.** It flags, it never acts, and by default it will not
-  commit to a verdict below 200 mined blocks. It no longer counts ore the player placed
+  commit to a verdict below a 512-block volume of rock. It no longer counts ore the player placed
   themselves, but it is still inference from a block log. The thresholds are measured
   against generated mining patterns rather than real player data — see
   [decisions.md](docs/decisions.md), which records what that does and does not establish.
@@ -477,6 +474,14 @@ known gap — not a bug list.
 
 **Structural**
 
+- **One part of x-ray detection runs on the server thread, deliberately.** Working out how
+  much ore a player *walked past* means reading block states, and a `ServerLevel` may only be
+  touched from the server thread — doing it anywhere else is a data race that surfaces as a
+  crash weeks later in somebody else's log. So the census stays on the tick. It is bounded to
+  the rock immediately around the dig, it skips unloaded chunks rather than loading them, and
+  it is timed: roughly 3 ms of a 50 ms tick per scored session, once every `xraySweepMinutes`.
+  The database read — the largest part, and the part that grows with history — runs on a
+  worker. Measurements are in [decisions.md](docs/decisions.md).
 - **A permission node written by hand, rather than taken from `Nodes`, fails in a shape that
   looks like success.** `Actor` resolves permissions by walking the nodes declared in `Nodes`,
   so a string that is not one of them is in nobody's resolved set — denied to every player, and

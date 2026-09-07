@@ -326,6 +326,114 @@ was written, compiled, and ran zero times, and the suite reported success — wh
 result a test must never be able to give.
 ---
 
+## X-ray detection, rebuilt
+
+**Date:** 2026-09-08
+
+The weighted 0-100 score is gone. It combined four signals with weights somebody chose, and
+its problem was not accuracy — it separated the corpus — but that it had no units. Moving the
+threshold from 70 to 65 changed the number of alerts and nothing in the repository could say
+what it changed about the claim being made.
+
+A hypergeometric p-value has units: if this player had been digging without knowing where the
+ore was, the chance of doing at least this well is one in whatever. That is a sentence a staff
+member can repeat to the person they are confronting, and one an appeal can argue with.
+
+### The population is the modelling decision
+
+Not the blocks removed — every one of those was drawn, so the sample is the population and the
+question is vacuous. Not the bounding box — somebody mining at two ends of a corridor gets half
+a million blocks they were never near.
+
+It is **the excavation plus one step of rock**: what they were choosing between at each swing.
+That shape decides the answer. A straight tunnel draws nearly its whole shell, so a tunneller
+scores as unremarkable whatever they find — correctly, because they were not choosing. A dig
+that wanders has a shell far larger than the path through it.
+
+Six-connected, not twenty-six. A diagonal is not reachable in one swing, and counting it would
+inflate the population roughly fourfold — which makes every result look more surprising than it
+is, in the direction that accuses people. **Where the tie could go either way, it goes towards
+saying nothing.** Degenerate inputs are the same principle applied to arithmetic: an empty
+volume, more ore than blocks, more found than drawn all return p = 1, because a one-in-a-million
+p-value out of a bookkeeping mistake is how somebody gets banned for a division by zero.
+
+### Tool and fortune are not axes of this model
+
+The brief asked for segmentation by y-band, dimension, cave-versus-solid-rock, **and tool and
+fortune level**. The first three are in. The last two are not, and will not be.
+
+`block_log` records neither, so they could not be applied to a single existing row — but that is
+the smaller reason. The three that are in all change **how much ore was in the rock**, which is
+the population term the calculation needs. Fortune changes what drops from an ore once it has
+been found; it is not a term in a draw-without-replacement model at all. Tool tier is a proxy
+for intent, and intent does not belong in the statistic — it belongs in the human reading it.
+
+Recorded so it is not re-proposed by analogy with the axes that do belong.
+
+### A correctness bug the rewrite fixed, not a performance win
+
+The old sweep iterated `server.getPlayerList().getPlayers()`. **It only ever scored players who
+were online at the moment it ran** — and somebody who mines for an hour and then logs off is
+exactly the profile worth scoring. The block log outlives the session; the sweep did not use it
+that way. The window now decides who is examined, not who happens to be connected.
+
+Moving the work off the tick was the reason for touching it. This was the more important thing
+found while doing so.
+
+### Timings
+
+Measured by `XrayTimingTests` on a real server: 8 players x 1200 breaks = 9,600 rows of
+`block_log`, one segment scored, 2,740 block states censused. Three runs, cold JVM each time:
+
+| Stage | Runs | Where it runs |
+|---|---|---|
+| Read `block_log` | 11.6 / 14.7 / 30.7 ms | **worker thread** in the sweep; caller's thread for `/staff xray` |
+| Ore census | 2.7 / 2.7 / 4.5 ms | **server thread** — unavoidable, see Known limits |
+| Arithmetic | 2.0 / 2.0 / 3.0 ms | server thread |
+
+So roughly **5 ms of a 50 ms tick, once every `xraySweepMinutes`**. The read — the largest part
+by far, and the part that grows with history — is the half that moved off.
+
+Two optimisations came directly out of taking the measurement rather than assuming:
+
+- The census turned every block state into a string to compare it, allocating an `Identifier`
+  and a `String` per block. Comparing `Block` instances instead took it from 8.6 ms to 2.7 ms.
+- The tail sum called six log-gammas per term. A log-space recurrence made it three
+  multiplications and a logarithm. **Three earlier versions of that loop were wrong**, each
+  quietly: summing with per-term log-gammas was merely slow; walking down from the top risked
+  the first term underflowing to zero, which reads downstream as certainty of guilt; and
+  walking down with an early exit stopped on the first iteration, because terms rise towards
+  the mode before they fall — that one turned an ordinary result into one in 10^242. All three
+  are now tests.
+
+### Thresholds
+
+`xrayAlertConfidence` stays at 65, and now has a justification rather than a history. Across
+twenty seeds of each of six honest techniques and the guided one, the corpus separates: the
+worst honest session and the weakest guided one do not overlap, and 65 sits in the gap.
+`XrayThresholdTest` asserts the gap exists rather than asserting the number.
+
+`xraySampleFloor` (200 blocks broken) is replaced by `xrayMinimumVolume` (512 blocks of rock
+within reach). A count of blocks broken says nothing about whether the arithmetic can work; a
+player who removed thirty blocks from a pocket of forty has drawn almost all of it, and the
+statistics on a population that small are confident and meaningless. That is where the old
+detector's false positives lived.
+
+`xrayRatioThreshold` and `xrayDirectnessFloor` are gone with the signals they weighted.
+
+### The corpus states its own ore density
+
+The synthetic patterns have no world to census, so they have to supply the ground truth. The
+first attempt guessed a density from real Minecraft generation rates and applied it to the whole
+population, taking the larger of that and what the player found — which says "there were exactly
+as many ores as they got", and scored **every honest pattern at 99**.
+
+The density is now measured from the corpus itself: an unguided miner's find rate *is* the
+ambient density, so the clean patterns define it and the guided one is scored against it. Not
+circular — the question asked of the guided pattern is precisely whether it beat an unguided
+miner in the same rock, and the clean patterns are the only available statement of that rate.
+---
+
 # Moved from the README
 
 The README had grown to eight hundred lines, and the reasoning was the best material in it and

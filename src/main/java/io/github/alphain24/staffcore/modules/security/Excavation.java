@@ -160,8 +160,31 @@ public final class Excavation {
 		return shell;
 	}
 
-	/** Every target ore id, for the census to look for and for the docs test to check. */
+	/** Every target ore id, for the docs test to check. */
 	public static Set<String> targets() {
 		return TARGETS;
+	}
+
+	private static Set<net.minecraft.world.level.block.Block> targetBlocks;
+
+	/**
+	 * The same set as blocks rather than ids.
+	 * <p>
+	 * The census reads thousands of block states and used to turn each into a string to
+	 * compare it, which allocates a {@code ResourceLocation} and a {@code String} per block
+	 * and was most of what the census cost. Resolved once, from the same list, so the two
+	 * cannot describe different sets.
+	 */
+	public static synchronized Set<net.minecraft.world.level.block.Block> targetBlocks() {
+		if (targetBlocks != null) return targetBlocks;
+
+		Set<net.minecraft.world.level.block.Block> found = new java.util.HashSet<>();
+		for (String id : TARGETS) {
+			net.minecraft.core.registries.BuiltInRegistries.BLOCK
+					.getOptional(net.minecraft.resources.Identifier.parse(id))
+					.ifPresent(found::add);
+		}
+		targetBlocks = Set.copyOf(found);
+		return targetBlocks;
 	}
 }

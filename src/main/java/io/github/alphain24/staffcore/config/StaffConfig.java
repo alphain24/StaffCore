@@ -618,12 +618,6 @@ public final class StaffConfig {
 	// what lets a test prove the documentation still agrees with the code — the last round of
 	// tuning left three different sample floors in circulation across the docs and the source.
 
-	/** Ore-to-total fraction above which the blunt ratio signal starts scoring. */
-	public double xrayRatioThreshold = XrayTuning.RATIO_THRESHOLD;
-	/** Ore-plus-filler blocks a player must have broken before the detector will say anything. */
-	public int xraySampleFloor = XrayTuning.SAMPLE_FLOOR;
-	/** Mean filler blocks between veins below which mining looks guided. */
-	public double xrayDirectnessFloor = XrayTuning.DIRECTNESS_FLOOR;
 	/** Confidence at which staff are alerted automatically. */
 	public int xrayAlertConfidence = XrayTuning.ALERT_CONFIDENCE;
 	/** Confidence at which staff get a quieter heads-up rather than an alert. 0 disables. */

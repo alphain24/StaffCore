@@ -235,25 +235,31 @@ public class SecurityModule implements Module {
 	// -------------------------------------------------------------- mining checks
 
 	/**
-	 * X-ray heuristic over the grief log: what fraction of a player's recent mining was
-	 * ore? A legitimate strip-miner sits far below the threshold because they break
-	 * hundreds of stone blocks for every vein.
+	 * How unlikely this player's recent mining is for somebody who could not see the ore.
+	 * <p>
+	 * The same statistics the sweep runs, over the same window, through the same entry point.
+	 * A second scorer here would be a second answer to one question, and the first anybody
+	 * would hear of the disagreement is a staff member reading one number on this screen and a
+	 * different one in the case it opened.
 	 */
 	public List<Flag> scanMining(ServerPlayer target) {
 		List<Flag> flags = new ArrayList<>();
-		XrayDetector.Report report = XrayDetector.analyse(Mc.name(target), 6L * 3_600_000L);
-		if (report.confidence() == 0) return flags;
+		MinecraftServer server = Mc.server(target);
+		if (server == null) return flags;
 
-		Severity severity = report.isSuspicious() ? Severity.SUSPICIOUS : Severity.INFO;
-		flags.add(new Flag(severity, "MINING",
-				report.confidence() + "% confidence — " + String.join("; ", report.reasons())));
+		for (XraySweep.Finding finding
+				: XraySweep.forPlayer(server, Mc.name(target), 6L * 3_600_000L)) {
+
+			int confidence = Hypergeometric.confidence(finding.pValue());
+			if (confidence < StaffConfig.get().xrayNoticeConfidence) continue;
+
+			Severity severity = confidence >= StaffConfig.get().xrayAlertConfidence
+					? Severity.SUSPICIOUS : Severity.INFO;
+			flags.add(new Flag(severity, "MINING", finding.headline()));
+		}
 		return flags;
 	}
 
-	/** The full scored report, for the security screen's header. */
-	public XrayDetector.Report miningReport(ServerPlayer target) {
-		return XrayDetector.analyse(Mc.name(target), 6L * 3_600_000L);
-	}
 
 	// --------------------------------------------------------------- contraband watch
 
@@ -507,7 +513,7 @@ public class SecurityModule implements Module {
 					continue;
 				}
 
-				int confidence = confidenceFor(finding.pValue());
+				int confidence = Hypergeometric.confidence(finding.pValue());
 				if (confidence < cfg.xrayNoticeConfidence) continue;
 
 				// Re-reported only when it gets meaningfully worse, so a long session
@@ -532,26 +538,6 @@ public class SecurityModule implements Module {
 				}
 			}
 		});
-	}
-
-	/**
-	 * Turns a p-value into the 0-100 the case model already speaks.
-	 * <p>
-	 * A translation, not a return to the invented score. The p-value is the finding and is
-	 * what gets printed; this exists because {@code Signal} carries a confidence and every
-	 * other detector produces one, and a case list that sorted p-values ascending against
-	 * confidences descending would be unreadable.
-	 * <p>
-	 * The mapping is the negative log, which is the natural scale for a probability: each
-	 * factor of ten less likely is another twenty points, so one in a thousand is 60 and one
-	 * in a million is 99. Nothing is invented in the ordering — only in where the number is cut.
-	 */
-	static int confidenceFor(double pValue) {
-		if (pValue >= 1.0) return 0;
-		if (pValue <= 0) return 99;
-
-		double decades = -Math.log10(Math.max(pValue, 1e-30));
-		return (int) Math.max(0, Math.min(99, Math.round(decades * 20)));
 	}
 
 	/**

@@ -55,12 +55,31 @@ public final class Hypergeometric {
 		int highest = Math.min(drawn, ores);
 		if (found > highest) return 1.0;
 
-		// Summed from the top down. The terms fall away fast above the mode, so starting at
-		// the far tail and working back keeps every addition between numbers of similar size
-		// — the other direction loses the small terms into the rounding of the large ones.
+		// Walked upward from k, in log space, by a recurrence.
+		//
+		// Three earlier shapes were wrong, and each was wrong quietly. Summing every term with
+		// its own log-gammas cost six logarithms apiece — nine thousand microseconds for one
+		// busy session, a fifth of a tick on arithmetic nobody was waiting for. Starting at the
+		// far end and walking down risks the first term underflowing to zero, which makes the
+		// whole sum zero and reads as certainty of guilt. And walking down with an early exit
+		// stops on the first iteration, because terms rise towards the mode before they fall —
+		// that one turned an ordinary result into one in ten to the two hundred and forty-two.
+		//
+		// So: start at the term that matters most, keep the running value as a logarithm so it
+		// cannot underflow on the way, and exponentiate only what is large enough to add.
+		double logTerm = logProbability(population, ores, drawn, found);
 		double total = 0.0;
-		for (int i = highest; i >= found; i--) {
-			total += Math.exp(logProbability(population, ores, drawn, i));
+
+		for (int i = found; i <= highest; i++) {
+			if (logTerm > -745) total += Math.exp(logTerm);
+
+			// log P(X = i+1) - log P(X = i), from the ratio of the two binomials. Both
+			// numerators reach zero at the top of the range, where there is nothing left to add.
+			double up = (double) (ores - i) * (drawn - i);
+			double down = (double) (i + 1) * (population - ores - drawn + i + 1);
+			if (up <= 0 || down <= 0) break;
+
+			logTerm += Math.log(up) - Math.log(down);
 		}
 		return Math.min(1.0, total);
 	}
@@ -115,6 +134,26 @@ public final class Hypergeometric {
 	}
 
 	/**
+	 * Turns a p-value into the 0-100 the case model already speaks.
+	 * <p>
+	 * A translation, not a return to the invented score. The p-value is the finding and is
+	 * what gets printed; this exists because {@code Signal} carries a confidence and every
+	 * other detector produces one, and a case list that sorted p-values ascending against
+	 * confidences descending would be unreadable.
+	 * <p>
+	 * The mapping is the negative log, which is the natural scale for a probability: each
+	 * factor of ten less likely is another twenty points, so one in a thousand is 60 and one
+	 * in a million is 99. Nothing is invented in the ordering — only in where the number is cut.
+	 */
+	public static int confidence(double pValue) {
+		if (pValue >= 1.0) return 0;
+		if (pValue <= 0) return 99;
+
+		double decades = -Math.log10(Math.max(pValue, 1e-30));
+		return (int) Math.max(0, Math.min(99, Math.round(decades * 20)));
+	}
+
+	/**
 	 * A p-value as a sentence, because "0.00003" is not a thing to say to a player.
 	 * <p>
 	 * "One in thirty thousand" is the same number and a person can argue with it. Rounded to
@@ -125,6 +164,11 @@ public final class Hypergeometric {
 	public static String describe(double p) {
 		if (p >= 0.5) return "no more than chance";
 		if (p >= 0.05) return "roughly a one in " + Math.round(1 / p) + " chance";
+
+		// Past a billion to one the exact figure is not information — it is the model's
+		// arithmetic run past the point where the model is true. Saying so beats printing
+		// "one in 9223372036854 million", which is what a long overflowing looks like.
+		if (p < 1e-9) return "far beyond chance";
 
 		long odds = Math.round(1 / p);
 		if (odds < 1000) return "about one in " + odds;
