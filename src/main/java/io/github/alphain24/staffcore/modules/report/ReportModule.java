@@ -65,6 +65,19 @@ public class ReportModule implements Module {
 			ps.setLong(6, now);
 			ps.executeUpdate();
 			lastReport.put(reporter, now);
+
+			// A player report is a signal like any other, and the one with the best claim to
+			// be taken seriously: a human watched something happen and chose to tell somebody.
+			// It carries the weight of a report rather than of a heuristic, and it joins an
+			// open case about the same player — which is the connection worth having, because
+			// "somebody reported them for it" is what turns a marginal detector score into a
+			// reason to act.
+			io.github.alphain24.staffcore.module.Mods.cases().emit(
+					io.github.alphain24.staffcore.StaffCore.server(),
+					io.github.alphain24.staffcore.modules.cases.Signal.Type.REPORT,
+					target, targetName,
+					io.github.alphain24.staffcore.config.StaffConfig.get().reportSignalConfidence,
+					reporterName + " reported: " + reason, "report");
 			return Result.OK;
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Report] file failed", e);

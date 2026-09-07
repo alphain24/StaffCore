@@ -108,6 +108,9 @@ public final class SelfTest {
 		results.add(check("pickup log", Mods.grief()::pickupSelfCheck,
 				detail -> detail.startsWith("recorded a pickup")));
 
+		results.add(check("cases", Mods.cases()::selfCheck,
+				detail -> detail.startsWith("opened")));
+
 		results.add(check("backup", () -> {
 			Path written = StaffCore.storage().backup("self test");
 			if (written == null) return "no file was written";

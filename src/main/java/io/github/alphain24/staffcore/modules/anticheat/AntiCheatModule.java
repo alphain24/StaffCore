@@ -115,6 +115,23 @@ public final class AntiCheatModule implements Module {
 			return;
 		}
 
+		// Normalised into a signal, which is the whole point of the integration surface: a
+		// finding from an external anti-cheat becomes the same kind of thing as one of ours,
+		// scored on the same scale and landing in the same case. Without that, an
+		// investigation would have half its evidence in StaffCore and half scrolling past in
+		// a different channel.
+		//
+		// A UUID is not always available — some providers report by name — and a signal must
+		// be attributable to attach to anything, so a nameless event stays an alert.
+		if (event.playerId() != null) {
+			Mods.cases().emit(server,
+					io.github.alphain24.staffcore.modules.cases.Signal.Type.ANTICHEAT,
+					event.playerId(), event.playerName(),
+					event.hasConfidence() ? event.confidence() : cfg.antiCheatAlertConfidence,
+					"[" + event.provider() + "] " + event.headline(), "anticheat");
+			return;
+		}
+
 		Mods.alerts().onSecurityFlag(server, event.playerName(),
 				"[" + event.provider() + "] " + event.headline());
 	}

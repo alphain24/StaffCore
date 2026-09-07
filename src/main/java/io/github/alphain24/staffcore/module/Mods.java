@@ -30,6 +30,12 @@ import io.github.alphain24.staffcore.modules.vanish.VanishModule;
 public final class Mods {
 	private Mods() {}
 
+	/** The case model. Every detection subsystem reports into this. */
+	public static io.github.alphain24.staffcore.modules.cases.CaseModule cases() {
+		return StaffCore.modules().require("cases",
+				io.github.alphain24.staffcore.modules.cases.CaseModule.class);
+	}
+
 	public static StaffModeModule staffMode() {
 		return StaffCore.modules().require("staff_mode", StaffModeModule.class);
 	}

@@ -144,6 +144,10 @@ public class StaffCore implements ModInitializer {
 
 	private void registerModules() {
 		// Core
+		//
+		// Cases first: every detection subsystem reports into it, so it has to exist before
+		// any of them can emit their first signal.
+		MODULES.register(new io.github.alphain24.staffcore.modules.cases.CaseModule());
 		MODULES.register(new StaffModeModule());
 		MODULES.register(new VanishModule());
 		MODULES.register(new FreezeModule());

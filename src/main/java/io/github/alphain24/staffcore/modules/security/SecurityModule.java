@@ -341,13 +341,26 @@ public class SecurityModule implements Module {
 		}
 	}
 
+	/**
+	 * Reports a contraband find once per item per player.
+	 * <p>
+	 * Emitted as a signal rather than shouted directly. Contraband is the clearest example of
+	 * why: one banned item is worth recording and is not worth interrupting anybody about,
+	 * and the case model is the only thing that can hold that distinction. Below the
+	 * auto-open threshold the finding is kept against the player and says nothing; a player
+	 * who is also being flagged for something else has it join that case, which is precisely
+	 * the connection the old alert channel could never make.
+	 */
 	private void alertOnce(MinecraftServer server, ServerPlayer player, Item item, String detail) {
 		Set<Item> seen = reported.computeIfAbsent(player.getUUID(), k -> new java.util.HashSet<>());
 		if (!seen.add(item)) return;
 
-		Mods.alerts().onSecurityFlag(server, Mc.name(player),
+		Mods.cases().emit(server, io.github.alphain24.staffcore.modules.cases.Signal.Type.CONTRABAND,
+				player.getUUID(), Mc.name(player),
+				StaffConfig.get().contrabandSignalConfidence,
 				"%s at %d, %d, %d".formatted(detail,
-						player.getBlockX(), player.getBlockY(), player.getBlockZ()));
+						player.getBlockX(), player.getBlockY(), player.getBlockZ()),
+				"security");
 	}
 
 	// ----------------------------------------------------------- container contraband
@@ -492,7 +505,16 @@ public class SecurityModule implements Module {
 			lastReported.put(player.getUUID(), report.confidence());
 
 			if (report.isSuspicious()) {
-				Mods.alerts().onSuspiciousMining(server, Mc.name(player), report.headline());
+				// A verdict, not a shout. The detector's own confidence is carried through so
+				// a marginal 66 and a flagrant 96 are not treated as the same amount of "go
+				// and look" once they reach the case list — and so a marginal one about a
+				// player already under investigation lands in that case rather than scrolling
+				// past on its own.
+				Mods.cases().emit(server,
+						io.github.alphain24.staffcore.modules.cases.Signal.Type.XRAY,
+						player.getUUID(), Mc.name(player),
+						Math.max(cfg.xraySignalConfidence, report.confidence()),
+						report.headline(), "security");
 			} else {
 				// Deliberately not an alert. This exists so that silence is distinguishable
 				// from absence — a server owner who never sees anything should be able to

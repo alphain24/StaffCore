@@ -61,7 +61,14 @@ public class EvasionModule implements Module {
 		IdentityModule.Alt strongest = banned.get(0);
 		String detail = "%s is linked to banned account(s): %s (%s)"
 				.formatted(Mc.name(joiner), names, strongest.headline());
-		Mods.alerts().onSecurityFlag(server, Mc.name(joiner), detail);
+		// The alt link is a signal, scored by the strength of the match rather than by a
+		// fixed idea of how alarming an alt is. That matters here more than anywhere: a
+		// shared address is a lead and often nothing, so most of these should be kept and
+		// silent — and one arriving about a player who is already under investigation should
+		// join that case, because "the account they logged in beside is banned" is the
+		// context an investigator wants and the alert channel could never provide.
+		Mods.cases().emit(server, io.github.alphain24.staffcore.modules.cases.Signal.Type.ALT_MATCH,
+				joiner.getUUID(), Mc.name(joiner), strongest.confidence(), detail, "evasion");
 
 		notifyStaff(server, joiner, names, strongest);
 

@@ -502,10 +502,13 @@ public class GriefModule implements Module {
 		if (count == cfg.massGriefBlocks) {
 			MinecraftServer server = Mc.server(player);
 			if (server != null) {
-				Mods.alerts().onSecurityFlag(server, Mc.name(player),
+				Mods.cases().emit(server,
+						io.github.alphain24.staffcore.modules.cases.Signal.Type.MASS_GRIEF,
+						player.getUUID(), Mc.name(player), cfg.massGriefSignalConfidence,
 						"broke %d blocks in %d seconds at %d, %d, %d".formatted(
 								count, cfg.massGriefWindowSeconds,
-								player.getBlockX(), player.getBlockY(), player.getBlockZ()));
+								player.getBlockX(), player.getBlockY(), player.getBlockZ()),
+						"grief");
 			}
 		}
 		bursts.put(id, new BreakBurst(burst.windowStart(), count));

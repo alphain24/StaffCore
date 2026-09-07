@@ -358,6 +358,75 @@ public final class StaffConfig {
 	 */
 	public boolean rootAliases = false;
 
+	// ---- cases ---------------------------------------------------------------
+
+	/**
+	 * Confidence at or above which a signal opens a case on its own.
+	 * <p>
+	 * The knob that decides how noisy the case list is, and the one worth getting right. Set
+	 * it low and every observation becomes a case, which trains staff to close cases without
+	 * reading them — at which point the case model is worse than the alert channel it
+	 * replaced. Set it high and a player accumulating weak signals is never looked at.
+	 * <p>
+	 * Below this, a signal is still <em>kept</em> and shown in that player's context panel; it
+	 * just does not interrupt anybody. And a signal of any strength joins a case that is
+	 * already open, because three weak things about one player is the shape of a real problem
+	 * and is exactly what a scrolling alert channel could never show.
+	 */
+	public int caseAutoOpenSeverity = 70;
+
+	/**
+	 * Days without a signal or any staff activity before a case is marked stale. 0 disables.
+	 * <p>
+	 * Stale is not a deletion and not a verdict. It means nothing has happened here for a
+	 * while, which is worth knowing and is not the same as deciding the player was innocent —
+	 * a case that went quiet because everybody was busy reads exactly like one that went quiet
+	 * because there was nothing in it, and only a human can tell those apart.
+	 */
+	public int caseStaleDays = 14;
+
+	/**
+	 * How much weight a contraband find carries as a signal, 0-100.
+	 * <p>
+	 * Below {@link #caseAutoOpenSeverity} on purpose. One banned item is worth recording and
+	 * is not worth interrupting anybody about — it is far more often a leftover from a
+	 * gamemode change or an old world than evidence of anything. What makes it useful is that
+	 * it joins a case somebody is already working, where "and they are carrying operator
+	 * tooling" is exactly the corroboration an investigator wants.
+	 */
+	public int contrabandSignalConfidence = 45;
+
+	/**
+	 * How much weight a mass-grief burst carries as a signal, 0-100.
+	 * <p>
+	 * High, because unlike the other detectors this one is watching something that already
+	 * happened rather than inferring intent: somebody really did break that many blocks that
+	 * fast. What it cannot know is whether they were allowed to, which is why it opens a case
+	 * for a human rather than acting.
+	 */
+	public int massGriefSignalConfidence = 75;
+
+	/**
+	 * How much weight an x-ray verdict carries when it is reported as a signal.
+	 * <p>
+	 * The detector's own confidence is used where it has one; this is the floor applied to a
+	 * verdict that cleared the alert threshold. Set below {@link #caseAutoOpenSeverity} to
+	 * keep x-ray findings out of the case list entirely, which is a reasonable thing to want
+	 * while tuning on a new server.
+	 */
+	public int xraySignalConfidence = 80;
+
+	/**
+	 * How much weight a player report carries as a signal, 0-100.
+	 * <p>
+	 * The one signal produced by a human who watched something happen and chose to tell
+	 * somebody, which is a better claim on attention than any heuristic here. Set at the
+	 * auto-open threshold so a report opens a case on its own — the report queue already
+	 * exists, and this makes the report joinable to whatever else is known about that player
+	 * rather than living in a separate list.
+	 */
+	public int reportSignalConfidence = 70;
+
 	// ---- security ------------------------------------------------------------
 	//
 	// Every x-ray default comes from XrayTuning rather than being written here. The numbers
