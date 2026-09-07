@@ -369,6 +369,31 @@ open, every module that needs it degrades quietly and the rest of the mod still 
 | `contraband_vault` | Items taken off players and kept |
 | `pending_actions` | Items owed to a player who was offline when staff decided |
 
+## Recommended companion: an anti-xray mod
+
+StaffCore **detects** x-ray after the fact. It does not prevent it, and the two are different
+halves of the same problem — one catalogues cheating and the other stops it.
+
+Prevention means rewriting the block palette of every chunk on its way out, per player, without
+costing the server its tick budget. That is heavy, performance-sensitive work that already
+exists and already targets this Minecraft version, so StaffCore does not ship a second copy of
+it. Install one of these alongside:
+
+| Mod | Licence | Notes |
+|---|---|---|
+| [AntiXray](https://github.com/DrexHD/AntiXray) by DrexHD | MIT | Paper's `0367-Anti-Xray.patch`, ported. Fabric and NeoForge. |
+| [Meow Anti-Xray](https://github.com/xiaoyiluck666/MeowAnti-Xray) by xiaoyiluck | MIT | Paper-like obfuscation, engine mode 2 by default. Fabric and NeoForge. |
+
+Whichever is installed is named at startup and in `/staff status`. With neither, that line says
+so — silence there would read as "prevention is handled", which is the one thing it must not.
+
+**Installing one turns StaffCore's canary blocks off**, and the startup report says why. Both
+mods rewrite the same outbound chunk data, so a canary is not guaranteed to reach the client;
+and a player breaking a fake block cannot be told apart from one breaking the other mod's. A
+signal nobody can attribute reads as evidence and is not. The rest of the x-ray detection —
+which works from the block log, after the fact — is unaffected and is the more useful half
+anyway.
+
 ## Known limits
 
 Stated plainly rather than papered over. Everything here is a deliberate boundary or a

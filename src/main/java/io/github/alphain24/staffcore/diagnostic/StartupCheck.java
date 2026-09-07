@@ -331,6 +331,11 @@ public final class StartupCheck {
 		}
 
 		summarise(broken, verified, unconfirmed);
+
+		// Not a hook, and reported here anyway: it is the one thing about this server's
+		// x-ray posture that an admin cannot work out by reading the config. Detection
+		// after the fact and prevention are different halves, and StaffCore only does one.
+		io.github.alphain24.staffcore.modules.security.AntiXrayCompanion.log();
 		return broken;
 	}
 

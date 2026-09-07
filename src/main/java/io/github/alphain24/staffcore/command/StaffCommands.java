@@ -1719,6 +1719,15 @@ public final class StaffCommands {
 								Mods.control().currentTps(server),
 								StaffCore.storage().isReady() ? "ready" : "unavailable")), false);
 
+		// Whether anything is actually preventing x-ray, as opposed to noticing it
+		// afterwards. This is not a hook and cannot be worked out from the config, and the
+		// difference between the two halves is the difference between a server that stops
+		// cheating and one that catalogues it.
+		ctx.getSource().sendSuccess(() -> Icon.text("  " + io.github.alphain24.staffcore
+				.modules.security.AntiXrayCompanion.startupLine(),
+				io.github.alphain24.staffcore.modules.security.AntiXrayCompanion.present()
+						? Theme.GOOD : Theme.WARN), false);
+
 		// Three numbers that separate the three reasons a grief log can look empty: the event
 		// never fired, the write failed, or the query is not finding rows that exist. Without
 		// them all three present as the same blank screen.
