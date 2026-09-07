@@ -279,6 +279,11 @@ Changing a default in the code alone would never reach a server that has already
   "displayTimezone": "UTC",           // staff-facing times only; logs stay UTC
   "confirmExpirySeconds": 60,         // how long a preview stays good for; 0 = forever
   "rollbackWarnBlocks": 500,          // preview says so loudly above this; 0 = never
+  "canaryBlocks": true,               // decoy ores; forced off by a bulk anti-xray mod
+  "canaryDensity": 6,                 // decoys per player at once; 0 disables
+  "canaryMaxY": 16,                   // below the depth where people build
+  "canaryRadius": 48,                 // must be inside their render distance
+  "canaryCaseThreshold": 3,           // hits in a session before a case opens
   "rootAliases": false,               // /ban, /vanish etc. at the root, if free
   "xrayRatioThreshold": 0.12,         // ore fraction that trips the heuristic
   "xraySampleFloor": 200,             // blocks needed before it will fire at all

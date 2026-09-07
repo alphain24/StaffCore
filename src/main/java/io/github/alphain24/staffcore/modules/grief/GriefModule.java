@@ -178,6 +178,12 @@ public class GriefModule implements Module {
 		});
 
 		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, entity) -> {
+			// Before the ServerPlayer check, because a decoy has to be retired by any break
+			// next to it whoever made it — the position is reachable now regardless.
+			if (level instanceof ServerLevel server) {
+				io.github.alphain24.staffcore.modules.security.Canaries.onBreak(server,
+						player instanceof ServerPlayer breaker ? breaker : null, pos);
+			}
 			if (!(player instanceof ServerPlayer sp)) return;
 
 			long now = System.currentTimeMillis();
@@ -321,6 +327,11 @@ public class GriefModule implements Module {
 	 * @return how many positions were recorded
 	 */
 	public int logExplosion(ServerLevel level, List<BlockPos> positions, String source) {
+		// Retired before the config gate. Whether explosions are logged is a preference;
+		// whether a decoy is left standing in a crater is a correctness question, and tying
+		// the second to the first would make a logging setting quietly cause false positives.
+		io.github.alphain24.staffcore.modules.security.Canaries.onExplosion(level, positions);
+
 		if (!StaffConfig.get().logExplosions) return 0;
 		if (positions.isEmpty() || !StaffCore.storage().isReady() || worker == null) return 0;
 

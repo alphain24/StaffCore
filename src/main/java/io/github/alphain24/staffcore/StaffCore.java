@@ -222,6 +222,19 @@ public class StaffCore implements ModInitializer {
 			Mods.punish().sweepExpired(mc);
 		});
 
+		// Decoys, topped up slowly. Every candidate position costs seven block reads and is
+		// usually rejected, so this runs once every five seconds and gives up after ten
+		// attempts per player rather than looking until it succeeds — a player standing in a
+		// cave has no valid positions at all, and a loop would rediscover that every time.
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(mc -> {
+			if (mc.getTickCount() % 100 != 0) return;
+			if (!io.github.alphain24.staffcore.modules.security.Canaries.enabled()) return;
+
+			for (ServerPlayer player : mc.getPlayerList().getPlayers()) {
+				io.github.alphain24.staffcore.modules.security.Canaries.maintain(player);
+			}
+		});
+
 		ServerLifecycleEvents.SERVER_STOPPING.register(mc -> {
 			MODULES.disableAll();
 			STORAGE.close();
@@ -286,6 +299,11 @@ public class StaffCore implements ModInitializer {
 			// convenience and avoids somebody returning to an /staff undo aimed at something
 			// they no longer remember doing.
 			io.github.alphain24.staffcore.command.StaffSession.forget(player.getUUID());
+			// A decoy only exists while a client believes it, and a reconnecting client is
+			// sent the honest chunk again. Keeping one across a session would leave a
+			// position we think is fake and the player sees as stone, which is a false
+			// positive waiting for somebody to mine there.
+			io.github.alphain24.staffcore.modules.security.Canaries.forget(player.getUUID());
 			ChatRouter.onPlayerLeft(player);
 		});
 

@@ -14,7 +14,8 @@
 			"io.github.alphain24.staffcore.gametest.InvseeTests",
 			"io.github.alphain24.staffcore.gametest.RollbackDebitTests",
 			"io.github.alphain24.staffcore.gametest.AccountabilityTests",
-			"io.github.alphain24.staffcore.gametest.RollbackWarningTests"
+			"io.github.alphain24.staffcore.gametest.RollbackWarningTests",
+			"io.github.alphain24.staffcore.gametest.CanaryTests"
 		]
 	},
 	"depends": {
