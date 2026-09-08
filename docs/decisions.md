@@ -533,9 +533,80 @@ The packet is verified: `CanaryPacketTests` checks the decoy matches its surroun
 the packet carries that state at that position, that it differs from what is really there, and
 that the resync carries the real block back. What is **not** verified is a client rendering it.
 That needs a real client with an x-ray pack and a person watching a screen. Until somebody runs
-the two manual checks in the handbook, the decoy layer is packet-verified rather than
-client-verified, and this measurement should be read as "the retirement rule holds" rather than
+`docs/manual-checks/decoy-visibility.md` — a numbered script with a blank result line, so it is
+one person-hour away rather than a research task — the decoy layer is packet-verified rather
+than client-verified, and this measurement should be read as "the retirement rule holds" rather than
 "decoys work".
+---
+
+## The failure class: verified by something that was not running
+
+**Date:** 2026-09-08
+
+This project has now found the same bug seven times in seven unrelated places. Each looked like
+a different mistake and each was found by accident. Naming the class is worth more than the
+seven fixes, because the eighth will not resemble any of them.
+
+**The shape: a green result that is not evidence.** Something reports success, and the reason it
+reports success is that the thing meant to be checking never examined what it claimed to.
+
+A passing test and a vacuously passing test are identical in every observable way. There is no
+warning, no slower run, no different output — the only difference is that one of them would go
+red if the code broke and the other would not. That is why these survive: every signal a person
+uses to decide whether a check is working says the same thing in both cases.
+
+### The seven
+
+| What looked verified | Why it was not |
+|---|---|
+| Permission checks using a string literal | A node absent from `Nodes` is in nobody's resolved set, so it is denied to every player and granted to operators through the fallback. It works perfectly for whoever is testing, because whoever is testing is opped. |
+| `./gradlew build` covering the gametests | The gametest source set was never compiled by `check`. A signature change broke it while the build stayed green. |
+| `AccountabilityTests` running | Gametest classes are listed by hand in `fabric.mod.json`. The file was written, compiled, and ran zero times; the suite said "all tests passed". |
+| `VanishCollisionMixin` stopping pushes | It hooked `Entity.isPushable`, which `LivingEntity` overrides. The mixin applied cleanly, was reported healthy, and never ran. |
+| The maintenance kick being tested | The tests called `toggleMaintenance` against an empty player list. The kick ran, kicked nobody, asserted nothing, and passed by having nothing to do. |
+| Two vanish gametests | Mock players override `gameMode()` to return CREATIVE outright, and `Mob.asValidTarget` returns null for creative players before looking at anything else. Both tests would have passed with vanish switched off. |
+| `CanaryRetirementIsSynchronousTest` | The deferral pattern was written `"\b(?:...)"`. In a Java string that is a backspace character, not a word boundary. It compiled, matched nothing, and both real assertions passed on an empty result. |
+
+### Four ways in, all producing the same green
+
+- **The verifier never ran.** Not compiled, not registered, not reached.
+- **The subject never ran.** The check executed; the code under it did not — a mixin on an
+  overridden method, a sweep over an empty list.
+- **The verifier ran and found nothing.** A scan whose pattern stopped matching, a query whose
+  filter excludes everything. An empty result set satisfies "no offenders found".
+- **It passed for the wrong reason.** Creative players are never targeted by mobs regardless of
+  vanish; operators hold every node regardless of the permission file.
+
+### The countermeasure, stated once
+
+**Any check that can pass by finding nothing must assert that it found something.**
+
+That is the whole rule, and it is why several tests in this repository look like they are
+testing themselves. They are:
+
+- `NodeLiteralTest` asserts its scan matched more than fifty call sites before trusting that it
+  found no literals.
+- `ActorBoundaryTest`, `GatewayIsTheOnlyDoorTest`, `FreshInstallTest` and `AuditVersionsTest`
+  each carry a companion test that hands the scan something it must catch.
+- `CanaryFalsePositiveTests` pairs every honest scenario with a control that must register a
+  hit, because a decoy layer that never places scores the same zero as a perfect one.
+- `GametestRegistrationTest` compares the files on disk against the entrypoint list, in both
+  directions.
+- `XrayTimingTests` asserts a non-zero block-state count alongside the timing, so a census that
+  read nothing cannot report itself as fast.
+
+Where a planted failure is cheap, plant one and watch it fail before trusting the pass. That is
+how the gateway bypass check, the node literal check, the fresh-install check and the audit
+version check were each confirmed. It takes two minutes and it is the only way to tell the two
+kinds of green apart.
+
+### Why this belongs in a decision record
+
+Because the instinct it fights is a good one. Every one of these was written by somebody trying
+to be careful, and the check was the careful part. The lesson is not "be more careful" — it is
+that carefulness produces checks, and a check is a piece of code that can itself be wrong in a
+way that makes it silent. The verifier needs a verifier, and the cheapest one is a deliberate
+failure.
 ---
 
 # Moved from the README

@@ -1518,6 +1518,7 @@ public final class StaffCommands {
 
 		registerCases(staff);
 		registerOperations(staff);
+		registerCanaryDiagnostic(staff);
 		registerUndo(staff);
 		registerAccountability(staff);
 		registerPerms(staff);
@@ -2902,6 +2903,71 @@ public final class StaffCommands {
 				ctx.getSource().getServer(), self, null);
 
 		return left ? 1 : fail(ctx, "You are not in a replay.");
+	}
+
+	/**
+	 * Where your own decoys are, so the visibility check can be run at all.
+	 * <p>
+	 * Without this, verifying that a decoy is visible through rock means hunting for a diamond
+	 * ore that may or may not be one, in a world full of real ones. The check stops being a
+	 * five-minute job and becomes a research task, and a check that is a research task does not
+	 * get run — which is how the vanish behaviour stayed unverified for months.
+	 * <p>
+	 * <b>This does let an admin avoid their own decoys.</b> That is a real cost and a small one:
+	 * canaries never punish anybody, the node is the admin one, and a server owner who wants to
+	 * cheat on their own server has a much shorter route than this. Being unable to confirm the
+	 * feature works at all is the larger risk.
+	 */
+	private static void registerCanaryDiagnostic(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("canary")
+				.requires(src -> Permissions.check(src, Nodes.RELOAD))
+				.executes(StaffCommands::canaryStatus));
+	}
+
+	private static int canaryStatus(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		CommandSourceStack src = ctx.getSource();
+
+		String off = io.github.alphain24.staffcore.modules.security.AntiXrayCompanion
+				.whyCanariesAreOff();
+		if (off != null) {
+			src.sendSuccess(() -> Theme.warn("Decoys are off."), false);
+			src.sendSuccess(() -> Icon.text("  " + off, Theme.MUTED), false);
+			return 1;
+		}
+		if (!io.github.alphain24.staffcore.modules.security.Canaries.enabled()) {
+			return fail(ctx, "Decoys are off in the config — canaryBlocks or canaryDensity is 0.");
+		}
+
+		var mine = io.github.alphain24.staffcore.modules.security.Canaries.all().stream()
+				.filter(c -> c.owner().equals(self.getUUID()))
+				.toList();
+
+		src.sendSuccess(() -> Theme.info(mine.size() + " decoy(s) out for you, "
+				+ io.github.alphain24.staffcore.modules.security.Canaries.hitsFor(self.getUUID())
+				+ " hit(s) this session."), false);
+
+		if (mine.isEmpty()) {
+			// The commonest reason, and it is not a fault. Placement needs fully encased plain
+			// stone below canaryMaxY within canaryRadius, and a player standing in a cave or
+			// on the surface has no valid position anywhere near them.
+			src.sendSuccess(() -> Icon.text("  Nothing placed yet. They go in fully encased "
+					+ "stone below y" + StaffConfig.get().canaryMaxY + ", within "
+					+ StaffConfig.get().canaryRadius + " blocks — stand underground and wait "
+					+ "five seconds.", Theme.MUTED), false);
+			return 1;
+		}
+
+		for (var canary : mine) {
+			src.sendSuccess(() -> Icon.text("  " + canary.shown().getBlock().getName().getString()
+					+ " at ", Theme.MUTED)
+					.append(Link.position(canary.world(), canary.pos())), false);
+		}
+		src.sendSuccess(() -> Icon.text("  Only you have been told these are there. The world "
+				+ "has ordinary stone at every one of them.", Theme.MUTED), false);
+		return 1;
 	}
 
 	// ------------------------------------------------------------ operation lookup
