@@ -543,9 +543,10 @@ than client-verified, and this measurement should be read as "the retirement rul
 
 **Date:** 2026-09-08
 
-This project has now found the same bug seven times in seven unrelated places. Each looked like
-a different mistake and each was found by accident. Naming the class is worth more than the
-seven fixes, because the eighth will not resemble any of them.
+This project has now found the same bug ten times in ten unrelated places. Each looked like
+a different mistake. Most were found by accident; the last four were found on purpose, by the
+probe described below. Naming the class is worth more than the ten fixes, because the eleventh
+will not resemble any of them.
 
 **The shape: a green result that is not evidence.** Something reports success, and the reason it
 reports success is that the thing meant to be checking never examined what it claimed to.
@@ -555,7 +556,7 @@ warning, no slower run, no different output — the only difference is that one 
 red if the code broke and the other would not. That is why these survive: every signal a person
 uses to decide whether a check is working says the same thing in both cases.
 
-### The seven
+### The instances
 
 | What looked verified | Why it was not |
 |---|---|
@@ -564,7 +565,10 @@ uses to decide whether a check is working says the same thing in both cases.
 | `AccountabilityTests` running | Gametest classes are listed by hand in `fabric.mod.json`. The file was written, compiled, and ran zero times; the suite said "all tests passed". |
 | `VanishCollisionMixin` stopping pushes | It hooked `Entity.isPushable`, which `LivingEntity` overrides. The mixin applied cleanly, was reported healthy, and never ran. |
 | The maintenance kick being tested | The tests called `toggleMaintenance` against an empty player list. The kick ran, kicked nobody, asserted nothing, and passed by having nothing to do. |
-| Two vanish gametests | Mock players override `gameMode()` to return CREATIVE outright, and `Mob.asValidTarget` returns null for creative players before looking at anything else. Both tests would have passed with vanish switched off. |
+| Mobs do not acquire a vanished player | Mock players override `gameMode()` to return CREATIVE outright, and `Mob.asValidTarget` returns null for creative players before looking at anything else. It had a control, and the control tested the wrong path. |
+| `getNearestPlayer` cannot find a vanished player | A mock player is not in the server's player list, so it was never returned whether vanished or not. |
+| A vanished player does not press plates | The plate never detected the mock player at all, so "it did not fire" was true either way. |
+| Un-vanishing recomputes abilities | With nothing concealed, nothing was restored, so the abilities trivially matched what the resolver said they should be. |
 | `CanaryRetirementIsSynchronousTest` | The deferral pattern was written `"\b(?:...)"`. In a Java string that is a backspace character, not a word boundary. It compiled, matched nothing, and both real assertions passed on an empty result. |
 
 ### Four ways in, all producing the same green
@@ -599,6 +603,48 @@ Where a planted failure is cheap, plant one and watch it fail before trusting th
 how the gateway bypass check, the node literal check, the fresh-install check and the audit
 version check were each confirmed. It takes two minutes and it is the only way to tell the two
 kinds of green apart.
+
+### Probing for it: switch the feature off and see what still passes
+
+The taxonomy above named two vanish gametests as vacuous. Switching vanish off entirely and
+re-running found **four**, which is the point — reasoning about which tests are hollow finds
+some of them, and the probe finds all of them.
+
+The technique is one line: make the setup step a no-op, run the suite, and read the list of
+tests that did *not* fail. Every one of those is testing something other than what its name
+claims.
+
+| Vanish gametest | Failed with vanish off? |
+|---|---|
+| The tracker refuses to show a vanished player | yes |
+| A vanished player is not pushable | yes |
+| A vanished player does not block building | yes |
+| The hooks agree on who is hidden | yes |
+| Mobs do not acquire a vanished player | **no — deleted** |
+| `getNearestPlayer` cannot find a vanished player | **no — deleted** |
+| A vanished player does not press plates | **no — deleted** |
+| Un-vanishing recomputes abilities | **no — deleted** |
+
+All four failed for the same underlying reason, and it is not a coincidence: a gametest mock
+player is permanently in creative and is not in the server's player list. Those two facts
+short-circuit exactly the paths the tests aimed at. `Mob.asValidTarget` refuses a creative
+player before checking anything else; `getNearestPlayer` never returns somebody absent from the
+list; the plate never detected the mock in the first place; and with nothing concealed, nothing
+is restored, so the abilities trivially matched.
+
+**One of the four had a control and was still hollow.** The mob test established that
+`setTarget` worked on that zombie with another mob as the target — a real control, testing the
+wrong thing, because the failure was specific to a *player* argument. A control has to exercise
+the same path the assertion does.
+
+Deleted rather than left in place. A test known to pass with the feature off is worse than no
+test, because it occupies the slot a real one would go in and it reports success while doing it.
+
+The abilities claim is now pinned properly and headlessly: `RevealResolvesAbilitiesTest` checks
+that vanish never assigns an ability directly and does call the resolver, and `AbilityStateTest`
+covers the resolver behaviourally including the survival case a mock player cannot reach. The
+other three need a real player in a real player list in survival, and are written up as a
+ten-minute script in `docs/manual-checks/vanish.md`.
 
 ### Why this belongs in a decision record
 
