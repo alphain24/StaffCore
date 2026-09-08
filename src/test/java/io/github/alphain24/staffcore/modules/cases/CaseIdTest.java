@@ -1,5 +1,7 @@
 package io.github.alphain24.staffcore.modules.cases;
 
+import io.github.alphain24.staffcore.util.ShortId;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -26,14 +28,14 @@ class CaseIdTest {
 	@DisplayName("the alphabet contains nothing that can be misread aloud or on screen")
 	void ambiguousCharactersAreAbsent() {
 		for (char c : new char[] { 'I', 'L', 'O', 'U' }) {
-			assertFalse(CaseId.ALPHABET.indexOf(c) >= 0,
+			assertFalse(ShortId.ALPHABET.indexOf(c) >= 0,
 					c + " is in the alphabet. I and L are unreadable next to 1, O next to 0, "
 							+ "and U is excluded so no id can spell something staff would "
 							+ "rather not read out.");
 		}
-		assertEquals(32, CaseId.ALPHABET.length(), "Crockford base32 is 32 symbols");
-		assertEquals(CaseId.ALPHABET.length(),
-				new HashSet<>(CaseId.ALPHABET.chars().boxed().toList()).size(),
+		assertEquals(32, ShortId.ALPHABET.length(), "Crockford base32 is 32 symbols");
+		assertEquals(ShortId.ALPHABET.length(),
+				new HashSet<>(ShortId.ALPHABET.chars().boxed().toList()).size(),
 				"a repeated symbol would quietly shrink the keyspace");
 	}
 
@@ -44,7 +46,7 @@ class CaseIdTest {
 			String id = CaseId.generate();
 			assertEquals(CaseId.LENGTH, id.length());
 			for (char c : id.toCharArray()) {
-				assertTrue(CaseId.ALPHABET.indexOf(c) >= 0,
+				assertTrue(ShortId.ALPHABET.indexOf(c) >= 0,
 						"generated '" + c + "', which is not in the alphabet");
 			}
 		}

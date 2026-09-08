@@ -46,7 +46,7 @@ public class Offence {
 		public Long durationMs() {
 			PunishmentType base = baseType();
 			if (!base.supportsDuration()) return null;
-			return DurationParser.parse(duration);
+			return DurationParser.parseConfigured(duration);
 		}
 
 		public String describe() {

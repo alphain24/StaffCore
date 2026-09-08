@@ -172,8 +172,11 @@ public class PunishMenu extends Gui {
 		MinecraftServer server = Mc.server(viewer);
 		if (server == null) return;
 
+		// The identity, not the name. Resolving a name back to a player is a step that can
+		// fail, and the guards downstream treat an unresolvable name as untrusted.
 		Punishment result = Mods.punish().apply(server, target, Mc.name(viewer),
-				base, durationMs, offence.label, offence.id);
+				base, durationMs, offence.label, offence.id, null,
+				io.github.alphain24.staffcore.permission.Actor.of(viewer));
 
 		if (result == null) {
 			viewer.sendSystemMessage(Theme.bad("The punishment could not be saved — check the server log."));

@@ -86,9 +86,15 @@ public record LogQuery(String player, String action, String subject, long window
 					}
 				}
 				case "time", "since", "age" -> {
-					Long parsed = DurationParser.parse(value);
-					if (parsed == null) problems.add("could not read the time \"" + value + "\"");
-					else window = parsed;
+					var parsed = DurationParser.of(value);
+					if (parsed.isPermanent()) {
+						problems.add("a search window of \"" + value + "\" is every row there "
+								+ "is; give a length like 2d or 6h");
+					} else if (!parsed.valid()) {
+						problems.add(parsed.problem());
+					} else {
+						window = parsed.millis();
+					}
 				}
 				default -> problems.add("unknown filter \"" + key + "\"");
 			}

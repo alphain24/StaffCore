@@ -65,7 +65,7 @@ public class DurationMenu extends Gui {
 	}
 
 	private void place(int slot, StaffConfig.Duration preset) {
-		Long ms = DurationParser.parse(preset.spec());
+		Long ms = DurationParser.parseConfigured(preset.spec());
 		boolean permanent = ms == null;
 
 		Icon icon = Icon.of(permanent ? Items.BEDROCK : Items.CLOCK)

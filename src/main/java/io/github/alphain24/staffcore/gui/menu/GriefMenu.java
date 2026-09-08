@@ -507,8 +507,12 @@ public class GriefMenu extends Gui {
 	/** {@code who} may be null, meaning everything in the area regardless of who did it. */
 	private void previewRollback(String who) {
 		ServerLevel level = viewer.level();
+		// The identity is passed to the preview as well as to the run, so the region lock is
+		// taken while this staff member is deciding rather than only while blocks are moving.
+		// The window somebody else can change the answer in is the human one.
 		GriefModule.RollbackResult preview =
-				Mods.grief().rollback(level, who, centre, radius, windowMs(), true);
+				Mods.grief().rollback(level, who, centre, radius, windowMs(), true,
+						io.github.alphain24.staffcore.permission.Actor.of(viewer));
 
 		if (preview.reverted() == 0) {
 			viewer.sendSystemMessage(Theme.warn(who == null
@@ -537,6 +541,14 @@ public class GriefMenu extends Gui {
 				summary.lore("  … and " + (preview.restoring().size() - 6) + " more kinds", Theme.MUTED);
 			}
 		}
+
+		// The same warnings the chat preview prints, on the screen where this is decided.
+		// A confirm button with nothing unusual said next to it is a confirm button people
+		// press without reading, which is exactly what makes the unusual case dangerous.
+		var warnings = io.github.alphain24.staffcore.modules.grief.RollbackWarnings.forArea(
+				level, centre, radius, preview.reverted());
+		if (!warnings.isEmpty()) summary.gap();
+		for (var warning : warnings) summary.warn(warning.text());
 
 		if (preview.skipped() > 0) {
 			summary.gap().warn(preview.skipped() + " entry/entries reference blocks that no longer exist.");
@@ -592,7 +604,8 @@ public class GriefMenu extends Gui {
 
 	private void applyRollback(ServerLevel level, String who) {
 		GriefModule.RollbackResult result =
-				Mods.grief().rollback(level, who, centre, radius, windowMs(), false, Mc.name(viewer));
+				Mods.grief().rollback(level, who, centre, radius, windowMs(), false,
+						io.github.alphain24.staffcore.permission.Actor.of(viewer));
 
 		MinecraftServer server = Mc.server(viewer);
 		if (server != null) {

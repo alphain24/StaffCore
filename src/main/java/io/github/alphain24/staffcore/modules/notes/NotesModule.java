@@ -50,13 +50,15 @@ public class NotesModule implements Module {
 		if (c == null) return false;
 
 		try (PreparedStatement ps = c.prepareStatement(
-				"INSERT INTO notes (target_uuid, author_name, text, created_at, case_id) "
-						+ "VALUES (?,?,?,?,?)")) {
+				"INSERT INTO notes (target_uuid, author_name, text, created_at, case_id, "
+						+ "server_version, mod_version) VALUES (?,?,?,?,?,?,?)")) {
 			ps.setString(1, target.toString());
 			ps.setString(2, author);
 			ps.setString(3, text);
 			ps.setLong(4, System.currentTimeMillis());
 			ps.setString(5, caseId);
+			ps.setString(6, io.github.alphain24.staffcore.modules.cases.Versions.minecraft());
+			ps.setString(7, io.github.alphain24.staffcore.modules.cases.Versions.mod());
 			ps.executeUpdate();
 			return true;
 		} catch (SQLException e) {

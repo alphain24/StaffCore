@@ -83,6 +83,51 @@ public final class Link {
 						+ (priors == null ? "" : "\n" + priors + " previous punishment(s)"));
 	}
 
+	/**
+	 * A player's name with the prior-punishment count already resolved.
+	 * <p>
+	 * The count travels with the name everywhere it appears, and this is what makes that
+	 * true rather than aspirational: a call site that has an identity cannot forget to look
+	 * it up, because looking it up is not something the call site does. "Steve_ (4 prior)" is
+	 * a different sentence from "Steve_", and staff should not have to run a second command
+	 * to find out which one they are reading.
+	 */
+	public static MutableComponent subject(String name, java.util.UUID id) {
+		return player(name, id == null ? null
+				: io.github.alphain24.staffcore.module.Mods.punish().historyCount(id));
+	}
+
+	/**
+	 * The reference a destructive command hands back, clickable and copyable.
+	 * <p>
+	 * Two affordances because they are for two different moments. Clicking opens it now;
+	 * copying is for the ticket somebody writes afterwards, and Minecraft chat cannot be
+	 * selected with a mouse, so without the copy link the id is readable and unreachable.
+	 */
+	public static MutableComponent operation(String ref, String command) {
+		return run(ref, command, Theme.ACCENT, "Open " + ref)
+				.append(Component.literal(" "))
+				.append(copy("[copy]", ref, Theme.MUTED, "Copy " + ref + " to the clipboard"));
+	}
+
+	/**
+	 * A time, relative on the line and absolute on hover.
+	 * <p>
+	 * Both halves are needed and they do not fit in the same place. Relative is what a person
+	 * reads at a glance and is worthless in a ticket written tomorrow; absolute is what a
+	 * ticket needs and is unreadable twenty rows deep in a list. So a detail line prints both
+	 * with {@link io.github.alphain24.staffcore.util.TimeFormat#full}, and a list row uses
+	 * this — short enough to scan, with the exact time one hover away.
+	 */
+	public static MutableComponent time(long epochMillis) {
+		return Component.literal(
+				io.github.alphain24.staffcore.util.TimeFormat.words(epochMillis))
+				.setStyle(Style.EMPTY.withColor(TextColor.fromRgb(Theme.MUTED)).withItalic(false)
+						.withHoverEvent(new HoverEvent.ShowText(Component.literal(
+								io.github.alphain24.staffcore.util.TimeFormat
+										.stamp(epochMillis)))));
+	}
+
 	/** A case id, opening the case. */
 	public static MutableComponent caseId(String id) {
 		return run(id, "/staff case " + id, Theme.ACCENT, "Open case " + id);

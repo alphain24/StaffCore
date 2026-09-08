@@ -2,6 +2,7 @@ package io.github.alphain24.staffcore.modules.punish;
 
 import net.minecraft.server.players.NameAndId;
 import io.github.alphain24.staffcore.StaffCore;
+import io.github.alphain24.staffcore.modules.appeal.AppealCode;
 import io.github.alphain24.staffcore.module.Mods;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.config.StaffConfig;
@@ -81,32 +82,50 @@ public class PunishmentModule implements Module {
 	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
 			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId) {
 
+		// Resolved to an identity here rather than carried as a player object. Everything
+		// downstream is policy — a rate limit, a rank comparison, an audit row — and none of
+		// it wants a world, a position or a connection.
+		ServerPlayer acting = server == null ? null
+				: server.getPlayerList().getPlayerByName(staffName);
 		return apply(server, target, staffName, base, durationMs, reason, offenceId, caseId,
-				server == null ? null : server.getPlayerList().getPlayerByName(staffName));
+				acting == null ? io.github.alphain24.staffcore.permission.Actor.named(staffName)
+						: io.github.alphain24.staffcore.permission.Actor.of(acting));
 	}
 
 	/**
 	 * The one door. Every punishment in the mod arrives here.
 	 * <p>
-	 * The rate limit is checked <em>here</em> rather than in the command, and that placement
-	 * is the point: a check in {@code /staff ban} would leave the GUI, the API and any future
-	 * Discord path unlimited, each of them a way in somebody would have to remember to close.
-	 * A new caller gets the limit without being told about it.
+	 * The rate limit, the self-punishment guard and the rank guard are all checked <em>here</em>
+	 * rather than in the command, and that placement is the point: a check in {@code /staff ban}
+	 * would leave the GUI, the API and any future Discord path unguarded, each of them a way in
+	 * somebody would have to remember to close. A new caller gets all three without being told
+	 * they exist.
 	 *
-	 * @param actor the staff member acting, for the rate limit and the audit. Null for the
-	 *              console, which is not the threat this guards against
+	 * @param actor who is acting, as identity rather than as a player object. Null or
+	 *              identity-less means the console, which is the server owner's own hand and is
+	 *              exempt from the guards that exist to hold staff to each other
 	 */
 	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
 			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId,
-			ServerPlayer actor) {
+			io.github.alphain24.staffcore.permission.Actor actor) {
 
-		var verdict = Mods.accountability().limits().check(
-				io.github.alphain24.staffcore.permission.Actor.of(actor),
+		var verdict = Mods.accountability().limits().check(actor,
 				io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.PUNISHMENT);
 		if (!verdict.allowed()) {
-			if (actor != null) actor.sendSystemMessage(Theme.bad(verdict.refusal()));
+			refuse(server, actor, verdict.refusal());
 			StaffCore.LOGGER.warn("[Punish] rate limit refused {} punishing {}",
 					staffName, target.name());
+			return null;
+		}
+
+		// Checked before anything is written, and refused rather than logged, because the
+		// damage from punishing upwards is done the moment it takes effect.
+		var ranking = io.github.alphain24.staffcore.permission.Rank.mayPunish(
+				actor, server, target.id(), target.name());
+		if (!ranking.allowed()) {
+			refuse(server, actor, ranking.refusal());
+			StaffCore.LOGGER.warn("[Punish] refused {} punishing {}: rank", staffName,
+					target.name());
 			return null;
 		}
 
@@ -128,11 +147,41 @@ public class PunishmentModule implements Module {
 					type.name().toLowerCase(java.util.Locale.ROOT) + " issued: " + cleanReason);
 		}
 
+		// Who else was connected, recorded here so no path can issue a punishment without
+		// it. The question that decides a contested appeal — was there anybody who could say
+		// what happened — has no record otherwise and cannot be reconstructed afterwards.
+		io.github.alphain24.staffcore.modules.accountability.Witnesses.record(server,
+				io.github.alphain24.staffcore.modules.accountability.Witnesses.Kind.PUNISHMENT,
+				String.valueOf(record.id()), record.targetName());
+
 		enforce(server, record);
 		announce(server, record);
 
-		if (type == PunishmentType.WARN) suggestEscalation(server, record, actor);
+		if (type == PunishmentType.WARN) suggestEscalation(server, record, online(server, actor));
 		return record;
+	}
+
+	/**
+	 * Tells the acting staff member why this did not happen.
+	 * <p>
+	 * The refusal has to reach a person, and the identity that authorised the action is not a
+	 * person until it is looked up. Console refusals go to the log, where the console is
+	 * reading anyway.
+	 */
+	private void refuse(MinecraftServer server,
+			io.github.alphain24.staffcore.permission.Actor actor, String why) {
+
+		ServerPlayer online = online(server, actor);
+		if (online != null) online.sendSystemMessage(Theme.bad(why));
+		else StaffCore.LOGGER.warn("[Punish] {}", why);
+	}
+
+	/** The player behind an identity, if they are here. Only ever for showing them something. */
+	private ServerPlayer online(MinecraftServer server,
+			io.github.alphain24.staffcore.permission.Actor actor) {
+
+		if (server == null || actor == null || actor.id() == null) return null;
+		return server.getPlayerList().getPlayer(actor.id());
 	}
 
 	/**
@@ -220,21 +269,60 @@ public class PunishmentModule implements Module {
 	/**
 	 * The full-screen text a banned or kicked player sees.
 	 * <p>
-	 * The appeal line matters more than it looks. A ban screen that only says "you are
-	 * banned" produces a player who either gives up or comes back on an alt; one that says
-	 * where to argue produces an appeal, which is a conversation staff can actually resolve.
+	 * This is the last channel the server has to somebody it has just removed. They cannot ask
+	 * a question, cannot look anything up and will not be back for a while — so everything
+	 * that decides what happens next has to be on this one screen, in words a person reads
+	 * once, upset, and possibly not in their first language.
+	 * <p>
+	 * Hence: no unit abbreviations, a real date rather than only "7 days", both the punishment
+	 * id and the appeal code, and the appeal line even when there is nowhere to appeal to. What
+	 * people do with this screen is photograph it, and the photograph is the only evidence
+	 * they will have.
 	 */
 	public Component disconnectScreen(Punishment p) {
-		MutableComponent out = Icon.text(p.type().isBan() ? "You are banned\n\n" : "You were kicked\n\n", Theme.BAD);
-		out.append(Icon.text(p.reason() + "\n", Theme.TEXT));
-		out.append(Icon.text("By " + p.staffName() + "\n", Theme.MUTED));
+		boolean ban = p.type().isBan();
+		MutableComponent out = Icon.text(ban ? "You are banned\n\n" : "You were kicked\n\n",
+				Theme.BAD);
 
-		if (p.type().isBan()) {
-			out.append(Icon.text(p.isPermanent()
-					? "This ban does not expire.\n"
-					: "Expires in " + TimeFormat.remaining(p.expiresAt()) + "\n", Theme.MUTED));
+		out.append(Icon.text(p.reasonOr("No reason given") + "\n\n", Theme.TEXT));
+		out.append(Icon.text("By " + p.staffName() + " on " + TimeFormat.stamp(p.createdAt())
+				+ "\n", Theme.MUTED));
+
+		if (ban) {
+			out.append(lengthLine(p));
 			out.append(appealBlock());
 		}
+		out.append(referenceBlock(p));
+		return out;
+	}
+
+	/**
+	 * How long, and until when, spelled out.
+	 * <p>
+	 * Three facts rather than one, because each answers a different question and a player
+	 * asked all three: how long is this, when does it end, and how far away is that. The old
+	 * line printed {@code Expires in 6h 12m left}, which is neither English nor a date.
+	 */
+	private MutableComponent lengthLine(Punishment p) {
+		if (p.isPermanent()) {
+			return Icon.text("This ban does not expire.\n", Theme.BAD);
+		}
+
+		long length = p.expiresAt() - p.createdAt();
+		long left = p.expiresAt() - System.currentTimeMillis();
+
+		MutableComponent out = Icon.text("Length: " + TimeFormat.length(length) + "\n",
+				Theme.MUTED);
+
+		// "0 seconds from now" on an already-expired ban is worse than saying nothing: it is
+		// a number, so it reads as precise, and it is false. This screen should not be shown
+		// for an expired ban at all - but a screen that lies when it is shown by mistake is
+		// how a player ends up waiting for something that has already happened.
+		String until = left > 0
+				? " (" + TimeFormat.length(left) + " from now)"
+				: " (already passed - rejoin, and tell staff if you cannot)";
+		out.append(Icon.text("Ends: " + TimeFormat.stamp(p.expiresAt()) + until + "\n",
+				Theme.MUTED));
 		return out;
 	}
 
@@ -253,27 +341,56 @@ public class PunishmentModule implements Module {
 		String invite = StaffConfig.get().discordInvite;
 		if (invite != null && !invite.isBlank()) {
 			out.append(Icon.text("Join our Discord and open a ban appeal:\n", Theme.MUTED));
-			out.append(Icon.text(invite, Theme.ACCENT));
+			out.append(Icon.text(invite + "\n", Theme.ACCENT));
 		} else {
-			out.append(Icon.text("Contact a staff member to open an appeal.", Theme.MUTED));
+			out.append(Icon.text("Contact a staff member to open an appeal.\n", Theme.MUTED));
+		}
+		return out;
+	}
+
+	/**
+	 * The two identifiers, last, where a photograph will still catch them.
+	 * <p>
+	 * The id is what staff look the record up by. The code is what the player quotes, and it
+	 * is deliberately not the id — see {@link AppealCode}. A punishment issued before the
+	 * code existed simply has no line, rather than a line saying it has none.
+	 */
+	private MutableComponent referenceBlock(Punishment p) {
+		MutableComponent out = Icon.text("\n", Theme.MUTED);
+		out.append(Icon.text("Reference: #" + p.id() + "\n", Theme.MUTED));
+
+		if (p.isAppealable()) {
+			out.append(Icon.text("Appeal code: ", Theme.MUTED));
+			out.append(Icon.text(AppealCode.display(p.appealCode()) + "\n", Theme.TEXT));
 		}
 		return out;
 	}
 
 	/** Staff chat line, alert bus, Discord, and the thunderclap for bans. */
 	private void announce(MinecraftServer server, Punishment p) {
-		MutableComponent line = Theme.prefix()
+		// Two lines, because they are for two audiences. Staff get the prior count and a
+		// clickable name, which is the difference between "somebody was banned" and "the
+		// person banned has been here four times before". Everyone else gets the plain
+		// sentence: a prior count broadcast to the whole server is a punishment of its own,
+		// and it is not one anybody decided to hand out.
+		MutableComponent common = Theme.prefix()
 				.append(Icon.text(p.staffName(), Theme.ACCENT))
-				.append(Icon.text(" " + p.type().pastTense() + " ", Theme.MUTED))
+				.append(Icon.text(" " + p.type().pastTense() + " ", Theme.MUTED));
+
+		MutableComponent staffLine = common.copy()
+				.append(io.github.alphain24.staffcore.gui.Link.subject(p.targetName(),
+						p.targetUuid()))
+				.append(Icon.text(" — " + p.reasonOr("no reason given"), Theme.MUTED));
+
+		MutableComponent publicLine = common.copy()
 				.append(Icon.text(p.targetName(), Theme.TEXT))
-				.append(Icon.text(" — " + p.reason(), Theme.MUTED));
+				.append(Icon.text(" — " + p.reasonOr("no reason given"), Theme.MUTED));
 
 		boolean everyone = StaffConfig.get().publicPunishmentBroadcast && p.type().persistent();
 		for (ServerPlayer viewer : server.getPlayerList().getPlayers()) {
 			boolean isStaff = Permissions.check(viewer, Nodes.PUNISH);
-			if (everyone || isStaff) {
-				viewer.sendSystemMessage(line);
-			}
+			if (isStaff) viewer.sendSystemMessage(staffLine);
+			else if (everyone) viewer.sendSystemMessage(publicLine);
 		}
 
 		if (p.type().isBan()) {
@@ -282,6 +399,81 @@ public class PunishmentModule implements Module {
 
 		StaffCore.modules().get("alerts", AlertsModule.class).ifPresent(a ->
 				a.onPunishment(server, p.staffName(), p.targetName(), p.type(), p.reason()));
+	}
+
+	// -------------------------------------------------------------------- expiry
+
+	/**
+	 * Deactivates punishments whose time is up, and says so in their case.
+	 * <p>
+	 * Expiry used to happen only on read: {@code activeBan} noticed a stale row and cleared
+	 * it. That is correct for enforcement — a banned player is checked on login, so an expired
+	 * ban never keeps anybody out — and useless for everything else. A ban that ran out while
+	 * the player was offline, on a case nobody had open, left no trace of having ended at all;
+	 * the row simply stayed {@code active=1} until somebody happened to look, and the case log
+	 * skipped from "banned" to whatever came next with the ending missing.
+	 * <p>
+	 * That gap is exactly the one an appeal falls into. "It expired three weeks ago" and
+	 * "somebody lifted it" are different facts, and only one of them is anybody's decision.
+	 *
+	 * @return how many were retired
+	 */
+	public int sweepExpired(MinecraftServer server) {
+		Connection c = conn();
+		if (c == null) return 0;
+
+		long now = System.currentTimeMillis();
+		List<Punishment> expired = new java.util.ArrayList<>();
+
+		try (PreparedStatement ps = c.prepareStatement(
+				"SELECT * FROM punishments WHERE active = 1 AND expires_at IS NOT NULL "
+						+ "AND expires_at <= ?")) {
+			ps.setLong(1, now);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) expired.add(map(rs));
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Punish] expiry sweep could not read: {}", e.getMessage());
+			return 0;
+		}
+
+		for (Punishment p : expired) {
+			deactivate(p.id());
+			noteExpiry(server, p);
+		}
+		if (!expired.isEmpty()) {
+			StaffCore.LOGGER.info("[Punish] {} punishment(s) expired.", expired.size());
+		}
+		return expired.size();
+	}
+
+	/**
+	 * Writes the ending into the case, saying whether anybody was there for it.
+	 * <p>
+	 * Whether the player was online matters to whoever reads this later. A ban that ended
+	 * while they were connected is one they noticed; one that ended while they were away is a
+	 * player who does not yet know they can come back — which is worth knowing before somebody
+	 * concludes they left for good.
+	 */
+	private void noteExpiry(MinecraftServer server, Punishment p) {
+		boolean online = server != null && server.getPlayerList().getPlayer(p.targetUuid()) != null;
+
+		if (p.hasCase()) {
+			Mods.cases().store().note(p.caseId(),
+					io.github.alphain24.staffcore.modules.cases.Case.SYSTEM,
+					p.type().name().toLowerCase(java.util.Locale.ROOT) + " on " + p.targetName()
+							+ " expired after " + TimeFormat.length(
+									p.expiresAt() - p.createdAt())
+							+ (online ? ", while they were online."
+									: ", while they were offline — they may not know yet."));
+		}
+
+		if (online) {
+			ServerPlayer player = server.getPlayerList().getPlayer(p.targetUuid());
+			if (player != null && p.type() == PunishmentType.MUTE) {
+				player.sendSystemMessage(Theme.good("Your mute has expired."));
+			}
+		}
 	}
 
 	// -------------------------------------------------------------------- revoking
@@ -435,10 +627,17 @@ public class PunishmentModule implements Module {
 		String sql = """
 				INSERT INTO punishments
 				  (target_uuid, target_name, staff_name, type, reason, duration_ms,
-				   created_at, expires_at, active, offence, case_id, points)
-				VALUES (?,?,?,?,?,?,?,?,1,?,?,?)
+				   created_at, expires_at, active, offence, case_id, points, appeal_code,
+				   server_version, mod_version)
+				VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)
 				""";
 		long now = System.currentTimeMillis();
+
+		// Only for punishments an appeal could actually reverse. A kick has already ended by
+		// the time the player reads the screen, so a code on it would open a ticket with
+		// nothing to action — and a route that goes nowhere is worse than no route, because
+		// the player waits on it instead of talking to somebody.
+		String appealCode = type.persistent() ? AppealCode.generate() : null;
 		try (PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 			ps.setString(1, target.toString());
 			ps.setString(2, targetName);
@@ -455,15 +654,66 @@ public class PunishmentModule implements Module {
 			// Only warnings carry points. A ban is not three warnings, and counting it as
 			// such would let the ladder escalate off the back of its own escalation.
 			ps.setInt(11, type == PunishmentType.WARN ? WarningPoints.defaultPoints() : 0);
+			ps.setString(12, appealCode);
+			// The build this was issued under. A punishment handed out while a detector was
+			// silently broken reads differently from the same one on a healthy server, and
+			// nothing else in the row can tell an investigation which it was.
+			ps.setString(13, io.github.alphain24.staffcore.modules.cases.Versions.minecraft());
+			ps.setString(14, io.github.alphain24.staffcore.modules.cases.Versions.mod());
 			ps.executeUpdate();
 
 			try (ResultSet keys = ps.getGeneratedKeys()) {
 				long id = keys.next() ? keys.getLong(1) : -1;
 				return new Punishment(id, target, targetName, staffName, type, reason, now,
-						expiresAt, true, null, caseId, null, null);
+						expiresAt, true, null, caseId, null, null, appealCode);
 			}
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Punish] record failed", e);
+			return null;
+		}
+	}
+
+	/**
+	 * One punishment by its id, whatever state it is in.
+	 * <p>
+	 * Deliberately not filtered to active rows. The reference on a ban screen has to resolve
+	 * after the ban is lifted, or the first thing an appeal conversation produces is "no such
+	 * punishment" for the record everybody is looking at.
+	 */
+	public Punishment byId(long id) {
+		Connection c = conn();
+		if (c == null) return null;
+
+		try (PreparedStatement ps = c.prepareStatement("SELECT * FROM punishments WHERE id=?")) {
+			ps.setLong(1, id);
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? map(rs) : null;
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Punish] could not read punishment {}: {}", id, e.getMessage());
+			return null;
+		}
+	}
+
+	/**
+	 * One punishment by the code printed on its disconnect screen.
+	 * <p>
+	 * The lookup an appeal starts from. Normalised first, so a player who typed {@code O} for
+	 * {@code 0} off a photograph is answered rather than told the code does not exist.
+	 */
+	public Punishment byAppealCode(String code) {
+		String normalised = AppealCode.normalise(code);
+		Connection c = conn();
+		if (normalised == null || c == null) return null;
+
+		try (PreparedStatement ps = c.prepareStatement(
+				"SELECT * FROM punishments WHERE appeal_code=?")) {
+			ps.setString(1, normalised);
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? map(rs) : null;
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Punish] could not resolve an appeal code: {}", e.getMessage());
 			return null;
 		}
 	}
@@ -536,6 +786,7 @@ public class PunishmentModule implements Module {
 				rs.getString("revoked_by"),
 				rs.getString("case_id"),
 				revokedAt(rs),
-				rs.getString("revoke_reason"));
+				rs.getString("revoke_reason"),
+				rs.getString("appeal_code"));
 	}
 }

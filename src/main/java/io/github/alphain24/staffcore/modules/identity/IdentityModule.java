@@ -99,9 +99,102 @@ public class IdentityModule implements Module {
 
 	public void recordJoin(ServerPlayer player) {
 		String ip = addressOf(player);
+		recordName(player.getUUID(), Mc.name(player));
 		refreshStoredName(player.getUUID(), Mc.name(player));
 		touchConnection(player.getUUID(), Mc.name(player), ip);
 		logSession(player.getUUID(), Mc.name(player), "JOIN", ip);
+	}
+
+	/**
+	 * Every name this account has used, with when it was first and last seen under it.
+	 * <p>
+	 * Separate from {@code connections} for two reasons. A name change is a fact about an
+	 * account rather than about a session, and {@code connections} is pruned on
+	 * {@code connectionRetentionDays} — while the whole value of this is the entry from four
+	 * years ago. It is also the smallest table in the mod: one row per name a person has ever
+	 * had, which for almost everybody is one row forever.
+	 * <p>
+	 * What it answers: "this account has been three different people since 2022, and one of
+	 * those names is in a ban record". A rename is the cheapest way to escape a reputation,
+	 * and the only thing that survives it is the UUID — which nobody types, reads or
+	 * remembers.
+	 */
+	public void recordName(UUID uuid, String name) {
+		if (!StaffCore.storage().isReady() || uuid == null || name == null || name.isBlank()) return;
+
+		long now = System.currentTimeMillis();
+		try (PreparedStatement ps = conn().prepareStatement("""
+				INSERT INTO name_history (uuid, name, first_seen, last_seen) VALUES (?,?,?,?)
+				ON CONFLICT(uuid, name) DO UPDATE SET last_seen = excluded.last_seen
+				""")) {
+			// first_seen is set once and never moved. Overwriting it on every join would
+			// leave every name looking new, which is the one thing this table exists to say.
+			ps.setString(1, uuid.toString());
+			ps.setString(2, name);
+			ps.setLong(3, now);
+			ps.setLong(4, now);
+			ps.executeUpdate();
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Identity] could not record a name: {}", e.getMessage());
+		}
+	}
+
+	/** One name this account has used. */
+	public record PastName(String name, long firstSeen, long lastSeen) {}
+
+	/**
+	 * Every name this account has used, newest first.
+	 * <p>
+	 * A single entry is the normal answer and is not worth showing. Two or more is worth
+	 * reading, and the timestamps are what make it readable: a rename last week is a different
+	 * fact from one in 2021.
+	 */
+	public List<PastName> namesOf(UUID uuid) {
+		List<PastName> out = new ArrayList<>();
+		if (!StaffCore.storage().isReady() || uuid == null) return out;
+
+		try (PreparedStatement ps = conn().prepareStatement(
+				"SELECT name, first_seen, last_seen FROM name_history WHERE uuid = ? "
+						+ "ORDER BY last_seen DESC")) {
+			ps.setString(1, uuid.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) {
+					out.add(new PastName(rs.getString("name"), rs.getLong("first_seen"),
+							rs.getLong("last_seen")));
+				}
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Identity] could not read name history: {}", e.getMessage());
+		}
+		return out;
+	}
+
+	/**
+	 * Accounts that have ever used a name, for looking somebody up by a name they have left.
+	 * <p>
+	 * The direction that matters when an old ban record names somebody nobody can find any
+	 * more — the account is still there, under a name the record has never heard of.
+	 */
+	public List<UUID> accountsEverCalled(String name) {
+		List<UUID> out = new ArrayList<>();
+		if (!StaffCore.storage().isReady() || name == null || name.isBlank()) return out;
+
+		try (PreparedStatement ps = conn().prepareStatement(
+				"SELECT DISTINCT uuid FROM name_history WHERE LOWER(name) = LOWER(?)")) {
+			ps.setString(1, name);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) {
+					try {
+						out.add(UUID.fromString(rs.getString(1)));
+					} catch (IllegalArgumentException malformed) {
+						// One unreadable row should cost that row, not the lookup.
+					}
+				}
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Identity] could not resolve a past name: {}", e.getMessage());
+		}
+		return out;
 	}
 
 	/**

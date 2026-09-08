@@ -967,6 +967,82 @@ final class Schema {
 			conn -> {
 				addColumn(conn, "inventory_audit", "actor_resolved_at", "INTEGER");
 				addColumn(conn, "command_log", "actor_resolved_at", "INTEGER");
+			},
+
+			// 19 - the appeal code a banned player reads off their disconnect screen.
+			//
+			// Separate from the punishment id on purpose. The id has to appear in staff
+			// output, exports and eventually Discord embeds, and anything in those places is
+			// readable by a bystander; this identifies the right to appeal rather than the
+			// record, so filing an appeal as somebody else needs the screenshot rather than
+			// the case file. Indexed because the lookup is by code, once per appeal.
+			conn -> {
+				addColumn(conn, "punishments", "appeal_code", "TEXT");
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_punishments_appeal_code "
+							+ "ON punishments(appeal_code)");
+				}
+			},
+
+			// 20 - who else was online when something was recorded.
+			//
+			// An appeal is an argument about a moment nobody wrote down. "Nobody else was
+			// there" and "half the server watched it" are different cases and neither is
+			// recoverable afterwards: the block log says what changed, the chat log is gone,
+			// and the only people who could say what happened have no reason to remember it.
+			// A list of names costs a few hundred bytes per incident and is occasionally the
+			// whole answer.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS incident_witness (
+							    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+							    kind    TEXT    NOT NULL,
+							    ref     TEXT    NOT NULL,
+							    at      INTEGER NOT NULL,
+							    world   TEXT,
+							    names   TEXT    NOT NULL,
+							    present INTEGER NOT NULL
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_witness_ref "
+							+ "ON incident_witness(kind, ref)");
+				}
+			},
+
+			// 21 - the build every audit row was written under, and name history.
+			//
+			// The versions matter for the same reason they do on a signal: an action taken
+			// under a build where a hook was silently broken means something different from
+			// the same action under a healthy one. command_log, cases and signals already
+			// carried them; the rows an investigation actually starts from did not.
+			//
+			// Name history is separate from connections because a name change is a fact about
+			// an account rather than about a session, and because connections is pruned on a
+			// retention schedule — the whole value here is the entry from four years ago.
+			conn -> {
+				addColumn(conn, "punishments", "server_version", "TEXT");
+				addColumn(conn, "punishments", "mod_version", "TEXT");
+				addColumn(conn, "inventory_audit", "server_version", "TEXT");
+				addColumn(conn, "inventory_audit", "mod_version", "TEXT");
+				addColumn(conn, "case_events", "server_version", "TEXT");
+				addColumn(conn, "case_events", "mod_version", "TEXT");
+				addColumn(conn, "notes", "server_version", "TEXT");
+				addColumn(conn, "notes", "mod_version", "TEXT");
+
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS name_history (
+							    uuid       TEXT    NOT NULL,
+							    name       TEXT    NOT NULL,
+							    first_seen INTEGER NOT NULL,
+							    last_seen  INTEGER NOT NULL,
+							    PRIMARY KEY (uuid, name)
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_name_history_name "
+							+ "ON name_history(name)");
+				}
 			}
 	);
 
@@ -1010,6 +1086,15 @@ final class Schema {
 			{"command_log", "staff_ip", "TEXT"},
 			{"command_log", "case_id", "TEXT"},
 			{"command_log", "server_version", "TEXT"},
+			{"punishments", "appeal_code", "TEXT"},
+			{"punishments", "server_version", "TEXT"},
+			{"punishments", "mod_version", "TEXT"},
+			{"inventory_audit", "server_version", "TEXT"},
+			{"inventory_audit", "mod_version", "TEXT"},
+			{"case_events", "server_version", "TEXT"},
+			{"case_events", "mod_version", "TEXT"},
+			{"notes", "server_version", "TEXT"},
+			{"notes", "mod_version", "TEXT"},
 			{"command_log", "mod_version", "TEXT"},
 			{"notes", "case_id", "TEXT"},
 			{"notes", "retracted_at", "INTEGER"},
@@ -1020,6 +1105,68 @@ final class Schema {
 	};
 
 	/**
+	 * Tables that must exist however the version counter got where it is.
+	 * <p>
+	 * The column reconciliation above catches a column added by a migration that did not run.
+	 * A whole <em>table</em> added by a migration has a worse version of the same problem, and
+	 * it is not hypothetical — {@code incident_witness} was written as a migration only, and a
+	 * fresh install skips every migration by design (see {@link #migrate}), so a new server
+	 * had no such table while its version counter read as fully up to date. Every read against
+	 * it failed at runtime with the schema apparently healthy.
+	 * <p>
+	 * A table added from here is created empty, which is the correct state for a fresh install
+	 * and a survivable one for a database that lost it: the alternative is a feature that
+	 * silently does nothing on exactly the servers that never upgraded into it.
+	 * <p>
+	 * <b>When adding a table, add it to both.</b> The migration is how the change is recorded
+	 * for databases that already exist; this is how a new one gets it.
+	 */
+	private static final String[] REQUIRED_TABLES = {
+			"""
+			CREATE TABLE IF NOT EXISTS incident_witness (
+			    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+			    kind    TEXT    NOT NULL,
+			    ref     TEXT    NOT NULL,
+			    at      INTEGER NOT NULL,
+			    world   TEXT,
+			    names   TEXT    NOT NULL,
+			    present INTEGER NOT NULL
+			)
+			""",
+			"CREATE INDEX IF NOT EXISTS idx_witness_ref ON incident_witness(kind, ref)",
+
+			"""
+			CREATE TABLE IF NOT EXISTS name_history (
+			    uuid       TEXT    NOT NULL,
+			    name       TEXT    NOT NULL,
+			    first_seen INTEGER NOT NULL,
+			    last_seen  INTEGER NOT NULL,
+			    PRIMARY KEY (uuid, name)
+			)
+			""",
+			"CREATE INDEX IF NOT EXISTS idx_name_history_name ON name_history(name)",
+
+			// Created lazily by AddressPrivacy the first time a salt is needed, which works
+			// and puts one table's shape somewhere nobody looking at the schema would find it.
+			// Declared here as well so every table this mod has is described in one place.
+			"""
+			CREATE TABLE IF NOT EXISTS staffcore_meta (
+			    key   TEXT PRIMARY KEY,
+			    value TEXT NOT NULL
+			)
+			""",
+	};
+
+	/** Creates anything {@link #REQUIRED_TABLES} says should exist and does not. */
+	private static void reconcileTables(Connection conn) {
+		try (Statement st = conn.createStatement()) {
+			for (String ddl : REQUIRED_TABLES) st.executeUpdate(ddl);
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[StaffCore] Could not reconcile tables", e);
+		}
+	}
+
+	/**
 	 * Adds anything {@link #REQUIRED_COLUMNS} says should be there and is not.
 	 * <p>
 	 * Runs after the migrations, so it is a safety net rather than a substitute: migrations
@@ -1027,6 +1174,8 @@ final class Schema {
 	 * the record and the reality disagree.
 	 */
 	private static void reconcile(Connection conn) {
+		reconcileTables(conn);
+
 		int repaired = 0;
 		for (String[] required : REQUIRED_COLUMNS) {
 			if (hasColumn(conn, required[0], required[1])) continue;

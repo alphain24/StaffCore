@@ -1390,10 +1390,24 @@ public class GriefModule implements Module {
 	 */
 	public record RollbackResult(int reverted, int skipped, int dropsRemoved, int itemsReturned,
 			int itemsDeferred, int bankedRemoved, int debitsQueued, List<RestoredItem> restoring,
-			Map<BlockPos, BlockState> proposed, List<LootRecovery.Charge> charges) {
+			Map<BlockPos, BlockState> proposed, List<LootRecovery.Charge> charges,
+			/**
+			 * The restore point this rollback can be undone from, or 0 when there is none.
+			 * <p>
+			 * Handed back rather than left in the database, because a rollback that cannot be
+			 * named cannot be undone by anybody who was not watching the chat when it ran.
+			 * Zero for a preview and for a rollback that reverted nothing — both are cases
+			 * where there is genuinely nothing to point at.
+			 */
+			long pointId) {
 
 		static final RollbackResult NOTHING =
-				new RollbackResult(0, 0, 0, 0, 0, 0, 0, List.of(), Map.of(), List.of());
+				new RollbackResult(0, 0, 0, 0, 0, 0, 0, List.of(), Map.of(), List.of(), 0L);
+
+		/** Whether this rollback left something {@code /staff rollback undo} could take back. */
+		public boolean isUndoable() {
+			return pointId > 0;
+		}
 	}
 
 	/**
@@ -1404,6 +1418,27 @@ public class GriefModule implements Module {
 	 * looking at the right area before you overwrite it.
 	 */
 	public record RestoredItem(String itemId, int count) {}
+
+	/**
+	 * Tells the acting staff member why a rollback did not happen.
+	 * <p>
+	 * The identity that authorised the action is not somebody who can be sent a message until
+	 * it is resolved, and it may resolve to nobody — a scheduled task, the console, a staff
+	 * member who logged off between staging and running. Those go to the log, which is where
+	 * anybody looking into a rollback that did not happen will be.
+	 */
+	private void tell(ServerLevel level, io.github.alphain24.staffcore.permission.Actor staff,
+			String message) {
+
+		ServerPlayer online = staff == null || staff.id() == null || level.getServer() == null
+				? null : level.getServer().getPlayerList().getPlayer(staff.id());
+
+		if (online != null) {
+			online.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.bad(message));
+		} else {
+			StaffCore.LOGGER.warn("[Grief] {}", message);
+		}
+	}
 
 	/**
 	 * Undoes block changes in an area, optionally limited to one player.
@@ -1417,17 +1452,25 @@ public class GriefModule implements Module {
 	 */
 	public RollbackResult rollback(ServerLevel level, String player, BlockPos centre,
 			int radius, long windowMs, boolean dryRun) {
-		return rollback(level, player, centre, radius, windowMs, dryRun, null);
+		return rollback(level, player, centre, radius, windowMs, dryRun,
+				(io.github.alphain24.staffcore.permission.Actor) null);
 	}
 
 	/**
-	 * @param staff who is running this, or null to skip recording a restore point. A preview
-	 *              passes null because there is nothing to undo.
+	 * @param staff the identity running this, or null to skip the restore point. Identity
+	 *              rather than a player object: the rate limit, the region lock and the audit
+	 *              row are all policy, and none of them wants a world or a connection. It also
+	 *              closes a hole — the previous form took a name and looked the player up, so
+	 *              a rollback attributed to somebody not currently online resolved to the
+	 *              console and skipped the rate limit entirely.
 	 */
 	public RollbackResult rollback(ServerLevel level, String player, BlockPos centre,
-			int radius, long windowMs, boolean dryRun, String staff) {
+			int radius, long windowMs, boolean dryRun,
+			io.github.alphain24.staffcore.permission.Actor staff) {
 
 		if (!StaffCore.storage().isReady()) return RollbackResult.NOTHING;
+
+		String world = Mc.dimensionId(level);
 
 		// Rate limited here rather than in the command, for the same reason punishments are:
 		// this is the funnel every path already goes through, so the GUI and anything added
@@ -1437,22 +1480,29 @@ public class GriefModule implements Module {
 		// towards running the real thing to find out what it would do, which is the opposite
 		// of what the limit is for.
 		if (!dryRun && staff != null) {
-			ServerPlayer acting = level.getServer().getPlayerList().getPlayerByName(staff);
-			var verdict = Mods.accountability().limits().check(
-					io.github.alphain24.staffcore.permission.Actor.of(acting),
+			var verdict = Mods.accountability().limits().check(staff,
 					io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.ROLLBACK);
 
 			if (!verdict.allowed()) {
-				if (acting != null) {
-					acting.sendSystemMessage(
-							io.github.alphain24.staffcore.gui.Theme.bad(verdict.refusal()));
-				}
-				StaffCore.LOGGER.warn("[Grief] rate limit refused a rollback by {}", staff);
+				tell(level, staff, verdict.refusal());
+				StaffCore.LOGGER.warn("[Grief] rate limit refused a rollback by {}",
+						staff.name());
 				return RollbackResult.NOTHING;
 			}
 		}
 
-		String world = Mc.dimensionId(level);
+		// One rollback at a time over any given ground. Taken here as well as at preview time
+		// so a path that never previewed still cannot land on top of somebody else's work.
+		if (staff != null) {
+			RegionLock.Grant grant = RegionLock.acquire(staff, world, centre, radius);
+			if (!grant.acquired()) {
+				tell(level, staff, grant.refusal());
+				StaffCore.LOGGER.warn("[Grief] region lock refused a rollback by {}: held by {}",
+						staff.name(), grant.holder().staffName());
+				return RollbackResult.NOTHING;
+			}
+		}
+
 		long cutoff = System.currentTimeMillis() - windowMs;
 
 		// Opened before a single block is written, because what it records is precisely the
@@ -1461,7 +1511,7 @@ public class GriefModule implements Module {
 				&& StaffConfig.get().rollbackPointRetentionDays > 0;
 		long pointTime = System.currentTimeMillis();
 		long pointId = undoable
-				? points.open(level, staff, player, centre, radius, windowMs, pointTime)
+				? points.open(level, staff.name(), player, centre, radius, windowMs, pointTime)
 				: 0L;
 
 		String sql = """
@@ -1586,20 +1636,26 @@ public class GriefModule implements Module {
 			return new RollbackResult(reverted, skipped, 0, containerResult.restored(),
 					containerResult.deferred(), 0, 0, freeze(tally), proposed,
 					previewCharges(level, centre, radius, restored, player, windowMs,
-							owedContents));
+							owedContents), 0L);
 		}
 
 		Reclaim reclaim = reclaimDrops(level, centre, radius, restored, player, windowMs,
-				owedContents, restoredContainers, pointId, staff);
+				owedContents, restoredContainers, pointId, staff == null ? null : staff.name());
 		retire(applied);
 
 		// A point that captured nothing is not an undo anybody wants offered to them.
 		if (reverted > 0) points.close(pointId, reverted);
 		else points.discard(pointId);
 
+		// Released only after the real run. A preview keeps its lock, because the window this
+		// protects is the one between seeing what a rollback would do and confirming it —
+		// which is where a second staff member can quietly change the answer.
+		RegionLock.release(staff);
+
 		return new RollbackResult(reverted, skipped, reclaim.fromGround() + reclaim.fromInventory(),
 				containerResult.restored(), containerResult.deferred(),
-				reclaim.fromChests(), reclaim.queued(), freeze(tally), Map.of(), List.of());
+				reclaim.fromChests(), reclaim.queued(), freeze(tally), Map.of(), List.of(),
+				reverted > 0 ? pointId : 0L);
 	}
 
 	/**

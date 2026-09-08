@@ -12,7 +12,9 @@
 			"io.github.alphain24.staffcore.gametest.MaintenanceTests",
 			"io.github.alphain24.staffcore.gametest.VaultTests",
 			"io.github.alphain24.staffcore.gametest.InvseeTests",
-			"io.github.alphain24.staffcore.gametest.RollbackDebitTests"
+			"io.github.alphain24.staffcore.gametest.RollbackDebitTests",
+			"io.github.alphain24.staffcore.gametest.AccountabilityTests",
+			"io.github.alphain24.staffcore.gametest.RollbackWarningTests"
 		]
 	},
 	"depends": {

@@ -38,10 +38,13 @@ import io.github.alphain24.staffcore.modules.punish.PunishmentType;
 import io.github.alphain24.staffcore.modules.report.ReportModule;
 import io.github.alphain24.staffcore.permission.Nodes;
 import io.github.alphain24.staffcore.permission.PermissionGroups;
+import io.github.alphain24.staffcore.modules.accountability.OperationId;
+import io.github.alphain24.staffcore.modules.grief.RollbackWarnings;
 import io.github.alphain24.staffcore.permission.Actor;
 import io.github.alphain24.staffcore.permission.Permissions;
 import io.github.alphain24.staffcore.util.DurationParser;
 import io.github.alphain24.staffcore.util.TimeFormat;
+import net.minecraft.core.BlockPos;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
@@ -72,6 +75,23 @@ import java.util.List;
  */
 public final class StaffCommands {
 	private StaffCommands() {}
+
+	/**
+	 * Completion over everyone the server has seen, not just everyone standing in it.
+	 * <p>
+	 * Vanilla completes the online list, which is precisely the population staff least need:
+	 * the player who has to be looked up is the one who logged off before the report arrived.
+	 * Typing that name from memory is where the spelling goes wrong, and a wrong spelling on a
+	 * punishment command is a punishment on somebody else.
+	 */
+	private static final com.mojang.brigadier.suggestion.SuggestionProvider<CommandSourceStack>
+			KNOWN_PLAYERS = (ctx, builder) -> {
+				for (String name : KnownPlayers.startingWith(
+						ctx.getSource().getServer(), builder.getRemaining(), 40)) {
+					builder.suggest(name);
+				}
+				return builder.buildFuture();
+			};
 
 	/** Any one of these makes the {@code /staff} root worth showing to a source. */
 	private static final String[] ANY_STAFF_NODE = {
@@ -105,6 +125,7 @@ public final class StaffCommands {
 		// Added last so Brigadier tries every literal before falling back to a bare name:
 		// `/staff ban Notch` hits the literal, `/staff Notch` lands here.
 		staff.then(Commands.argument("player", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
 				.executes(ctx -> openFile(ctx, "player")));
 
@@ -200,7 +221,12 @@ public final class StaffCommands {
 
 		ServerPlayer viewer = ctx.getSource().getPlayerOrException();
 		NameAndId target = singleProfile(ctx, argument);
-		if (target == null) return fail(ctx, "Could not work out who you meant.");
+		if (target == null) return 0;   // singleProfile already said why
+
+		// The sequence this serves is: look somebody up, read their file, decide, act. The
+		// acting half should not need the name typed again — that is retyping something you
+		// are looking at, and it is the moment a spelling goes wrong.
+		StaffSession.looked(Actor.of(ctx.getSource()), target.name());
 		audit(ctx, "/staff " + target.name());
 		PlayerActionsMenu.open(viewer, target);
 		return 1;
@@ -271,20 +297,26 @@ public final class StaffCommands {
 		// does not get written.
 		staff.then(Commands.literal("note")
 				.requires(src -> Permissions.check(src, Nodes.NOTES))
+				.executes(ctx -> needTarget(ctx, "note"))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.then(Commands.argument("text", StringArgumentType.greedyString())
 								.executes(StaffCommands::addNote))));
 
 		staff.then(Commands.literal("warn")
 				.requires(src -> Permissions.check(src, Nodes.WARN))
+				.executes(ctx -> needTarget(ctx, "warn"))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.then(Commands.argument("reason", StringArgumentType.greedyString())
 								.executes(ctx -> punish(ctx, PunishmentType.WARN, null,
 										StringArgumentType.getString(ctx, "reason"))))));
 
 		staff.then(Commands.literal("kick")
 				.requires(src -> Permissions.check(src, Nodes.KICK))
+				.executes(ctx -> needTarget(ctx, "kick"))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.then(Commands.argument("reason", StringArgumentType.greedyString())
 								.executes(ctx -> punish(ctx, PunishmentType.KICK, null,
 										StringArgumentType.getString(ctx, "reason"))))));
@@ -294,12 +326,16 @@ public final class StaffCommands {
 
 		staff.then(Commands.literal("unban")
 				.requires(src -> Permissions.check(src, Nodes.UNPUNISH))
+				.executes(ctx -> needTarget(ctx, "unban"))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.executes(ctx -> revoke(ctx, true))));
 
 		staff.then(Commands.literal("unmute")
 				.requires(src -> Permissions.check(src, Nodes.UNPUNISH))
+				.executes(ctx -> needTarget(ctx, "unmute"))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.executes(ctx -> revoke(ctx, false))));
 	}
 
@@ -309,24 +345,33 @@ public final class StaffCommands {
 
 		staff.then(Commands.literal(permanentName)
 				.requires(src -> Permissions.check(src, node))
+				.executes(ctx -> needTarget(ctx, permanentName))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.then(Commands.argument("reason", StringArgumentType.greedyString())
 								.executes(ctx -> punish(ctx, base, null,
 										StringArgumentType.getString(ctx, "reason"))))));
 
 		staff.then(Commands.literal(temporaryName)
 				.requires(src -> Permissions.check(src, node))
+				.executes(ctx -> needTarget(ctx, temporaryName))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.then(Commands.argument("duration", StringArgumentType.word())
 								.then(Commands.argument("reason", StringArgumentType.greedyString())
 										.executes(ctx -> {
 											String spec = StringArgumentType.getString(ctx, "duration");
-											Long ms = DurationParser.parse(spec);
-											if (ms == null) {
-												return fail(ctx, "'" + spec + "' is not a duration. "
-														+ "Try 30m, 6h, 7d — or use /staff "
-														+ permanentName + " for permanent.");
+											var length = DurationParser.of(spec);
+											if (!length.valid()) {
+												return fail(ctx, length.problem());
 											}
+											if (length.isPermanent()) {
+												return fail(ctx, "For no end, use /staff "
+														+ permanentName + " — this form takes a "
+														+ "length so that a permanent ban is "
+														+ "always something somebody chose.");
+											}
+											Long ms = length.millis();
 											return punish(ctx, base, ms,
 													StringArgumentType.getString(ctx, "reason"));
 										})))));
@@ -337,7 +382,7 @@ public final class StaffCommands {
 
 		MinecraftServer server = ctx.getSource().getServer();
 		NameAndId target = singleProfile(ctx, "target");
-		if (target == null) return fail(ctx, "Could not work out who you meant.");
+		if (target == null) return 0;   // singleProfile already said why
 
 		if (StaffConfig.get().requireReason && (reason == null || reason.isBlank())) {
 			return fail(ctx, "This server requires a reason.");
@@ -347,12 +392,17 @@ public final class StaffCommands {
 		audit(ctx, "/staff " + base.name().toLowerCase(java.util.Locale.ROOT)
 				+ " " + target.name() + " " + reason);
 
-		Punishment result = Mods.punish().apply(server, target, staff, base, durationMs, reason);
+		Punishment result = Mods.punish().apply(server, target, staff, base, durationMs,
+				reason, null, null, Actor.of(ctx.getSource()));
 		if (result == null) {
 			return fail(ctx, "The punishment could not be saved — check the server log.");
 		}
-		// PunishmentModule already broadcast it; no second confirmation needed here.
-		return 1;
+
+		// PunishmentModule already broadcast this to every staff member, so the line here is
+		// not a second confirmation — it is the reference, which only the person who ran the
+		// command needs and which the broadcast deliberately does not carry.
+		return okWithOp(ctx, "Recorded.",
+				OperationId.of(OperationId.Kind.PUNISHMENT, result.id()));
 	}
 
 	private static int revoke(CommandContext<CommandSourceStack> ctx, boolean bans)
@@ -360,7 +410,7 @@ public final class StaffCommands {
 
 		MinecraftServer server = ctx.getSource().getServer();
 		NameAndId target = singleProfile(ctx, "target");
-		if (target == null) return fail(ctx, "Could not work out who you meant.");
+		if (target == null) return 0;   // singleProfile already said why
 
 		String what = bans ? "ban" : "mute";
 		audit(ctx, "/staff un" + what + " " + target.name());
@@ -379,13 +429,15 @@ public final class StaffCommands {
 	private static void records(LiteralArgumentBuilder<CommandSourceStack> staff) {
 		staff.then(Commands.literal("history")
 				.requires(src -> Permissions.check(src, Nodes.HISTORY))
+				.executes(ctx -> needTarget(ctx, "history"))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.executes(StaffCommands::printHistory)
 						.then(Commands.literal("clear")
 								.requires(src -> Permissions.check(src, Nodes.HISTORY_CLEAR))
 								.executes(ctx -> {
 									NameAndId target = singleProfile(ctx, "target");
-									if (target == null) return fail(ctx, "Unknown player.");
+									if (target == null) return 0;   // singleProfile already said why
 									audit(ctx, "/staff history " + target.name() + " clear");
 									Mods.punish().clearHistory(target.id());
 									return ok(ctx, "Wiped " + target.name() + "'s history.");
@@ -394,12 +446,13 @@ public final class StaffCommands {
 		staff.then(Commands.literal("notes")
 				.requires(src -> Permissions.check(src, Nodes.NOTES))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.executes(StaffCommands::listNotes)
 						.then(Commands.literal("add")
 								.then(Commands.argument("text", StringArgumentType.greedyString())
 										.executes(ctx -> {
 											NameAndId target = singleProfile(ctx, "target");
-											if (target == null) return fail(ctx, "Unknown player.");
+											if (target == null) return 0;   // singleProfile already said why
 											String text = StringArgumentType.getString(ctx, "text");
 											audit(ctx, "/staff notes " + target.name() + " add");
 
@@ -418,7 +471,7 @@ public final class StaffCommands {
 								.then(Commands.argument("index", IntegerArgumentType.integer(1))
 										.executes(ctx -> {
 											NameAndId target = singleProfile(ctx, "target");
-											if (target == null) return fail(ctx, "Unknown player.");
+											if (target == null) return 0;   // singleProfile already said why
 											int index = IntegerArgumentType.getInteger(ctx, "index");
 											audit(ctx, "/staff notes " + target.name() + " retract " + index);
 
@@ -433,7 +486,7 @@ public final class StaffCommands {
 
 	private static int printHistory(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
 		NameAndId target = singleProfile(ctx, "target");
-		if (target == null) return fail(ctx, "Unknown player.");
+		if (target == null) return 0;   // singleProfile already said why
 		audit(ctx, "/staff history " + target.name());
 
 		List<Punishment> history = Mods.punish().history(target.id());
@@ -444,9 +497,15 @@ public final class StaffCommands {
 				target.name() + " — " + history.size() + " record(s):"), false);
 		history.stream().limit(20).forEach(p -> ctx.getSource().sendSuccess(() ->
 				Icon.text("  " + p.type().label(), p.type().color())
-						.append(Icon.text(" · " + TimeFormat.ago(p.createdAt())
-								+ " · by " + p.staffName()
-								+ " · " + p.reasonOr("no reason"), Theme.MUTED)), false));
+						.append(Icon.text(" · ", Theme.MUTED))
+						.append(Link.time(p.createdAt()))
+						.append(Icon.text(" · by " + p.staffName()
+								+ " · " + p.reasonOr("no reason"), Theme.MUTED))
+						.append(Icon.text("  ", Theme.MUTED))
+						.append(Link.operation(
+								OperationId.of(OperationId.Kind.PUNISHMENT, p.id()).toString(),
+								OperationId.of(OperationId.Kind.PUNISHMENT, p.id()).command())),
+				false));
 		if (history.size() > 20) {
 			ctx.getSource().sendSuccess(() -> Theme.info(
 					"  … " + (history.size() - 20) + " more. Use /staff for the full list."), false);
@@ -456,7 +515,7 @@ public final class StaffCommands {
 
 	private static int listNotes(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
 		NameAndId target = singleProfile(ctx, "target");
-		if (target == null) return fail(ctx, "Unknown player.");
+		if (target == null) return 0;   // singleProfile already said why
 
 		List<NotesModule.Note> notes = Mods.notes().list(target.id());
 		if (notes.isEmpty()) {
@@ -631,11 +690,13 @@ public final class StaffCommands {
 		// Works on offline players too — the view falls back to their save file.
 		staff.then(Commands.literal("invsee")
 				.requires(src -> Permissions.check(src, Nodes.INVSEE))
+				.executes(ctx -> needTarget(ctx, "invsee"))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.executes(ctx -> {
 							ServerPlayer viewer = ctx.getSource().getPlayerOrException();
 							NameAndId target = singleProfile(ctx, "target");
-							if (target == null) return fail(ctx, "Unknown player.");
+							if (target == null) return 0;   // singleProfile already said why
 							audit(ctx, "/staff invsee " + target.name());
 							InvseeMenu.open(viewer, target);
 							return 1;
@@ -643,16 +704,20 @@ public final class StaffCommands {
 
 		staff.then(Commands.literal("lookup")
 				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
+				.executes(ctx -> needTarget(ctx, "lookup"))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.executes(ctx -> openFile(ctx, "target"))));
 
 		staff.then(Commands.literal("enderchest")
 				.requires(src -> Permissions.check(src, Nodes.ENDERCHEST))
+				.executes(ctx -> needTarget(ctx, "enderchest"))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.executes(ctx -> {
 							ServerPlayer viewer = ctx.getSource().getPlayerOrException();
 							NameAndId target = singleProfile(ctx, "target");
-							if (target == null) return fail(ctx, "Unknown player.");
+							if (target == null) return 0;   // singleProfile already said why
 							audit(ctx, "/staff enderchest " + target.name());
 							EnderChestMenu.open(viewer, target);
 							return 1;
@@ -661,10 +726,11 @@ public final class StaffCommands {
 		staff.then(Commands.literal("logs")
 				.requires(src -> Permissions.check(src, Nodes.LOGS))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.executes(ctx -> {
 							ServerPlayer viewer = ctx.getSource().getPlayerOrException();
 							NameAndId target = singleProfile(ctx, "target");
-							if (target == null) return fail(ctx, "Unknown player.");
+							if (target == null) return 0;   // singleProfile already said why
 							audit(ctx, "/staff logs " + target.name());
 							LogsMenu.open(viewer, target);
 							return 1;
@@ -673,11 +739,13 @@ public final class StaffCommands {
 		staff.then(Commands.literal("alts")
 				.requires(src -> Permissions.check(src, Nodes.ALTS))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
 						.executes(ctx -> {
 							ServerPlayer viewer = ctx.getSource().getPlayerOrException();
 							NameAndId target = singleProfile(ctx, "target");
-							if (target == null) return fail(ctx, "Unknown player.");
+							if (target == null) return 0;   // singleProfile already said why
 							audit(ctx, "/staff alts " + target.name());
+							printNameHistory(ctx, target);
 							AltsMenu.open(viewer, target);
 							return 1;
 						})));
@@ -973,10 +1041,16 @@ public final class StaffCommands {
 	 */
 	private static int purge(CommandContext<CommandSourceStack> ctx, String player, boolean dryRun) {
 		String spec = StringArgumentType.getString(ctx, "olderThan");
-		Long window = DurationParser.parse(spec);
-		if (window == null) {
-			return fail(ctx, "Could not read \"" + spec + "\". Try 30d, 12h, 1w.");
+		var parsed = DurationParser.of(spec);
+
+		// "perm" here would mean purging everything older than forever, which is nothing —
+		// silently a no-op on a command whose whole purpose is destroying evidence.
+		if (parsed.isPermanent()) {
+			return fail(ctx, "\"" + spec + "\" is not an age. Purge takes how old a row has "
+					+ "to be before it goes — 30d, 12h, 1w.");
 		}
+		if (!parsed.valid()) return fail(ctx, parsed.problem());
+		long window = parsed.millis();
 
 		String scope = player == null ? "everyone" : player;
 		GriefModule.PurgeResult result = Mods.grief().purge(window, player, dryRun);
@@ -985,7 +1059,12 @@ public final class StaffCommands {
 			return fail(ctx, "Nothing logged for " + scope + " is older than " + spec + ".");
 		}
 
+		String key = "purge " + spec + " " + scope;
+
 		if (dryRun) {
+			StaffSession.staged(Actor.of(ctx.getSource()), key,
+					"purging " + result.total() + " row(s) for " + scope);
+
 			ctx.getSource().sendSuccess(() -> Theme.warn(
 					"Would delete %d block row(s) and %d container row(s) for %s older than %s."
 							.formatted(result.blockRows(), result.containerRows(), scope, spec)), false);
@@ -993,6 +1072,12 @@ public final class StaffCommands {
 					+ spec + (player == null ? "" : " " + player) + " confirm", Theme.MUTED), false);
 			return result.total();
 		}
+
+		// The count above was taken before this line; between then and now the log has kept
+		// growing. Confirming a stale preview is confirming a number that is no longer true,
+		// on the one command in the mod that destroys evidence.
+		var confirmation = StaffSession.claim(Actor.of(ctx.getSource()), key);
+		if (!confirmation.allowed()) return fail(ctx, confirmation.refusal());
 
 		audit(ctx, "/staff purge " + spec + " " + scope);
 		Mods.alerts().onStaffAction(ctx.getSource().getServer(),
@@ -1175,7 +1260,8 @@ public final class StaffCommands {
 		audit(ctx, "/staff preview " + scope + " " + radius + " " + minutes);
 
 		GriefModule.RollbackResult r = Mods.grief().rollback(
-				self.level(), player, self.blockPosition(), radius, minutes * 60_000L, true);
+				self.level(), player, self.blockPosition(), radius, minutes * 60_000L, true,
+				Actor.of(ctx.getSource()));
 
 		if (r.reverted() == 0 && r.itemsReturned() == 0) {
 			return fail(ctx, "Nothing to roll back within " + radius + " blocks.");
@@ -1211,6 +1297,8 @@ public final class StaffCommands {
 		// is: a list of numbers tells you how big the rollback is, and the blocks in front of
 		// you tell you whether it is the right one. The second is the question a radius
 		// actually poses.
+		warnAbout(ctx, (ServerLevel) self.level(), self.blockPosition(), radius, r.reverted());
+
 		int drawn = Mods.grief().preview().show(self, (ServerLevel) self.level(), r.proposed());
 		if (drawn > 0) {
 			ctx.getSource().sendSuccess(() -> Icon.text(
@@ -1262,9 +1350,13 @@ public final class StaffCommands {
 		int radius = IntegerArgumentType.getInteger(ctx, "radius");
 		audit(ctx, "/staff rollback area " + radius + " " + minutes);
 
+		if (needsPreviewFirst(ctx, (ServerLevel) self.level(), self.blockPosition(), radius)) {
+			return 0;
+		}
+
 		GriefModule.RollbackResult result = Mods.grief().rollback(
 				self.level(), null, self.blockPosition(), radius, minutes * 60_000L, false,
-				ctx.getSource().getTextName());
+				Actor.of(ctx.getSource()));
 
 		if (result.reverted() == 0) {
 			return fail(ctx, "Nothing to roll back within " + radius + " blocks.");
@@ -1274,7 +1366,8 @@ public final class StaffCommands {
 						ctx.getSource().getTextName(), result.reverted(), radius));
 		Sfx.bigSuccess(self);
 		reportReclaim(ctx, result);
-		return ok(ctx, "Reverted " + result.reverted() + " change(s) by everyone here.");
+		return okWithOp(ctx, "Reverted " + result.reverted() + " change(s) by everyone here.",
+				OperationId.of(OperationId.Kind.ROLLBACK, result.pointId()));
 	}
 
 	/**
@@ -1320,9 +1413,13 @@ public final class StaffCommands {
 		int radius = IntegerArgumentType.getInteger(ctx, "radius");
 		audit(ctx, "/staff rollback " + player + " " + radius + " " + minutes);
 
+		if (needsPreviewFirst(ctx, (ServerLevel) self.level(), self.blockPosition(), radius)) {
+			return 0;
+		}
+
 		GriefModule.RollbackResult result = Mods.grief().rollback(
 				self.level(), player, self.blockPosition(), radius, minutes * 60_000L, false,
-				ctx.getSource().getTextName());
+				Actor.of(ctx.getSource()));
 
 		if (result.reverted() == 0) {
 			return fail(ctx, "Nothing of " + player + "'s to roll back within " + radius + " blocks.");
@@ -1332,7 +1429,8 @@ public final class StaffCommands {
 						ctx.getSource().getTextName(), result.reverted(), player));
 		Sfx.bigSuccess(self);
 		reportReclaim(ctx, result);
-		return ok(ctx, "Reverted " + result.reverted() + " change(s) by " + player + ".");
+		return okWithOp(ctx, "Reverted " + result.reverted() + " change(s) by " + player + ".",
+				OperationId.of(OperationId.Kind.ROLLBACK, result.pointId()));
 	}
 
 	// ------------------------------------------------------------------- server
@@ -1457,6 +1555,8 @@ public final class StaffCommands {
 				.executes(StaffCommands::selfTest));
 
 		registerCases(staff);
+		registerOperations(staff);
+		registerUndo(staff);
 		registerAccountability(staff);
 		registerPerms(staff);
 
@@ -1479,16 +1579,124 @@ public final class StaffCommands {
 	// ------------------------------------------------------------------ helpers
 
 	/**
-	 * A {@link GameProfileArgument} can resolve to several profiles (selectors). Staff
-	 * actions are deliberately one-at-a-time, so anything ambiguous is refused rather
-	 * than applied to whoever happens to be first.
+	 * The one player an argument names, or null with the reason already explained.
+	 * <p>
+	 * Vanilla resolves a name through the server's own cache and throws when it finds
+	 * nothing, which produces a Brigadier error with no advice in it. That is the wrong answer
+	 * twice over: this mod's tables remember names the vanilla cache has dropped, and when a
+	 * prefix could mean two accounts, "unknown player" is a worse thing to say than naming
+	 * both of them.
+	 * <p>
+	 * <b>Ambiguity is refused, never guessed.</b> {@code Steve_} and {@code Steve__} is how the
+	 * wrong person gets banned, and a name one character from another is usually a name
+	 * somebody chose to be one character from another.
+	 *
+	 * @return the profile, or null having already told the caller what went wrong
 	 */
 	private static NameAndId singleProfile(CommandContext<CommandSourceStack> ctx, String argument)
 			throws CommandSyntaxException {
 
-		Collection<NameAndId> profiles = GameProfileArgument.getGameProfiles(ctx, argument);
-		if (profiles.size() != 1) return null;
-		return profiles.iterator().next();
+		try {
+			Collection<NameAndId> profiles = GameProfileArgument.getGameProfiles(ctx, argument);
+			if (profiles.size() == 1) return profiles.iterator().next();
+
+			if (profiles.size() > 1) {
+				// A selector that matched several. Not a spelling problem, so the advice is
+				// different: name one of them rather than check what you typed.
+				fail(ctx, "That matched " + profiles.size() + " players. These commands act on "
+						+ "one person at a time — name them.");
+				return null;
+			}
+		} catch (CommandSyntaxException unknownToVanilla) {
+			// Falls through to our own tables, which remember longer than the name cache.
+		}
+
+		String typed = rawArgument(ctx, argument);
+		if (typed == null) return fallbackFail(ctx);
+		return resolveKnown(ctx, typed, argument);
+	}
+
+	private static NameAndId fallbackFail(CommandContext<CommandSourceStack> ctx) {
+		fail(ctx, "Could not work out who you meant.");
+		return null;
+	}
+
+	/**
+	 * The text the user actually typed for an argument.
+	 * <p>
+	 * Read out of the input by the parsed range rather than from the parsed value, because
+	 * the parsed value of a profile argument is a resolver and the thing that failed is
+	 * precisely the resolving. The range is what the parser consumed, so it is the exact
+	 * characters even where the argument is quoted or mid-command.
+	 */
+	private static String rawArgument(CommandContext<CommandSourceStack> ctx, String name) {
+		for (var node : ctx.getNodes()) {
+			if (node.getNode().getName().equals(name)) {
+				return ctx.getInput().substring(node.getRange().getStart(),
+						node.getRange().getEnd());
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Second chance for a name vanilla could not place, and the ambiguity report.
+	 * <p>
+	 * Candidates are offered as suggestions rather than run-links. The command they belong to
+	 * is a punishment about half the time, and one-click banning from a list of near-identical
+	 * names is the exact mistake this path exists to prevent.
+	 */
+	private static NameAndId resolveKnown(CommandContext<CommandSourceStack> ctx, String typed,
+			String argument) {
+
+		KnownPlayers.Match match = KnownPlayers.resolve(ctx.getSource().getServer(), typed);
+		if (match.isResolved()) return match.profile();
+
+		if (!match.isAmbiguous()) {
+			fail(ctx, "Nobody called \"" + typed + "\" has been on this server. Tab-complete "
+					+ "offers everyone who has ever joined, so a name it does not offer is one "
+					+ "this server has not seen.");
+			return null;
+		}
+
+		ctx.getSource().sendFailure(Theme.bad(
+				"\"" + typed + "\" could be " + match.candidates().size() + " different players. "
+						+ "Refusing rather than picking one."));
+
+		String before = commandBefore(ctx, argument);
+		String after = commandAfter(ctx, argument);
+		for (String candidate : match.candidates().stream().limit(8).toList()) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  ", Theme.MUTED)
+					.append(Link.suggest(candidate, before + candidate + after, Theme.ACCENT,
+							"Fills this name in without running the command")), false);
+		}
+		if (match.candidates().size() > 8) {
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  … and " + (match.candidates().size() - 8) + " more", Theme.MUTED), false);
+		}
+		playerSound(ctx, false);
+		return null;
+	}
+
+	/** Everything typed before the argument, so a candidate can be clicked into its place. */
+	private static String commandBefore(CommandContext<CommandSourceStack> ctx, String argument) {
+		for (var node : ctx.getNodes()) {
+			if (node.getNode().getName().equals(argument)) {
+				String head = ctx.getInput().substring(0, node.getRange().getStart());
+				return head.startsWith("/") ? head : "/" + head;
+			}
+		}
+		return "/" + ctx.getInput();
+	}
+
+	/** And everything after it, so a reason typed alongside the name is not thrown away. */
+	private static String commandAfter(CommandContext<CommandSourceStack> ctx, String argument) {
+		for (var node : ctx.getNodes()) {
+			if (node.getNode().getName().equals(argument)) {
+				return ctx.getInput().substring(node.getRange().getEnd());
+			}
+		}
+		return "";
 	}
 
 	// ----------------------------------------------------------------------- status
@@ -2126,7 +2334,7 @@ public final class StaffCommands {
 			throws CommandSyntaxException {
 
 		NameAndId target = singleProfile(ctx, "target");
-		if (target == null) return fail(ctx, "Could not work out who you meant.");
+		if (target == null) return 0;   // singleProfile already said why
 
 		String text = StringArgumentType.getString(ctx, "text");
 		String author = Mc.name(ctx.getSource().getPlayer());
@@ -2411,6 +2619,12 @@ public final class StaffCommands {
 		ctx.getSource().sendSuccess(() -> Theme.prefix()
 				.append(Icon.text("Permission groups", Theme.ACCENT)), false);
 
+		if (groups.groups.isEmpty()) {
+			// Said rather than left blank. A header followed by nothing reads as a command
+			// that broke halfway, and the next thing somebody does is run it again.
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  No groups defined.", Theme.MUTED), false);
+		}
 		groups.groups.forEach((name, nodes) -> ctx.getSource().sendSuccess(() -> Icon.text(
 				"  " + name + " — " + nodes.size() + " entry/entries", Theme.TEXT), false));
 
@@ -2475,6 +2689,396 @@ public final class StaffCommands {
 	 * every command picks up who was acting, from where, and under which build without each
 	 * call site having to pass any of it.
 	 */
+	// -------------------------------------------------------------- last, and undo
+
+	/**
+	 * What to say when a command that needs a player was given none.
+	 * <p>
+	 * Brigadier's own answer is a usage line, which tells somebody the shape of a command they
+	 * have just demonstrated they know the shape of. What they actually forgot is the name —
+	 * so the useful reply is the name, and the commonest right answer is whoever they were
+	 * just looking at.
+	 */
+	private static int needTarget(CommandContext<CommandSourceStack> ctx, String verb) {
+		String last = StaffSession.lastLookedUp(Actor.of(ctx.getSource()));
+
+		if (last == null) {
+			return fail(ctx, "/staff " + verb + " needs a player. Tab-complete offers everyone "
+					+ "who has ever joined, not just whoever is online.");
+		}
+
+		ctx.getSource().sendFailure(Theme.bad("/staff " + verb + " needs a player."));
+		ctx.getSource().sendSuccess(() -> Icon.text("  You last looked at ", Theme.MUTED)
+				.append(Link.suggest(last, "/staff " + verb + " " + last + " ", Theme.ACCENT,
+						"Fills the command in without running it")), false);
+		return 0;
+	}
+
+	/**
+	 * Takes back the last thing this staff member did that can be taken back.
+	 * <p>
+	 * The argument-less form exists because the moment somebody wants it is the moment
+	 * straight after the mistake, when the reference is still on screen and going to find it
+	 * is three seconds they spend watching the wrong thing stay wrong. With a reference given,
+	 * it undoes that instead — the same command either way, so there is nothing to remember.
+	 */
+	private static void registerUndo(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("undo")
+				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
+				.executes(StaffCommands::undoLast)
+				.then(Commands.argument("ref", StringArgumentType.word())
+						.executes(ctx -> undoRef(ctx, OperationId.parse(
+								StringArgumentType.getString(ctx, "ref"))))));
+	}
+
+	private static int undoLast(CommandContext<CommandSourceStack> ctx) {
+		Actor actor = Actor.of(ctx.getSource());
+		OperationId.Ref ref = StaffSession.lastReversible(actor);
+
+		if (ref == null) {
+			return fail(ctx, "You have not done anything undoable this session. Every "
+					+ "destructive command prints a reference — /staff undo <ref> takes that "
+					+ "one back, and /staff op <ref> shows it first.");
+		}
+		return undoRef(ctx, ref);
+	}
+
+	/**
+	 * Undoes one reference.
+	 * <p>
+	 * Each kind is routed to the command that already knows how to reverse it rather than
+	 * reversing it here. A second implementation of "put the blocks back" is a second thing
+	 * that can disagree with the first, and the one that disagrees is the one nobody tested.
+	 */
+	private static int undoRef(CommandContext<CommandSourceStack> ctx, OperationId.Ref ref) {
+		if (ref == null) {
+			return fail(ctx, "That is not an operation reference. They look like P-1234, R-88 "
+					+ "or I-12, and every destructive command prints one.");
+		}
+
+		Actor actor = Actor.of(ctx.getSource());
+		return switch (ref.kind()) {
+			case ROLLBACK -> {
+				StaffSession.forgetReversible(actor);
+				yield runUndo(ctx, "/staff rollback undo " + ref.id());
+			}
+			case INVENTORY -> {
+				StaffSession.forgetReversible(actor);
+				yield runUndo(ctx, "/staff owed undo " + ref.id() + " confirm");
+			}
+			case PUNISHMENT -> undoPunishment(ctx, ref);
+			case CASE -> fail(ctx, "A case is not undone — it is closed. /staff case " + ref.id()
+					+ " cleared, with a reason.");
+		};
+	}
+
+	/** Runs a reversal through its own command, so it gets that command's checks and audit. */
+	private static int runUndo(CommandContext<CommandSourceStack> ctx, String command) {
+		ctx.getSource().getServer().getCommands().performPrefixedCommand(ctx.getSource(), command);
+		return 1;
+	}
+
+	private static int undoPunishment(CommandContext<CommandSourceStack> ctx,
+			OperationId.Ref ref) {
+
+		Punishment p = Mods.punish().byId(Long.parseLong(ref.id()));
+		if (p == null) return fail(ctx, "No punishment with reference " + ref + ".");
+
+		if (!p.inForce()) {
+			// Said rather than silently doing nothing. "Already lifted" and "the command did
+			// not work" look identical from the outside, and only one of them needs acting on.
+			return fail(ctx, ref + " is not in force" + (p.revokedBy() == null
+					? " — it expired." : ", it was lifted by " + p.revokedBy() + "."));
+		}
+		if (!Permissions.check(ctx.getSource(), Nodes.UNPUNISH)) {
+			return fail(ctx, "Lifting a punishment needs " + Nodes.UNPUNISH + ".");
+		}
+
+		StaffSession.forgetReversible(Actor.of(ctx.getSource()));
+		audit(ctx, "/staff undo " + ref);
+
+		int lifted = Mods.punish().revoke(ctx.getSource().getServer(), p.targetUuid(),
+				ctx.getSource().getTextName(), p.type().isBan());
+
+		return lifted == 0
+				? fail(ctx, "Nothing was lifted — it may have expired between the check and now.")
+				: ok(ctx, "Lifted " + ref + " on " + p.targetName() + ".");
+	}
+
+	// ------------------------------------------------------------ rollback warnings
+
+	/**
+	 * Prints what is unusual about a rollback, and stages the confirmation for it.
+	 * <p>
+	 * Called from the preview, because the preview is where a rollback is actually decided.
+	 * The block count is only knowable from a dry run, which is precisely what a preview is —
+	 * so this is the one moment the size can be reported before anything has been written.
+	 */
+	private static void warnAbout(CommandContext<CommandSourceStack> ctx, ServerLevel level,
+			BlockPos centre, int radius, int changes) {
+
+		var warnings = RollbackWarnings.forArea(level, centre, radius, changes);
+		for (var warning : warnings) {
+			ctx.getSource().sendSuccess(() -> warning.severe()
+					? Theme.bad("  " + warning.text())
+					: Theme.warn("  " + warning.text()), false);
+		}
+
+		// Staged whether or not anything was warned about, so the rollback that follows can
+		// tell "previewed and went ahead" from "typed straight in".
+		StaffSession.staged(Actor.of(ctx.getSource()), rollbackKey(level, centre, radius),
+				changes + " change(s) within " + radius + " blocks");
+	}
+
+	/**
+	 * Refuses a rollback over sensitive ground that nobody has previewed.
+	 * <p>
+	 * Only for the severe cases — overlapping spawn, or a size well past the warning line.
+	 * Everything else runs as it always did, because a confirmation step in front of every
+	 * rollback is a confirmation step everybody learns to type without reading, and then the
+	 * one that mattered goes through unread too.
+	 * <p>
+	 * The staged confirmation carries the same expiry as every other one, so a preview from
+	 * twenty minutes ago does not authorise a rollback now: what it described was the ground
+	 * as it was then.
+	 *
+	 * @return true when the command must not proceed
+	 */
+	private static boolean needsPreviewFirst(CommandContext<CommandSourceStack> ctx,
+			ServerLevel level, BlockPos centre, int radius) {
+
+		// Changes are not known yet — nothing has been read. Passing 0 asks only the
+		// geometric questions, which are the ones answerable before doing the work.
+		var severe = RollbackWarnings.forArea(level, centre, radius, 0).stream()
+				.filter(RollbackWarnings.Warning::severe).toList();
+		if (severe.isEmpty()) return false;
+
+		var confirmation = StaffSession.claim(Actor.of(ctx.getSource()),
+				rollbackKey(level, centre, radius));
+		if (confirmation.allowed()) return false;
+
+		ctx.getSource().sendFailure(Theme.bad("Not running this without a preview first."));
+		for (var warning : severe) {
+			ctx.getSource().sendSuccess(() -> Theme.warn("  " + warning.text()), false);
+		}
+		ctx.getSource().sendSuccess(() -> Icon.text("  " + confirmation.refusal(), Theme.MUTED),
+				false);
+		ctx.getSource().sendSuccess(() -> Icon.text("  ", Theme.MUTED)
+				.append(Link.suggest("[preview it]", "/staff preview area " + radius,
+						Theme.ACCENT, "Fills in the preview without running it")), false);
+		playerSound(ctx, false);
+		return true;
+	}
+
+	/** Identifies one rollback area, so a preview of one cannot confirm another. */
+	private static String rollbackKey(ServerLevel level, BlockPos centre, int radius) {
+		return "rollback " + Mc.dimensionId(level) + " " + centre.getX() + "," + centre.getY()
+				+ "," + centre.getZ() + " r" + radius;
+	}
+
+	/**
+	 * Names this account has used, when there is more than one.
+	 * <p>
+	 * Printed to chat rather than into the alts screen, because it belongs to the same
+	 * question and outlives the screen: a rename is the cheapest way to escape a reputation,
+	 * and the only thing that survives it is a UUID nobody types, reads or remembers. An old
+	 * ban record naming somebody nobody can find any more is usually this.
+	 * <p>
+	 * A single name is the normal answer and is not worth a line.
+	 */
+	private static void printNameHistory(CommandContext<CommandSourceStack> ctx,
+			NameAndId target) {
+
+		var names = Mods.identity().namesOf(target.id());
+		if (names.size() < 2) return;
+
+		ctx.getSource().sendSuccess(() -> Theme.warn(
+				target.name() + " has used " + names.size() + " names:"), false);
+
+		for (var past : names) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  " + past.name() + " — ", Theme.TEXT)
+					.append(Link.time(past.firstSeen()))
+					.append(Icon.text(" to ", Theme.MUTED))
+					.append(Link.time(past.lastSeen())), false);
+		}
+	}
+
+	// ------------------------------------------------------------ operation lookup
+
+	/**
+	 * One lookup for every reference a destructive command hands back.
+	 * <p>
+	 * The point of a single command is that staff paste what they were given without knowing
+	 * what sort of thing it is. Somebody reading a ticket that says {@code R-88} should not
+	 * first have to work out that R means rollback, and that rollbacks are looked up with a
+	 * different command from punishments.
+	 * <p>
+	 * The gate here is the general staff one and each branch re-checks its own node, which is
+	 * the right way round: knowing that {@code I-12} exists is not the same as being allowed
+	 * to read what moved.
+	 */
+	private static void registerOperations(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("op")
+				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
+				.then(Commands.argument("ref", StringArgumentType.word())
+						.executes(StaffCommands::showOperation)));
+	}
+
+	private static int showOperation(CommandContext<CommandSourceStack> ctx) {
+		String typed = StringArgumentType.getString(ctx, "ref");
+		OperationId.Ref ref = OperationId.parse(typed);
+
+		if (ref == null) {
+			return fail(ctx, "\"" + typed + "\" is not an operation reference. They look like "
+					+ "P-1234 (punishment), R-88 (rollback), I-12 (inventory change) or "
+					+ "C-4KX9QW1M (case).");
+		}
+
+		return switch (ref.kind()) {
+			case PUNISHMENT -> showPunishmentRef(ctx, ref);
+			case ROLLBACK -> showRollbackRef(ctx, ref);
+			case INVENTORY -> showInventoryRef(ctx, ref);
+			case CASE -> showCaseRef(ctx, ref);
+		};
+	}
+
+	private static int showPunishmentRef(CommandContext<CommandSourceStack> ctx,
+			OperationId.Ref ref) {
+
+		if (!Permissions.check(ctx.getSource(), Nodes.HISTORY)) {
+			return fail(ctx, ref + " is a punishment; reading those needs " + Nodes.HISTORY + ".");
+		}
+		Punishment p = Mods.punish().byId(Long.parseLong(ref.id()));
+		if (p == null) return fail(ctx, "No punishment with reference " + ref + ".");
+
+		CommandSourceStack src = ctx.getSource();
+		src.sendSuccess(() -> Theme.info("Punishment " + ref), false);
+		src.sendSuccess(() -> Icon.text("  " + p.type().name().toLowerCase(java.util.Locale.ROOT)
+				+ " on ", Theme.MUTED).append(Link.subject(p.targetName(), p.targetUuid())), false);
+		src.sendSuccess(() -> Icon.text("  " + p.reasonOr("no reason given"), Theme.TEXT), false);
+		src.sendSuccess(() -> Icon.text("  by " + p.staffName() + ", "
+				+ TimeFormat.full(p.createdAt()), Theme.MUTED), false);
+		src.sendSuccess(() -> Icon.text("  " + state(p), p.inForce() ? Theme.WARN : Theme.MUTED),
+				false);
+
+		// The appeal code is deliberately absent. It belongs to the player, it appears on
+		// their screen, and staff reading it out of a lookup is how an appeal gets filed by
+		// somebody other than the person it is about.
+		if (p.hasCase()) {
+			src.sendSuccess(() -> Icon.text("  case ", Theme.MUTED)
+					.append(Link.caseId(p.caseId())), false);
+		}
+
+		// Who else was on. Worded so it cannot be read as proof anybody saw anything — these
+		// are people worth asking, which is a much weaker claim than witnesses.
+		var seen = io.github.alphain24.staffcore.modules.accountability.Witnesses.forIncident(
+				io.github.alphain24.staffcore.modules.accountability.Witnesses.Kind.PUNISHMENT,
+				ref.id());
+		if (seen != null) {
+			src.sendSuccess(() -> Icon.text("  " + io.github.alphain24.staffcore.modules
+					.accountability.Witnesses.describe(seen), Theme.MUTED), false);
+		}
+		return 1;
+	}
+
+	private static String state(Punishment p) {
+		if (p.inForce()) return "in force, " + p.remaining();
+		if (p.revokedBy() != null) {
+			return "lifted by " + p.revokedBy() + ", " + TimeFormat.full(p.revokedAt());
+		}
+		return p.isExpired() ? "expired " + TimeFormat.words(p.expiresAt()) : "no longer in force";
+	}
+
+	private static int showRollbackRef(CommandContext<CommandSourceStack> ctx,
+			OperationId.Ref ref) {
+
+		if (!Permissions.check(ctx.getSource(), Nodes.ROLLBACK)) {
+			return fail(ctx, ref + " is a rollback; reading those needs " + Nodes.ROLLBACK + ".");
+		}
+		var point = Mods.grief().points().byId(Long.parseLong(ref.id()));
+		if (point == null) {
+			return fail(ctx, "No rollback with reference " + ref + ". Restore points are kept "
+					+ StaffConfig.get().rollbackPointRetentionDays + " day(s), so an older one "
+					+ "has been pruned rather than lost.");
+		}
+
+		CommandSourceStack src = ctx.getSource();
+		src.sendSuccess(() -> Theme.info("Rollback " + ref), false);
+		src.sendSuccess(() -> Icon.text("  by " + point.staff() + ", "
+				+ TimeFormat.full(point.createdAt()), Theme.MUTED), false);
+		src.sendSuccess(() -> Icon.text("  " + point.changes() + " change(s) within "
+				+ point.radius() + " blocks of ", Theme.TEXT)
+				.append(Link.position(point.world(), point.centre())), false);
+		src.sendSuccess(() -> point.isUndone()
+				? Icon.text("  already undone by " + point.undoneBy(), Theme.MUTED)
+				: Link.suggest("  [undo this rollback]", "/staff rollback undo " + point.id(),
+						Theme.WARN, "Fills the command in without running it"), false);
+		return 1;
+	}
+
+	private static int showInventoryRef(CommandContext<CommandSourceStack> ctx,
+			OperationId.Ref ref) {
+
+		if (!Permissions.check(ctx.getSource(), Nodes.INVSEE)) {
+			return fail(ctx, ref + " is an inventory change; reading those needs "
+					+ Nodes.INVSEE + ".");
+		}
+		long id = Long.parseLong(ref.id());
+		var reversal = io.github.alphain24.staffcore.inventory.InventoryGateway
+				.describeReversal(id);
+
+		CommandSourceStack src = ctx.getSource();
+		src.sendSuccess(() -> Theme.info("Inventory change " + ref), false);
+		src.sendSuccess(() -> Icon.text("  " + reversal.count() + " item(s)"
+				+ (reversal.items() == null || reversal.items().isBlank()
+						? "" : ": " + reversal.items()), Theme.TEXT), false);
+
+		if (reversal.targetName() != null && !reversal.targetName().isBlank()) {
+			src.sendSuccess(() -> Icon.text("  on ", Theme.MUTED)
+					.append(Link.subject(reversal.targetName(), reversal.targetId())), false);
+		}
+		src.sendSuccess(() -> reversal.possible()
+				? Link.suggest("  [give it back]", "/staff owed undo " + id, Theme.WARN,
+						"Fills the command in without running it")
+				: Icon.text("  cannot be reversed: " + reversal.problem(), Theme.MUTED), false);
+		return 1;
+	}
+
+	private static int showCaseRef(CommandContext<CommandSourceStack> ctx, OperationId.Ref ref) {
+		var found = Mods.cases().store().byId(ref.id());
+		if (found.isEmpty()) return fail(ctx, "No case with reference " + ref + ".");
+
+		audit(ctx, "/staff op " + ref, found.get().id());
+		CaseView.print(ctx.getSource(), found.get());
+		return 1;
+	}
+
+	/**
+	 * Confirms a destructive action and hands back the reference to what it did.
+	 * <p>
+	 * The reference is why this is a helper rather than each command building its own line:
+	 * an action whose id only the database knows is an action nobody can put in a ticket,
+	 * quote to the player, or ask an admin about at four in the morning.
+	 */
+	private static int okWithOp(CommandContext<CommandSourceStack> ctx, String message,
+			OperationId.Ref ref) {
+
+		// Recorded here rather than at each call site, so a command added later gets
+		// /staff undo without anybody having to remember it exists. A case is the one kind
+		// that is not undone — it is closed, with a reason.
+		if (ref.kind() != OperationId.Kind.CASE) {
+			StaffSession.didSomethingUndoable(Actor.of(ctx.getSource()), ref);
+		}
+
+		ctx.getSource().sendSuccess(() -> Theme.good(message)
+				.append(Icon.text("  ", Theme.MUTED))
+				.append(Link.operation(ref.toString(), ref.command()))
+				.append(Icon.text("  or ", Theme.MUTED))
+				.append(Link.suggest("[undo]", "/staff undo " + ref, Theme.WARN,
+						"Fills in the undo without running it")), false);
+		return 1;
+	}
+
 	private static void audit(CommandContext<CommandSourceStack> ctx, String command) {
 		audit(ctx, command, null);
 	}

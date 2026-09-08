@@ -26,6 +26,17 @@ public class ConfirmMenu extends Gui {
 	private final Runnable onConfirm;
 	private final Runnable onCancel;
 
+	/**
+	 * When this screen was built.
+	 * <p>
+	 * A confirm screen holds a live action and can sit open indefinitely — through a lunch
+	 * break, through the player logging off, through another staff member handling it. What
+	 * the screen describes is the server as it was when the screen opened, so past
+	 * {@code confirmExpirySeconds} the button refuses and says why rather than running an
+	 * irreversible action against a world that has moved on.
+	 */
+	private final long openedAt = System.currentTimeMillis();
+
 	public static void open(ServerPlayer viewer, String what, ItemStack subject,
 			Runnable onConfirm, Runnable onCancel) {
 		Guis.navigate(viewer, Theme.title("Confirm", what),
@@ -46,6 +57,14 @@ public class ConfirmMenu extends Gui {
 		set(SUBJECT, Icon.of(subject).glow().build());
 
 		button(CONFIRM, Theme.confirmButton("Do it."), click -> {
+			if (!io.github.alphain24.staffcore.command.StaffSession.stillFresh(openedAt)) {
+				Sfx.deny(viewer);
+				viewer.sendSystemMessage(Theme.bad(
+						"This confirmation has expired. What it described was the server as it "
+								+ "was when the screen opened; run the command again."));
+				Guis.close(viewer);
+				return;
+			}
 			Sfx.click(viewer);
 			onConfirm.run();
 		});

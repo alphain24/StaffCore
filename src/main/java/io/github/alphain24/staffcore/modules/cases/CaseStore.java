@@ -512,13 +512,17 @@ public final class CaseStore {
 			String body) throws SQLException {
 
 		try (PreparedStatement ps = conn.prepareStatement("""
-				INSERT INTO case_events (case_id, at, actor, kind, body) VALUES (?,?,?,?,?)
+				INSERT INTO case_events (case_id, at, actor, kind, body,
+				                         server_version, mod_version)
+				VALUES (?,?,?,?,?,?,?)
 				""")) {
 			ps.setString(1, caseId);
 			ps.setLong(2, System.currentTimeMillis());
 			ps.setString(3, actor == null ? Case.SYSTEM : actor);
 			ps.setString(4, kind);
 			ps.setString(5, body);
+			ps.setString(6, Versions.minecraft());
+			ps.setString(7, Versions.mod());
 			ps.executeUpdate();
 		}
 		return true;
