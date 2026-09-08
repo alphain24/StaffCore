@@ -1072,6 +1072,21 @@ final class Schema {
 							)
 							""");
 				}
+			},
+
+			// 23 - why a case was closed, as a value rather than as free text.
+			//
+			// Cleared cases are the training data a detection threshold is validated against,
+			// and that is only true of some of them. "I looked and they were fine" and "nobody
+			// got round to it" both leave a case marked cleared, and only the first is evidence
+			// about the detector. Without this column the corpus fills with the second kind,
+			// because on a busy server the second kind is far more common.
+			//
+			// Existing closed cases are left null on purpose. Backfilling them as investigated
+			// would invent a judgement nobody made, and every one of those would then be a vote
+			// that the detector was wrong.
+			conn -> {
+				addColumn(conn, "cases", "resolution_reason", "TEXT");
 			}
 	);
 
@@ -1116,6 +1131,7 @@ final class Schema {
 			{"command_log", "case_id", "TEXT"},
 			{"command_log", "server_version", "TEXT"},
 			{"punishments", "appeal_code", "TEXT"},
+			{"cases", "resolution_reason", "TEXT"},
 			{"punishments", "server_version", "TEXT"},
 			{"punishments", "mod_version", "TEXT"},
 			{"inventory_audit", "server_version", "TEXT"},

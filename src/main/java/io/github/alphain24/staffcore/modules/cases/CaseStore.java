@@ -174,6 +174,16 @@ public final class CaseStore {
 			// when it happened.
 			StaffCore.storage().inTransaction(conn -> {
 				setStatus(conn, id, Case.Status.STALE);
+				// Recorded as a reason too, and not only as a status. The corpus decides what
+				// counts by reading the reason, and a row with none is merely unlabelled —
+				// which would put every timeout into the same bucket as a case closed before
+				// reasons existed rather than into the one that names why it does not count.
+				try (PreparedStatement reason = conn.prepareStatement(
+						"UPDATE cases SET resolution_reason = ? WHERE id = ?")) {
+					reason.setString(1, Resolution.STALE.stored());
+					reason.setString(2, id);
+					reason.executeUpdate();
+				}
 				appendEvent(conn, id, Case.SYSTEM, "stale",
 						"no signals or staff activity for " + days + " days");
 			});
@@ -188,21 +198,37 @@ public final class CaseStore {
 
 	/** Moves a case to a new status, recording who and why. Never deletes anything. */
 	public boolean setStatus(String caseId, Case.Status status, String actor, String reason) {
+		return setStatus(caseId, status, actor, reason, null);
+	}
+
+	/**
+	 * @param why the resolution reason, or null when closing without one
+	 *            <p>
+	 *            Kept separate from the free-text {@code reason}, which stays free text. The
+	 *            note is what a person reads; this is what the corpus counts, and a corpus that
+	 *            counted prose would be reading English to decide whether somebody was cleared.
+	 */
+	public boolean setStatus(String caseId, Case.Status status, String actor, String reason,
+			Resolution why) {
+
 		if (!ready()) return false;
 
 		return StaffCore.storage().inTransaction(conn -> {
 			setStatus(conn, caseId, status);
 			if (status.isClosed()) {
 				try (PreparedStatement ps = conn.prepareStatement(
-						"UPDATE cases SET closed_at = ?, closed_by = ?, resolution = ? WHERE id = ?")) {
+						"UPDATE cases SET closed_at = ?, closed_by = ?, resolution = ?, "
+								+ "resolution_reason = ? WHERE id = ?")) {
 					ps.setLong(1, System.currentTimeMillis());
 					ps.setString(2, actor);
 					ps.setString(3, reason);
-					ps.setString(4, caseId);
+					ps.setString(4, why == null ? null : why.stored());
+					ps.setString(5, caseId);
 					ps.executeUpdate();
 				}
 			}
-			appendEvent(conn, caseId, actor, status.stored(), reason);
+			appendEvent(conn, caseId, actor, status.stored(),
+					why == null ? reason : why.label() + " — " + reason);
 		});
 	}
 
@@ -536,6 +562,7 @@ public final class CaseStore {
 				rs.getString("opened_by"), rs.getString("assigned_to"),
 				rs.wasNull() ? null : closedAt, rs.getString("closed_by"),
 				rs.getString("resolution"), rs.getString("server_version"),
-				rs.getString("mod_version"));
+				rs.getString("mod_version"),
+				Resolution.of(rs.getString("resolution_reason")));
 	}
 }

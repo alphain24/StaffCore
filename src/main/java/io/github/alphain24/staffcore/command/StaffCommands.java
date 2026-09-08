@@ -1193,6 +1193,19 @@ public final class StaffCommands {
 	 * found one and followed it scores as luckier than random, because they were.
 	 */
 	private static void explainTheModel(CommandContext<CommandSourceStack> ctx) {
+		// Size and composition together, always. "Validated against 209 resolved cases" and
+		// "against 9 real clears and 200 timeouts" are the same query and completely different
+		// amounts of evidence, and the first is what a bare count looks like.
+		var corpus = io.github.alphain24.staffcore.modules.cases.TrainingCorpus.composition();
+		ctx.getSource().sendSuccess(() -> Icon.text("  Threshold evidence: " + corpus.describe(),
+				corpus.isEnoughToTuneAgainst() ? Theme.MUTED : Theme.WARN), false);
+
+		if (!corpus.isEnoughToTuneAgainst()) {
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  Not yet enough to move a threshold on. Clear cases with a reason as you "
+							+ "investigate them and this fills up.", Theme.MUTED), false);
+		}
+
 		ctx.getSource().sendSuccess(() -> Icon.text(
 				"  This is how unlikely the result is for somebody digging without knowing "
 						+ "where the ore was.", Theme.MUTED), false);
@@ -1519,6 +1532,7 @@ public final class StaffCommands {
 		registerCases(staff);
 		registerOperations(staff);
 		registerCanaryDiagnostic(staff);
+		registerCorpus(staff);
 		registerUndo(staff);
 		registerAccountability(staff);
 		registerPerms(staff);
@@ -2189,10 +2203,24 @@ public final class StaffCommands {
 										Mc.name(ctx.getSource().getPlayer()))))
 						.then(Commands.literal("investigating")
 								.executes(ctx -> caseStatus(ctx, Case.Status.INVESTIGATING, null)))
+						// A clear takes a reason before it takes a note, because the reason is
+						// what the corpus counts and the note is what a person reads. Without
+						// it, "I looked and they were fine" and "nobody got round to this" are
+						// the same row, and the second kind is far more common.
 						.then(Commands.literal("cleared")
-								.then(Commands.argument("why", StringArgumentType.greedyString())
-										.executes(ctx -> caseStatus(ctx, Case.Status.CLEARED,
-												StringArgumentType.getString(ctx, "why")))))
+								.then(Commands.argument("reason", StringArgumentType.word())
+										.suggests((c, b) -> {
+											for (var r : io.github.alphain24.staffcore.modules
+													.cases.Resolution.values()) {
+												b.suggest(r.stored(), () -> r.label());
+											}
+											return b.buildFuture();
+										})
+										.executes(ctx -> caseCleared(ctx, ""))
+										.then(Commands.argument("note",
+												StringArgumentType.greedyString())
+												.executes(ctx -> caseCleared(ctx,
+														StringArgumentType.getString(ctx, "note"))))))
 						.then(Commands.literal("actioned")
 								.then(Commands.argument("why", StringArgumentType.greedyString())
 										.executes(ctx -> caseStatus(ctx, Case.Status.ACTIONED,
@@ -2270,6 +2298,43 @@ public final class StaffCommands {
 		return ok(ctx, "Case " + found.id() + " assigned to " + assignee + ".");
 	}
 
+	/**
+	 * Clears a case with a reason that the corpus can count.
+	 * <p>
+	 * The reason is a value and the note is free text, and keeping them apart is the whole
+	 * point: a corpus that read prose to decide whether somebody was cleared would be reading
+	 * English to decide whether to move a threshold.
+	 */
+	private static int caseCleared(CommandContext<CommandSourceStack> ctx, String note) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+
+		String typed = StringArgumentType.getString(ctx, "reason");
+		var reason = io.github.alphain24.staffcore.modules.cases.Resolution.of(typed);
+
+		if (reason == null) {
+			return fail(ctx, "\"" + typed + "\" is not a reason. Use one of: "
+					+ io.github.alphain24.staffcore.modules.cases.Resolution.names());
+		}
+
+		String actor = Mc.name(ctx.getSource().getPlayer());
+		Mods.cases().store().setStatus(found.id(), Case.Status.CLEARED, actor, note, reason);
+		audit(ctx, "/staff case " + found.id() + " cleared " + reason.stored(), found.id());
+
+		ctx.getSource().sendSuccess(() -> Theme.good(
+				"Case " + found.id() + " cleared — " + reason.label() + "."), false);
+
+		// Said out loud, and only when it is true. A clear that counts is the corpus a
+		// threshold change gets validated against; one that does not is still a closed case
+		// and is not evidence about the detector, and telling somebody otherwise would be the
+		// tool taking credit for a judgement nobody made.
+		ctx.getSource().sendSuccess(() -> Icon.text(reason.countsAsNegative()
+				? "  Kept as an example of what should not have been flagged."
+				: "  Not counted as evidence about the detector — nobody judged whether the "
+						+ "flag was right.", Theme.MUTED), false);
+		return 1;
+	}
+
 	private static int caseStatus(CommandContext<CommandSourceStack> ctx, Case.Status status,
 			String reason) {
 
@@ -2283,14 +2348,6 @@ public final class StaffCommands {
 		ctx.getSource().sendSuccess(() -> Theme.good(
 				"Case " + found.id() + " is now " + status.stored() + "."), false);
 
-		if (status == Case.Status.CLEARED) {
-			// Said out loud because it is the point of clearing rather than a side effect:
-			// a cleared case is the corpus a threshold change gets validated against, which
-			// is the permanent fix for tuning a detector on how often it speaks.
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  Kept as an example of what should not have been flagged.",
-					Theme.MUTED), false);
-		}
 		return 1;
 	}
 
@@ -2918,6 +2975,40 @@ public final class StaffCommands {
 	 * cheat on their own server has a much shorter route than this. Being unable to confirm the
 	 * feature works at all is the larger risk.
 	 */
+	/**
+	 * What the detection thresholds are actually justified against.
+	 * <p>
+	 * The tuning mistake this exists to prevent is written into this repository's history: the
+	 * last time these numbers moved, the reason recorded was that the detector was too quiet.
+	 * That reason cannot be wrong, and nothing said who it would start speaking about.
+	 */
+	private static void registerCorpus(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("corpus")
+				.requires(src -> Permissions.check(src, Nodes.SECURITY_CHECK))
+				.executes(ctx -> {
+					var corpus = io.github.alphain24.staffcore.modules.cases.TrainingCorpus
+							.composition();
+
+					ctx.getSource().sendSuccess(() -> Theme.info(
+							"Cases the thresholds can be validated against"), false);
+					ctx.getSource().sendSuccess(() -> Icon.text("  " + corpus.describe(),
+							Theme.TEXT), false);
+					ctx.getSource().sendSuccess(() -> Icon.text(
+							"  Only a case somebody investigated and cleared counts as evidence "
+									+ "the detector was wrong. A case that went stale, was "
+									+ "closed unlooked-at, or ended because the player left is "
+									+ "not a judgement about anybody.", Theme.MUTED), false);
+
+					if (!corpus.isEnoughToTuneAgainst()) {
+						ctx.getSource().sendSuccess(() -> Theme.warn(
+								"  Below thirty usable cases, moving a threshold is moving it on "
+										+ "an anecdote that will be defended afterwards with a "
+										+ "number."), false);
+					}
+					return 1;
+				}));
+	}
+
 	private static void registerCanaryDiagnostic(LiteralArgumentBuilder<CommandSourceStack> staff) {
 		staff.then(Commands.literal("canary")
 				.requires(src -> Permissions.check(src, Nodes.RELOAD))

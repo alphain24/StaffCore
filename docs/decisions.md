@@ -609,6 +609,75 @@ way that makes it silent. The verifier needs a verifier, and the cheapest one is
 failure.
 ---
 
+## The feedback loop, and why a clear needs a reason
+
+**Date:** 2026-09-08
+
+The tuning mistake this fixes is written into this repository's history. The last time the
+x-ray thresholds moved, the reason recorded was that the detector was too quiet. That reason
+cannot be wrong — any bar can be lowered until a feature speaks — and nothing anywhere could say
+who it would start speaking about.
+
+A resolved case answers that. Every cleared case is a player the detector flagged and a human
+then decided was fine; every actioned one is a player the detector flagged and a human agreed
+about. Those are labels, and a threshold can be measured against them instead of against its own
+volume.
+
+### Cleared is not one thing
+
+"I looked at the tunnel and they were following a vein they could see" and "nobody got round to
+this and it aged out" both leave a case marked cleared. They are completely different labels
+wearing the same status, and only the first is evidence about the detector.
+
+With one value for both, the corpus fills with the second kind — because on a busy server the
+second kind is far more common — and a threshold validated against it drifts toward whatever
+staff had capacity for rather than toward what was true. Nothing about that failure announces
+itself. The number simply gets larger and means less.
+
+So a clear carries a reason, and **only one reason counts as a negative**:
+
+| Reason | Counts as a negative? |
+|---|---|
+| `investigated` — looked into it, they were not cheating | **yes** |
+| `unclear` — looked into it, could not tell | no |
+| `not-investigated` — closed without looking | no |
+| `left` — subject left the server | no |
+| `duplicate` — same incident as another case | no |
+| `stale` — aged out with nobody acting | no |
+
+An actioned case is a positive whatever note is attached: somebody punished a player over it,
+which is as clear a statement that the detector was right as this system can produce.
+
+The `unclear` exclusion is the one most worth having. An inconclusive case is not evidence the
+detector was wrong, and counting it as one would train the threshold to fire less often on
+exactly the cases that are hardest to judge — which is the population where it earns its keep.
+
+### Size is never quoted without composition
+
+"Validated against 209 resolved cases" and "validated against 9 real clears and 200 timeouts"
+describe the same query and completely different amounts of evidence. The first is what a bare
+count looks like.
+
+`TrainingCorpus.Composition` carries both, and nothing returns a size on its own. It appears
+under every `/staff xray` report and in `/staff corpus`, and below thirty usable cases both say
+so plainly rather than letting a number stand in for a mandate.
+
+### Two exclusions that are about honesty rather than statistics
+
+- **Cases closed before the reason column existed are unlabelled, not innocent.** Backfilling
+  them as investigated would invent a judgement nobody made, and every invented one would be a
+  vote that the detector was wrong.
+- **A reason the enum cannot read is excluded, not guessed at.** Silently mapping an unknown
+  value to the one that counts as a negative is how a schema change becomes a shifted threshold.
+
+### The staleness sweep records its own reason
+
+It sets `stale` as a value, not only as a status. A row with no reason would be merely
+unlabelled — the same bucket as a case closed before reasons existed — rather than the bucket
+that names why it does not count. The distinction matters when reading the composition: one is
+"we did not ask", the other is "nobody answered".
+---
+
 # Moved from the README
 
 The README had grown to eight hundred lines, and the reasoning was the best material in it and

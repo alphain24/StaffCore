@@ -16,7 +16,19 @@ import java.util.UUID;
  */
 public record Case(String id, UUID subjectId, String subjectName, Status status, int severity,
 		String summary, long openedAt, String openedBy, String assignedTo, Long closedAt,
-		String closedBy, String resolution, String serverVersion, String modVersion) {
+		String closedBy, String resolution, String serverVersion, String modVersion,
+		/**
+		 * Why it was closed, as a value. Null for anything closed before the column existed —
+		 * which the corpus treats as unknown rather than as innocence, because backfilling it
+		 * would invent a judgement nobody made.
+		 */
+		Resolution resolutionReason) {
+
+	/** Whether this case is evidence the detector was wrong about somebody. */
+	public boolean isCorpusNegative() {
+		return status == Status.CLEARED && resolutionReason != null
+				&& resolutionReason.countsAsNegative();
+	}
 
 	/** Opened by the system rather than by a person. */
 	public static final String SYSTEM = "SYSTEM";
