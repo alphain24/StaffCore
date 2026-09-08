@@ -315,9 +315,16 @@ public class SecurityModule implements Module {
 				// it on sight throws that away along with the problem.
 				vault.deposit(player, "system", stack.copy(),
 						"Staff tool held outside staff mode (" + where + ")");
-				held.setItem(i, ItemStack.EMPTY);
-				held.setChanged();
-				player.containerMenu.broadcastChanges();
+
+				// Through the gateway like every other removal, matched by identity so a
+				// second copy of the same tool in another slot is dealt with on its own pass
+				// rather than swept up under one audit row that names the wrong slot.
+				ItemStack leaked = stack;
+				io.github.alphain24.staffcore.inventory.InventoryGateway.removeMatching(player,
+						io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, io.github.alphain24.staffcore.permission.Actor.system(),
+						"staff tool held outside staff mode (" + where + ")",
+						candidate -> candidate == leaked);
+
 				alertOnce(server, player, stack.getItem(), "was keeping a staff tool ("
 						+ plain(stack) + ") in their " + where + " — removed to the vault");
 				continue;
@@ -334,13 +341,26 @@ public class SecurityModule implements Module {
 		}
 	}
 
+	/**
+	 * Reports a contraband find once per item per player.
+	 * <p>
+	 * Emitted as a signal rather than shouted directly. Contraband is the clearest example of
+	 * why: one banned item is worth recording and is not worth interrupting anybody about,
+	 * and the case model is the only thing that can hold that distinction. Below the
+	 * auto-open threshold the finding is kept against the player and says nothing; a player
+	 * who is also being flagged for something else has it join that case, which is precisely
+	 * the connection the old alert channel could never make.
+	 */
 	private void alertOnce(MinecraftServer server, ServerPlayer player, Item item, String detail) {
 		Set<Item> seen = reported.computeIfAbsent(player.getUUID(), k -> new java.util.HashSet<>());
 		if (!seen.add(item)) return;
 
-		Mods.alerts().onSecurityFlag(server, Mc.name(player),
+		Mods.cases().emit(server, io.github.alphain24.staffcore.modules.cases.Signal.Type.CONTRABAND,
+				player.getUUID(), Mc.name(player),
+				StaffConfig.get().contrabandSignalConfidence,
 				"%s at %d, %d, %d".formatted(detail,
-						player.getBlockX(), player.getBlockY(), player.getBlockZ()));
+						player.getBlockX(), player.getBlockY(), player.getBlockZ()),
+				"security");
 	}
 
 	// ----------------------------------------------------------- container contraband
@@ -402,8 +422,15 @@ public class SecurityModule implements Module {
 						"Staff tool found in a container at %d, %d, %d".formatted(
 								pos.getX(), pos.getY(), pos.getZ()),
 						server);
+				// gateway-exempt: a chest in the world, not a player's inventory. The vault
+				// deposit above is the record of where the tool went.
 				container.setItem(slot, ItemStack.EMPTY);
 				container.setChanged();
+				// An alert rather than a signal, deliberately. A signal is about a person,
+				// and the person named here is whoever opened the chest — the finder, not
+				// the owner. Emitting a signal would open a case against somebody for
+				// reporting something, which is the worst possible thing to do to the person
+				// who just helped.
 				Mods.alerts().onSecurityFlag(server, Mc.name(opener),
 						"a staff tool (%s) was sitting in a container at %d, %d, %d — removed to the vault"
 								.formatted(plain(stack), pos.getX(), pos.getY(), pos.getZ()));
@@ -416,6 +443,9 @@ public class SecurityModule implements Module {
 			String key = world + ":" + pos.asLong() + ":" + Mc.itemId(stack.getItem());
 			if (containerReported.putIfAbsent(key, Boolean.TRUE) != null) continue;
 
+			// Same reasoning: the contraband is in the world, and the only name available is
+			// the person who happened to open the chest. Until a container can be attributed
+			// to whoever filled it, this stays an alert for a human to follow up.
 			Mods.alerts().onSecurityFlag(server, Mc.name(opener),
 					"a container at %d, %d, %d holds %d× %s%s — opened by %s".formatted(
 							pos.getX(), pos.getY(), pos.getZ(), stack.getCount(), plain(stack),
@@ -483,7 +513,16 @@ public class SecurityModule implements Module {
 			lastReported.put(player.getUUID(), report.confidence());
 
 			if (report.isSuspicious()) {
-				Mods.alerts().onSuspiciousMining(server, Mc.name(player), report.headline());
+				// A verdict, not a shout. The detector's own confidence is carried through so
+				// a marginal 66 and a flagrant 96 are not treated as the same amount of "go
+				// and look" once they reach the case list — and so a marginal one about a
+				// player already under investigation lands in that case rather than scrolling
+				// past on its own.
+				Mods.cases().emit(server,
+						io.github.alphain24.staffcore.modules.cases.Signal.Type.XRAY,
+						player.getUUID(), Mc.name(player),
+						Math.max(cfg.xraySignalConfidence, report.confidence()),
+						report.headline(), "security");
 			} else {
 				// Deliberately not an alert. This exists so that silence is distinguishable
 				// from absence — a server owner who never sees anything should be able to

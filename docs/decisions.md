@@ -207,6 +207,58 @@ they should be read as recollection rather than record.
 
 ---
 
+## Inventory mutation paths
+
+**Date:** 2026-09-07
+
+Remediation item 7 described "four independent paths" that write to player inventories:
+rollback debit, invsee edit, snapshot restore, vault return. That enumeration was **wrong**
+twice over. It routed a fifth it had not named — pending settlement — and the Gate 0 audit
+found two more origins writing directly, outside the gateway entirely.
+
+The guarantee worth stating is not "there are four paths". It is **every mutation goes through
+one door**, which is now enforced mechanically by `GatewayIsTheOnlyDoorTest` rather than
+asserted in prose.
+
+There are seven mutation origins:
+
+| Origin | What it is | Named in item 7? |
+|---|---|---|
+| `ROLLBACK_DEBIT` | taking items back after a rollback | yes |
+| `INVSEE_EDIT` | a staff member editing an inventory | yes |
+| `SNAPSHOT_RESTORE` | writing a recorded inventory back | yes |
+| `VAULT_RETURN` | handing a confiscated item back | yes |
+| `CONFISCATION` | taking contraband, or a leaked staff tool | **no — found by Gate 0** |
+| `STAFF_MODE_STASH` | clearing on clock-on, restoring on clock-off | **no — found by Gate 0** |
+| `PENDING_SETTLEMENT` | delivering or collecting while offline | yes |
+
+The vault showed the asymmetry best: handing an item *back* was audited through the gateway
+while *taking* it was not.
+
+### The audit floor
+
+The date this matters on is not the date the gateway was written. It is the date each origin
+started going through it — before that, those items moved with **no audit row at all**, and an
+investigation reading `inventory_audit` for an old incident will find nothing and must not read
+that absence as evidence that nothing happened.
+
+There are two floors, because the door closed in two stages.
+
+| From | Commit | Origins that began writing an audit row |
+|---|---|---|
+| **2026-09-06** | `362fb7d` — item 7, one door for every write | `ROLLBACK_DEBIT`, `INVSEE_EDIT`, `SNAPSHOT_RESTORE`, `VAULT_RETURN`, `PENDING_SETTLEMENT` |
+| **2026-09-07** | `68a79dd` — Gate 0, close the two gaps the audit found | `CONFISCATION` (contraband, the per-slot button, the leaked-staff-tool sweep), `STAFF_MODE_STASH` (clearing on clock-on and restoring on clock-off), and the vault *take* side |
+
+So: an inventory question about anything before 2026-09-06 has no audit trail in this mod at
+all. A question about confiscation or the staff-mode stash between 2026-09-06 and 2026-09-07
+has one only for the five origins in the first row — a staff member who confiscated an item on
+the 6th left no record of it here, and that is a gap in the data rather than a clean sheet.
+
+`GatewayIsTheOnlyDoorTest` is what stops a third floor being added later without anybody
+noticing, and it dates from `68a79dd` too.
+
+---
+
 # Moved from the README
 
 The README had grown to eight hundred lines, and the reasoning was the best material in it and

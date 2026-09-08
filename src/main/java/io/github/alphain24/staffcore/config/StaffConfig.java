@@ -358,6 +358,147 @@ public final class StaffConfig {
 	 */
 	public boolean rootAliases = false;
 
+	// ---- accountability ------------------------------------------------------
+
+	/**
+	 * Punishments one staff member may issue in a minute. 0 disables.
+	 * <p>
+	 * Not about ordinary busy shifts — four a minute is a great deal of moderating. This is
+	 * what stands between a compromised staff account and the whole player base: forty bans in
+	 * a minute is a dead server, four is a bad evening, and only one of those is recoverable.
+	 * <p>
+	 * Enforced inside {@code PunishmentModule.apply} rather than in the command, so the GUI,
+	 * the API and any future path get it without being told about it.
+	 */
+	public int maxPunishmentsPerMinute = 6;
+
+	/**
+	 * Rollbacks one staff member may run in a minute. 0 disables.
+	 * <p>
+	 * Lower than punishments because each one is bigger: a rollback rewrites an area and
+	 * charges people for what it puts back, and running several in quick succession is far
+	 * more often a mistake being repeated than a job being done.
+	 */
+	public int maxRollbacksPerMinute = 3;
+
+	/**
+	 * Require a second staff member to confirm a mass rollback, IP ban or inventory edit.
+	 * <p>
+	 * <b>Read the cost before turning this off, and before leaving it on.</b> With it on, a
+	 * server with one admin online cannot do any of those three until somebody else logs in —
+	 * and a staff member holding every permission still cannot approve their own, because an
+	 * approval you can grant yourself is a confirmation prompt with extra steps.
+	 * <p>
+	 * The value is not the permission check. It is a second person reading what is about to
+	 * happen while the first says it out loud.
+	 */
+	public boolean requireTwoPersonApproval = true;
+
+	/** How long a staged action waits for its second signature, in minutes. */
+	public int approvalExpiryMinutes = 10;
+
+	// ---- warnings ------------------------------------------------------------
+
+	/**
+	 * Points a warning is worth when nobody says otherwise.
+	 * <p>
+	 * One, so the total reads as a count of warnings until somebody wants finer grain. A
+	 * scale that starts complicated is one nobody tunes.
+	 */
+	public int warnPointsDefault = 1;
+
+	/**
+	 * Days before a warning stops counting towards escalation. 0 keeps them forever.
+	 * <p>
+	 * Decay is not softness. A player warned three times in a week is a different person from
+	 * one warned three times across two years, and a ladder that cannot tell those apart
+	 * eventually bans somebody for having been around a long time. The warning itself is
+	 * never deleted — only its weight in the total goes.
+	 */
+	public int warnDecayDays = 90;
+
+	/**
+	 * Points at which the ladder starts suggesting something heavier. 0 disables it.
+	 * <p>
+	 * A <b>suggestion</b>, always. Crossing this never punishes anybody — it puts a
+	 * recommendation in front of a staff member who confirms or ignores it.
+	 * <p>
+	 * That is deliberate and worth not "fixing" later. An automatic ladder fires on a count
+	 * rather than a judgement, it is a rule players learn to sit just underneath, and the case
+	 * where it is most likely to be wrong — somebody warned repeatedly by one staff member
+	 * with a grudge — is exactly the case where a second human is the only safeguard there is.
+	 */
+	public int warnEscalationPoints = 3;
+
+	// ---- cases ---------------------------------------------------------------
+
+	/**
+	 * Confidence at or above which a signal opens a case on its own.
+	 * <p>
+	 * The knob that decides how noisy the case list is, and the one worth getting right. Set
+	 * it low and every observation becomes a case, which trains staff to close cases without
+	 * reading them — at which point the case model is worse than the alert channel it
+	 * replaced. Set it high and a player accumulating weak signals is never looked at.
+	 * <p>
+	 * Below this, a signal is still <em>kept</em> and shown in that player's context panel; it
+	 * just does not interrupt anybody. And a signal of any strength joins a case that is
+	 * already open, because three weak things about one player is the shape of a real problem
+	 * and is exactly what a scrolling alert channel could never show.
+	 */
+	public int caseAutoOpenSeverity = 70;
+
+	/**
+	 * Days without a signal or any staff activity before a case is marked stale. 0 disables.
+	 * <p>
+	 * Stale is not a deletion and not a verdict. It means nothing has happened here for a
+	 * while, which is worth knowing and is not the same as deciding the player was innocent —
+	 * a case that went quiet because everybody was busy reads exactly like one that went quiet
+	 * because there was nothing in it, and only a human can tell those apart.
+	 */
+	public int caseStaleDays = 14;
+
+	/**
+	 * How much weight a contraband find carries as a signal, 0-100.
+	 * <p>
+	 * Below {@link #caseAutoOpenSeverity} on purpose. One banned item is worth recording and
+	 * is not worth interrupting anybody about — it is far more often a leftover from a
+	 * gamemode change or an old world than evidence of anything. What makes it useful is that
+	 * it joins a case somebody is already working, where "and they are carrying operator
+	 * tooling" is exactly the corroboration an investigator wants.
+	 */
+	public int contrabandSignalConfidence = 45;
+
+	/**
+	 * How much weight a mass-grief burst carries as a signal, 0-100.
+	 * <p>
+	 * High, because unlike the other detectors this one is watching something that already
+	 * happened rather than inferring intent: somebody really did break that many blocks that
+	 * fast. What it cannot know is whether they were allowed to, which is why it opens a case
+	 * for a human rather than acting.
+	 */
+	public int massGriefSignalConfidence = 75;
+
+	/**
+	 * How much weight an x-ray verdict carries when it is reported as a signal.
+	 * <p>
+	 * The detector's own confidence is used where it has one; this is the floor applied to a
+	 * verdict that cleared the alert threshold. Set below {@link #caseAutoOpenSeverity} to
+	 * keep x-ray findings out of the case list entirely, which is a reasonable thing to want
+	 * while tuning on a new server.
+	 */
+	public int xraySignalConfidence = 80;
+
+	/**
+	 * How much weight a player report carries as a signal, 0-100.
+	 * <p>
+	 * The one signal produced by a human who watched something happen and chose to tell
+	 * somebody, which is a better claim on attention than any heuristic here. Set at the
+	 * auto-open threshold so a report opens a case on its own — the report queue already
+	 * exists, and this makes the report joinable to whatever else is known about that player
+	 * rather than living in a separate list.
+	 */
+	public int reportSignalConfidence = 70;
+
 	// ---- security ------------------------------------------------------------
 	//
 	// Every x-ray default comes from XrayTuning rather than being written here. The numbers

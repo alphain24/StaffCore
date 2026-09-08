@@ -1,6 +1,19 @@
 # Changelog
 
-## 1.0.0 — unreleased
+## 1.1.0 — unreleased
+
+The case model and everything that hangs off it. In progress.
+
+### Added
+
+- **Cases.** Every detector now emits a *signal* instead of its own alert, and signals group
+  into cases about one player. A signal below `caseAutoOpenSeverity` is kept and stays silent;
+  one about somebody with an open case joins it. `/staff cases`, `/staff case <id>`.
+- Case ids are eight characters, readable aloud — no `I`, `L`, `O` or `U`.
+- Punishments record the case they came from, or `null` where there was none.
+- Reversals record when and why, not just who.
+
+## 1.0.0
 
 First release. Everything below is from the correctness and trust pass that preceded it.
 

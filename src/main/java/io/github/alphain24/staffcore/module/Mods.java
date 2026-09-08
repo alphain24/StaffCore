@@ -30,6 +30,18 @@ import io.github.alphain24.staffcore.modules.vanish.VanishModule;
 public final class Mods {
 	private Mods() {}
 
+	/** The case model. Every detection subsystem reports into this. */
+	public static io.github.alphain24.staffcore.modules.cases.CaseModule cases() {
+		return StaffCore.modules().require("cases",
+				io.github.alphain24.staffcore.modules.cases.CaseModule.class);
+	}
+
+	/** Staff audit, rate limits and two-person approval. */
+	public static io.github.alphain24.staffcore.modules.accountability.AccountabilityModule accountability() {
+		return StaffCore.modules().require("accountability",
+				io.github.alphain24.staffcore.modules.accountability.AccountabilityModule.class);
+	}
+
 	public static StaffModeModule staffMode() {
 		return StaffCore.modules().require("staff_mode", StaffModeModule.class);
 	}

@@ -66,7 +66,11 @@ final class Schema {
 				    active        INTEGER NOT NULL DEFAULT 1,
 				    revoked_by    TEXT,
 				    offence       TEXT,
-				    silent        INTEGER NOT NULL DEFAULT 0
+				    silent        INTEGER NOT NULL DEFAULT 0,
+				    case_id       TEXT,
+				    revoked_at    INTEGER,
+				    revoke_reason TEXT,
+				    points        INTEGER NOT NULL DEFAULT 0
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_punish_target ON punishments(target_uuid, active)");
@@ -75,11 +79,14 @@ final class Schema {
 	private static void notes(Statement st) throws SQLException {
 		st.executeUpdate("""
 				CREATE TABLE IF NOT EXISTS notes (
-				    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-				    target_uuid TEXT    NOT NULL,
-				    author_name TEXT    NOT NULL,
-				    text        TEXT    NOT NULL,
-				    created_at  INTEGER NOT NULL
+				    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+				    target_uuid  TEXT    NOT NULL,
+				    author_name  TEXT    NOT NULL,
+				    text         TEXT    NOT NULL,
+				    created_at   INTEGER NOT NULL,
+				    case_id      TEXT,
+				    retracted_at INTEGER,
+				    retracted_by TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_notes_target ON notes(target_uuid)");
@@ -162,10 +169,16 @@ final class Schema {
 
 		st.executeUpdate("""
 				CREATE TABLE IF NOT EXISTS command_log (
-				    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-				    staff_name TEXT    NOT NULL,
-				    command    TEXT    NOT NULL,
-				    created_at INTEGER NOT NULL
+				    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+				    staff_name     TEXT    NOT NULL,
+				    command        TEXT    NOT NULL,
+				    created_at     INTEGER NOT NULL,
+				    staff_uuid     TEXT,
+				    staff_ip       TEXT,
+				    case_id        TEXT,
+				    server_version TEXT,
+				    mod_version    TEXT,
+				    actor_resolved_at INTEGER
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cmdlog_staff ON command_log(staff_name, created_at)");
@@ -514,6 +527,7 @@ final class Schema {
 				    item_count   INTEGER NOT NULL,
 				    snapshot_id  INTEGER,
 				    created_at   INTEGER NOT NULL,
+				    actor_resolved_at INTEGER,
 				    items_data   TEXT,
 				    ref_kind     TEXT,
 				    ref_id       INTEGER,
@@ -525,6 +539,90 @@ final class Schema {
 				+ "ON inventory_audit(target_uuid, created_at)");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_inventory_audit_origin "
 				+ "ON inventory_audit(origin, created_at)");
+
+		// ------------------------------------------------------------------ cases
+		//
+		// The spine. Appeals reference cases, Discord renders them, replay opens from them and
+		// accountability audits actions taken on them — so everything downstream depends on
+		// this shape being right, and on nothing here ever being deleted.
+		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS cases (
+				    id             TEXT    PRIMARY KEY,
+				    subject_uuid   TEXT    NOT NULL,
+				    subject_name   TEXT,
+				    status         TEXT    NOT NULL DEFAULT 'open',
+				    severity       INTEGER NOT NULL DEFAULT 0,
+				    summary        TEXT,
+				    opened_at      INTEGER NOT NULL,
+				    opened_by      TEXT    NOT NULL,
+				    assigned_to    TEXT,
+				    closed_at      INTEGER,
+				    closed_by      TEXT,
+				    resolution     TEXT,
+				    server_version TEXT,
+				    mod_version    TEXT
+				)
+				""");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cases_subject "
+				+ "ON cases(subject_uuid, opened_at DESC)");
+		// The list screen sorts by severity then recency, so the index it reads has to be in
+		// that order or it sorts the whole table on every page.
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cases_open "
+				+ "ON cases(status, severity DESC, opened_at DESC)");
+
+		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS signals (
+				    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+				    case_id        TEXT,
+				    type           TEXT    NOT NULL,
+				    subject_uuid   TEXT    NOT NULL,
+				    subject_name   TEXT,
+				    occurred_at    INTEGER NOT NULL,
+				    confidence     INTEGER NOT NULL DEFAULT 0,
+				    evidence_json  TEXT,
+				    source_module  TEXT    NOT NULL,
+				    server_version TEXT,
+				    mod_version    TEXT
+				)
+				""");
+		// Nullable case_id is the point: a signal below the auto-open threshold is kept and
+		// shown in the player context panel without creating a case nobody asked for.
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_case ON signals(case_id, occurred_at)");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_subject "
+				+ "ON signals(subject_uuid, occurred_at DESC)");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_unattached "
+				+ "ON signals(subject_uuid, case_id, occurred_at DESC)");
+
+		// Append only. Status changes, assignments, notes and actions all land here as new
+		// rows; nothing updates or deletes one. That is what makes a case answerable months
+		// later — the current state of a case is a replay of its events, not a field somebody
+		// overwrote.
+		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS case_events (
+				    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+				    case_id TEXT    NOT NULL,
+				    at      INTEGER NOT NULL,
+				    actor   TEXT    NOT NULL,
+				    kind    TEXT    NOT NULL,
+				    body    TEXT
+				)
+				""");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_case_events ON case_events(case_id, at)");
+
+		// A case points at punishments, reports, appeals, rollbacks, snapshots and debits by
+		// type and id rather than by six nullable columns, so a new kind of evidence needs no
+		// migration.
+		st.executeUpdate("""
+				CREATE TABLE IF NOT EXISTS case_links (
+				    case_id     TEXT    NOT NULL,
+				    entity_type TEXT    NOT NULL,
+				    entity_id   TEXT    NOT NULL,
+				    linked_at   INTEGER NOT NULL,
+				    PRIMARY KEY (case_id, entity_type, entity_id)
+				)
+				""");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_case_links_entity "
+				+ "ON case_links(entity_type, entity_id)");
 	}
 
 	// ------------------------------------------------------------------ upgrades
@@ -733,6 +831,142 @@ final class Schema {
 				addColumn(conn, "inventory_audit", "ref_id", "INTEGER");
 				addColumn(conn, "inventory_audit", "reversed_at", "INTEGER");
 				addColumn(conn, "inventory_audit", "reversed_by", "TEXT");
+			},
+
+			// 13 - the case model. Cases, the signals that feed them, an append-only event
+			// log, and links out to whatever a case is about.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS cases (
+							    id             TEXT    PRIMARY KEY,
+							    subject_uuid   TEXT    NOT NULL,
+							    subject_name   TEXT,
+							    status         TEXT    NOT NULL DEFAULT 'open',
+							    severity       INTEGER NOT NULL DEFAULT 0,
+							    summary        TEXT,
+							    opened_at      INTEGER NOT NULL,
+							    opened_by      TEXT    NOT NULL,
+							    assigned_to    TEXT,
+							    closed_at      INTEGER,
+							    closed_by      TEXT,
+							    resolution     TEXT,
+							    server_version TEXT,
+							    mod_version    TEXT
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cases_subject "
+							+ "ON cases(subject_uuid, opened_at DESC)");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cases_open "
+							+ "ON cases(status, severity DESC, opened_at DESC)");
+
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS signals (
+							    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+							    case_id        TEXT,
+							    type           TEXT    NOT NULL,
+							    subject_uuid   TEXT    NOT NULL,
+							    subject_name   TEXT,
+							    occurred_at    INTEGER NOT NULL,
+							    confidence     INTEGER NOT NULL DEFAULT 0,
+							    evidence_json  TEXT,
+							    source_module  TEXT    NOT NULL,
+							    server_version TEXT,
+							    mod_version    TEXT
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_case "
+							+ "ON signals(case_id, occurred_at)");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_subject "
+							+ "ON signals(subject_uuid, occurred_at DESC)");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_signals_unattached "
+							+ "ON signals(subject_uuid, case_id, occurred_at DESC)");
+
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS case_events (
+							    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+							    case_id TEXT    NOT NULL,
+							    at      INTEGER NOT NULL,
+							    actor   TEXT    NOT NULL,
+							    kind    TEXT    NOT NULL,
+							    body    TEXT
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_case_events "
+							+ "ON case_events(case_id, at)");
+
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS case_links (
+							    case_id     TEXT    NOT NULL,
+							    entity_type TEXT    NOT NULL,
+							    entity_id   TEXT    NOT NULL,
+							    linked_at   INTEGER NOT NULL,
+							    PRIMARY KEY (case_id, entity_type, entity_id)
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_case_links_entity "
+							+ "ON case_links(entity_type, entity_id)");
+				}
+
+				// Existing punishments are backfilled as null rather than given invented
+				// cases. A case that nobody opened and nothing investigated would be a lie
+				// about the record, and the case view showing "no case" is the useful answer
+				// anyway: it says how often staff punish without evidence attached.
+				addColumn(conn, "punishments", "case_id", "TEXT");
+			},
+
+			// 14 - a reversal says when and why, not just who.
+			//
+			// Reversing a punishment was already a mark rather than a delete, which is the
+			// important half. What it could not answer was "when was this lifted, and on what
+			// grounds" — and for an appeal that is upheld months later, those are the two
+			// things somebody actually wants.
+			conn -> {
+				addColumn(conn, "punishments", "revoked_at", "INTEGER");
+				addColumn(conn, "punishments", "revoke_reason", "TEXT");
+			},
+
+			// 15 - the audit trail grows the columns an investigation into staff needs.
+			//
+			// staff_ip is the uncomfortable one and it is deliberate: the thing you cannot
+			// establish after the fact is which of two people holding the same account was at
+			// the keyboard. It is stored through the same hashing as every other address, so
+			// it still compares against the connections table and is still not readable, and
+			// it is gated behind its own node on the way out.
+			conn -> {
+				addColumn(conn, "command_log", "staff_uuid", "TEXT");
+				addColumn(conn, "command_log", "staff_ip", "TEXT");
+				addColumn(conn, "command_log", "case_id", "TEXT");
+				addColumn(conn, "command_log", "server_version", "TEXT");
+				addColumn(conn, "command_log", "mod_version", "TEXT");
+			},
+
+			// 16 - notes are retracted rather than deleted, and can point at a case.
+			//
+			// A note said something about a player at a moment, and a note that vanishes takes
+			// that with it: the record silently improves, and "what did we know at the time"
+			// stops having an answer. Retracting says a staff member no longer stands behind
+			// it, which is a different and more honest claim than the note never existing.
+			conn -> {
+				addColumn(conn, "notes", "case_id", "TEXT");
+				addColumn(conn, "notes", "retracted_at", "INTEGER");
+				addColumn(conn, "notes", "retracted_by", "TEXT");
+			},
+
+			// 17 - warning points, so a ladder can count them and they can decay.
+			conn -> {
+				addColumn(conn, "punishments", "points", "INTEGER NOT NULL DEFAULT 0");
+			},
+
+			// 18 - when the acting identity's permissions were read.
+			//
+			// A permission set is a snapshot and a snapshot has an age. Recording it makes
+			// "was this authorised by a permission set read four seconds ago or forty minutes
+			// ago" answerable from the data rather than by reading the call graph — which is
+			// the only way to notice an actor that outlived its resolution after the fact.
+			conn -> {
+				addColumn(conn, "inventory_audit", "actor_resolved_at", "INTEGER");
+				addColumn(conn, "command_log", "actor_resolved_at", "INTEGER");
 			}
 	);
 
@@ -769,6 +1003,20 @@ final class Schema {
 			{"inventory_audit", "ref_id", "INTEGER"},
 			{"inventory_audit", "reversed_at", "INTEGER"},
 			{"inventory_audit", "reversed_by", "TEXT"},
+			{"punishments", "case_id", "TEXT"},
+			{"punishments", "revoked_at", "INTEGER"},
+			{"punishments", "revoke_reason", "TEXT"},
+			{"command_log", "staff_uuid", "TEXT"},
+			{"command_log", "staff_ip", "TEXT"},
+			{"command_log", "case_id", "TEXT"},
+			{"command_log", "server_version", "TEXT"},
+			{"command_log", "mod_version", "TEXT"},
+			{"notes", "case_id", "TEXT"},
+			{"notes", "retracted_at", "INTEGER"},
+			{"notes", "retracted_by", "TEXT"},
+			{"punishments", "points", "INTEGER NOT NULL DEFAULT 0"},
+			{"inventory_audit", "actor_resolved_at", "INTEGER"},
+			{"command_log", "actor_resolved_at", "INTEGER"},
 	};
 
 	/**

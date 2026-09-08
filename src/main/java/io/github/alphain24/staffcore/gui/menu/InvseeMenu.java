@@ -83,7 +83,7 @@ public class InvseeMenu extends Gui {
 				// it and holds the before-picture until the screen closes, so what gets
 				// recorded is the net change rather than every click that carried it.
 				session = io.github.alphain24.staffcore.inventory.InventoryGateway.beginEdit(
-						live, Mc.name(viewer), "staff edit through invsee");
+						live, io.github.alphain24.staffcore.permission.Actor.of(viewer), "staff edit through invsee");
 			}
 		} else {
 			ItemStack[] stored = OfflineInventory.load(server, target);
@@ -133,7 +133,10 @@ public class InvseeMenu extends Gui {
 	 */
 	@Override
 	protected void onClosed() {
-		io.github.alphain24.staffcore.inventory.InventoryGateway.endEdit(session);
+		// The closer's permissions are resolved here rather than carried from when the
+		// screen opened, so nothing downstream can authorise against a stale set.
+		io.github.alphain24.staffcore.inventory.InventoryGateway.endEdit(session,
+				io.github.alphain24.staffcore.permission.Actor.of(viewer));
 	}
 
 	// ------------------------------------------------------- live-slot protection

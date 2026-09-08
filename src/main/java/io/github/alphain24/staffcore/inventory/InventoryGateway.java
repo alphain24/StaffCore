@@ -5,6 +5,7 @@ import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.diagnostic.StartupCheck;
 import io.github.alphain24.staffcore.module.Mods;
 import io.github.alphain24.staffcore.modules.inventory.InventoryModule;
+import io.github.alphain24.staffcore.permission.Actor;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
@@ -80,7 +81,13 @@ public final class InventoryGateway {
 		VAULT_RETURN("vault return"),
 
 		/** Settling a debt or delivery queued while the player was offline. */
-		PENDING_SETTLEMENT("pending settlement");
+		PENDING_SETTLEMENT("pending settlement"),
+
+		/** Taking contraband, or a staff tool that has leaked out of staff mode. */
+		CONFISCATION("confiscation"),
+
+		/** Clearing an inventory into the stash on duty, and handing it back afterwards. */
+		STAFF_MODE_STASH("staff mode stash");
 
 		private final String label;
 		private final List<String> requiredFeatures;
@@ -133,7 +140,7 @@ public final class InventoryGateway {
 	 * Refusing to hand something back because the recipient is full would be a strange way to
 	 * correct a mistake, so overflow drops rather than failing.
 	 */
-	public static Outcome give(ServerPlayer target, Origin origin, String actor, String reason,
+	public static Outcome give(ServerPlayer target, Origin origin, Actor actor, String reason,
 			List<ItemStack> stacks) {
 
 		List<ItemStack> real = new ArrayList<>();
@@ -165,7 +172,7 @@ public final class InventoryGateway {
 	 *
 	 * @param owed item type to quantity still due; mutated in place
 	 */
-	public static Outcome take(ServerPlayer target, Origin origin, String actor, String reason,
+	public static Outcome take(ServerPlayer target, Origin origin, Actor actor, String reason,
 			Map<Item, Integer> owed) {
 
 		return take(target, origin, actor, reason, owed, null, null);
@@ -177,7 +184,7 @@ public final class InventoryGateway {
 	 * @param refKind and {@code refId} link the debit to its cause — a rollback id, usually —
 	 *                so undoing that cause can find everything it charged for
 	 */
-	public static Outcome take(ServerPlayer target, Origin origin, String actor, String reason,
+	public static Outcome take(ServerPlayer target, Origin origin, Actor actor, String reason,
 			Map<Item, Integer> owed, String refKind, Long refId) {
 
 		if (owed.isEmpty()) return new Outcome(true, 0, 0, null);
@@ -240,7 +247,7 @@ public final class InventoryGateway {
 	 * it needs its own before-picture. Getting the wrong snapshot back is a bigger accident
 	 * than a failed give.
 	 */
-	public static Outcome replaceAll(ServerPlayer target, Origin origin, String actor,
+	public static Outcome replaceAll(ServerPlayer target, Origin origin, Actor actor,
 			String reason, ItemStack[] contents) {
 
 		String refusal = whyRefused(origin);
@@ -278,6 +285,90 @@ public final class InventoryGateway {
 		return new Outcome(true, count, auditId, null);
 	}
 
+	/**
+	 * Removes everything matching a rule from a player's inventory and ender chest.
+	 * <p>
+	 * Confiscation is predicate-shaped rather than quantity-shaped — "every banned item" is
+	 * not a count of anything — so neither {@link #take} nor {@link #replaceAll} fits it, and
+	 * before this it was the one kind of removal that went round the door. That mattered more
+	 * than it looks: the vault already recorded handing an item <em>back</em> through here,
+	 * so the return was auditable and the taking was not.
+	 * <p>
+	 * The ender chest is included because it is where anything worth hiding ends up, and
+	 * leaving it out would make the audit describe half of what happened.
+	 */
+	public record Removal(List<ItemStack> taken, List<String> names, int stacks, int items,
+			long auditId, String refused) {
+
+		public boolean isEmpty() {
+			return stacks == 0;
+		}
+
+		public boolean wasRefused() {
+			return refused != null;
+		}
+	}
+
+	public static Removal removeMatching(ServerPlayer target, Origin origin, Actor actor,
+			String reason, java.util.function.Predicate<ItemStack> doomed) {
+
+		String refusal = whyRefused(origin);
+		if (refusal != null) {
+			refuse(origin, actor, target, reason, refusal);
+			return new Removal(List.of(), List.of(), 0, 0, 0, refusal);
+		}
+
+		// Worked out before anything is written, so the audit row names what actually went
+		// rather than what the rule matched in principle.
+		List<ItemStack> doomedStacks = new ArrayList<>();
+		List<String> names = new ArrayList<>();
+		collect(target.getInventory(), doomed, doomedStacks, names);
+		collect(target.getEnderChestInventory(), doomed, doomedStacks, names);
+
+		if (doomedStacks.isEmpty()) return new Removal(List.of(), List.of(), 0, 0, 0, null);
+
+		int count = doomedStacks.stream().mapToInt(ItemStack::getCount).sum();
+		long auditId = record(origin, Direction.TAKE, actor, target, reason,
+				describe(doomedStacks), count);
+		if (auditId < 0) {
+			String why = "the change could not be recorded, so it was not made";
+			refuse(origin, actor, target, reason, why);
+			return new Removal(List.of(), List.of(), 0, 0, 0, why);
+		}
+
+		int stacks = remove(target.getInventory(), doomed) + remove(target.getEnderChestInventory(), doomed);
+		target.getInventory().setChanged();
+		target.containerMenu.broadcastChanges();
+
+		return new Removal(List.copyOf(doomedStacks), List.copyOf(names), stacks, count,
+				auditId, null);
+	}
+
+	private static void collect(net.minecraft.world.Container container,
+			java.util.function.Predicate<ItemStack> doomed, List<ItemStack> into,
+			List<String> names) {
+
+		for (int slot = 0; slot < container.getContainerSize(); slot++) {
+			ItemStack stack = container.getItem(slot);
+			if (stack.isEmpty() || !doomed.test(stack)) continue;
+			into.add(stack.copy());
+			names.add(stack.getCount() + "× " + stack.getHoverName().getString());
+		}
+	}
+
+	private static int remove(net.minecraft.world.Container container,
+			java.util.function.Predicate<ItemStack> doomed) {
+
+		int stacks = 0;
+		for (int slot = 0; slot < container.getContainerSize(); slot++) {
+			ItemStack stack = container.getItem(slot);
+			if (stack.isEmpty() || !doomed.test(stack)) continue;
+			container.setItem(slot, ItemStack.EMPTY);
+			stacks++;
+		}
+		return stacks;
+	}
+
 	// -------------------------------------------------------------- staff editing
 
 	/**
@@ -291,14 +382,22 @@ public final class InventoryGateway {
 	 * So the unit of record is the session. The before-picture is taken when the screen opens
 	 * and the difference is worked out when it closes, which produces one row saying what
 	 * actually changed rather than forty saying how it was carried.
+	 *
+	 * @param openedById   the identity that opened the screen, <b>not</b> a resolved
+	 *                     {@link Actor}. A session outlives its own construction by however
+	 *                     long somebody leaves the screen open, and an {@code Actor} carries a
+	 *                     permission set read at that earlier moment — so holding one here
+	 *                     would mean any check added later silently authorised itself against
+	 *                     minutes-old permissions. Identity does not go stale; permissions do.
+	 * @param snapshotId   taken at open, because the before-picture is genuinely about then
 	 */
-	public record EditSession(ServerPlayer target, String actor, String reason,
-			Map<Item, Integer> before, Long snapshotId) {}
+	public record EditSession(ServerPlayer target, java.util.UUID openedById, String openedByName,
+			String reason, Map<Item, Integer> before, Long snapshotId) {}
 
-	/** Snapshots the target and remembers what they had. */
-	public static EditSession beginEdit(ServerPlayer target, String actor, String reason) {
+	/** Snapshots the target and remembers what they had, and who was looking. */
+	public static EditSession beginEdit(ServerPlayer target, Actor actor, String reason) {
 		Long snapshot = snapshotBefore(Origin.INVSEE_EDIT, target, actor);
-		return new EditSession(target, actor, reason, tally(target), snapshot);
+		return new EditSession(target, actor.id(), actor.name(), reason, tally(target), snapshot);
 	}
 
 	/**
@@ -308,8 +407,14 @@ public final class InventoryGateway {
 	 * to look far more often than to change it, and a log full of "opened, changed nothing"
 	 * is a log nobody reads.
 	 */
-	public static Outcome endEdit(EditSession session) {
+	public static Outcome endEdit(EditSession session, Actor closer) {
 		if (session == null) return new Outcome(true, 0, 0, null);
+
+		// Resolved now, not when the screen opened. The same rule Approvals follows: the
+		// session remembers who, and what they hold is read at the moment the record is
+		// written. Nothing here checks a permission today — but the whole reason this is
+		// shaped this way is that there is no stale set for a future check to find.
+		Actor acting = closer != null ? closer : Actor.named(session.openedByName());
 
 		Map<Item, Integer> after = tally(session.target());
 		List<String> added = new ArrayList<>();
@@ -334,8 +439,17 @@ public final class InventoryGateway {
 		Direction direction = added.stream().mapToInt(x -> 1).sum() >= removed.size()
 				? Direction.GIVE : Direction.TAKE;
 
-		long auditId = record(Origin.INVSEE_EDIT, direction, session.actor(), session.target(),
-				session.reason(), items, moved);
+		// A screen belongs to one viewer, so these should be the same person. If they ever
+		// are not, the record says so rather than quietly attributing somebody's edit to
+		// whoever happened to be holding the screen at the end.
+		String reason = session.reason();
+		if (session.openedById() != null && acting.id() != null
+				&& !session.openedById().equals(acting.id())) {
+			reason = reason + " (opened by " + session.openedByName() + ")";
+		}
+
+		long auditId = record(Origin.INVSEE_EDIT, direction, acting, session.target(),
+				reason, items, moved);
 		return auditId < 0
 				? Outcome.refused("the edit happened but could not be recorded")
 				: new Outcome(true, moved, auditId, null);
@@ -381,13 +495,14 @@ public final class InventoryGateway {
 				+ "), so the data behind this change is incomplete";
 	}
 
-	private static Outcome refuse(Origin origin, String actor, ServerPlayer target, String reason,
+	private static Outcome refuse(Origin origin, Actor actor, ServerPlayer target, String reason,
 			String why) {
 
 		// Loud, because the alternative is a moderation tool that quietly stops working. A
 		// refusal that nobody sees is indistinguishable from the feature having nothing to do.
 		StaffCore.LOGGER.error("[StaffCore] Refused a {} on {} by {} ({}): {}",
-				origin.label(), Mc.name(target), actor, reason, why);
+				origin.label(), Mc.name(target), actor == null ? "server" : actor.name(),
+				reason, why);
 		return Outcome.refused(why);
 	}
 
@@ -398,13 +513,13 @@ public final class InventoryGateway {
 	 *
 	 * @return the audit row id, or -1 when nothing could be recorded
 	 */
-	private static long record(Origin origin, Direction direction, String actor,
+	private static long record(Origin origin, Direction direction, Actor actor,
 			ServerPlayer target, String reason, String items, int count) {
 
 		return record(origin, direction, actor, target, reason, items, count, null, null, null);
 	}
 
-	private static long record(Origin origin, Direction direction, String actor,
+	private static long record(Origin origin, Direction direction, Actor actor,
 			ServerPlayer target, String reason, String items, int count,
 			String itemsData, String refKind, Long refId) {
 
@@ -425,13 +540,13 @@ public final class InventoryGateway {
 					INSERT INTO inventory_audit
 					    (origin, direction, actor, target_uuid, target_name, reason,
 					     items, item_count, snapshot_id, created_at,
-					     items_data, ref_kind, ref_id)
-					VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+					     items_data, ref_kind, ref_id, actor_resolved_at)
+					VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 					""", java.sql.Statement.RETURN_GENERATED_KEYS)) {
 
 				ps.setString(1, origin.name());
 				ps.setString(2, direction.name());
-				ps.setString(3, actor == null ? "server" : actor);
+				ps.setString(3, actor == null ? "server" : actor.name());
 				ps.setString(4, target.getUUID().toString());
 				ps.setString(5, Mc.name(target));
 				ps.setString(6, reason == null ? "" : reason);
@@ -444,6 +559,10 @@ public final class InventoryGateway {
 				ps.setString(12, refKind);
 				if (refId == null) ps.setNull(13, java.sql.Types.INTEGER);
 				else ps.setLong(13, refId);
+				// When this actor's permissions were read. An audit row that cannot say how
+				// old its authority was cannot answer whether it should have been trusted.
+				if (actor == null) ps.setNull(14, java.sql.Types.INTEGER);
+				else ps.setLong(14, actor.resolvedAt());
 				ps.executeUpdate();
 
 				try (var keys = ps.getGeneratedKeys()) {
@@ -463,11 +582,11 @@ public final class InventoryGateway {
 	 * putting things back. Refusing the whole mutation because the recoverable half failed
 	 * would trade a small loss for a larger one.
 	 */
-	private static Long snapshotBefore(Origin origin, ServerPlayer target, String actor) {
+	private static Long snapshotBefore(Origin origin, ServerPlayer target, Actor actor) {
 		try {
 			InventoryModule inventory = Mods.inventory();
 			InventoryModule.Snapshot taken = inventory.capture(target,
-					"Before " + origin.label(), actor == null ? "server" : actor,
+					"Before " + origin.label(), actor == null ? "server" : actor.name(),
 					InventoryModule.Kind.EVIDENCE);
 			return taken == null ? null : taken.id();
 		} catch (RuntimeException e) {
@@ -589,7 +708,7 @@ public final class InventoryGateway {
 	 * If the player is offline the items are queued rather than refused, because the person
 	 * most likely to have been wrongly charged is the one who was not there.
 	 */
-	public static Outcome reverse(long auditId, ServerPlayer target, String by) {
+	public static Outcome reverse(long auditId, ServerPlayer target, Actor by) {
 		Reversal check = describeReversal(auditId);
 		if (!check.possible()) return Outcome.refused(check.problem());
 
@@ -622,12 +741,12 @@ public final class InventoryGateway {
 		return outcome;
 	}
 
-	private static void markReversed(long auditId, String by) {
+	private static void markReversed(long auditId, Actor by) {
 		StaffCore.storage().inTransaction(conn -> {
 			try (PreparedStatement ps = conn.prepareStatement(
 					"UPDATE inventory_audit SET reversed_at = ?, reversed_by = ? WHERE id = ?")) {
 				ps.setLong(1, System.currentTimeMillis());
-				ps.setString(2, by);
+				ps.setString(2, by == null ? "server" : by.name());
 				ps.setLong(3, auditId);
 				ps.executeUpdate();
 			}

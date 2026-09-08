@@ -86,6 +86,16 @@ test {
 	}
 }
 
+// Gametests are compiled by `check`, even though running them needs a server.
+//
+// They live outside src/test, so nothing in the ordinary build touched them: a signature
+// change in main left `./gradlew build` green and broke the gametests silently, and the only
+// thing that noticed was the nightly workflow. Compiling them here costs a few seconds and
+// turns that into a compile error at the moment the signature changes.
+tasks.named('check') {
+	dependsOn tasks.named('compileGametestJava')
+}
+
 processResources {
 	def v = project.version
 	inputs.property "version", v

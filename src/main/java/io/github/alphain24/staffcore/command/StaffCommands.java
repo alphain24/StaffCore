@@ -25,6 +25,10 @@ import io.github.alphain24.staffcore.gui.menu.ReportsMenu;
 import io.github.alphain24.staffcore.gui.menu.SecurityMenu;
 import io.github.alphain24.staffcore.gui.menu.StaffPanelMenu;
 import io.github.alphain24.staffcore.module.Mods;
+import io.github.alphain24.staffcore.modules.cases.Case;
+import io.github.alphain24.staffcore.modules.cases.CaseId;
+import io.github.alphain24.staffcore.modules.cases.CaseView;
+import io.github.alphain24.staffcore.gui.Link;
 import io.github.alphain24.staffcore.modules.grief.GriefModule;
 import io.github.alphain24.staffcore.modules.grief.LogQuery;
 import io.github.alphain24.staffcore.modules.notes.NotesModule;
@@ -34,6 +38,7 @@ import io.github.alphain24.staffcore.modules.punish.PunishmentType;
 import io.github.alphain24.staffcore.modules.report.ReportModule;
 import io.github.alphain24.staffcore.permission.Nodes;
 import io.github.alphain24.staffcore.permission.PermissionGroups;
+import io.github.alphain24.staffcore.permission.Actor;
 import io.github.alphain24.staffcore.permission.Permissions;
 import io.github.alphain24.staffcore.util.DurationParser;
 import io.github.alphain24.staffcore.util.TimeFormat;
@@ -261,6 +266,15 @@ public final class StaffCommands {
 	// -------------------------------------------------------------- punishments
 
 	private static void punishments(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		// A root command, not just a GUI screen. The commonest note is written one-handed
+		// while something else is happening, and a note that needs four clicks is one that
+		// does not get written.
+		staff.then(Commands.literal("note")
+				.requires(src -> Permissions.check(src, Nodes.NOTES))
+				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.then(Commands.argument("text", StringArgumentType.greedyString())
+								.executes(StaffCommands::addNote))));
+
 		staff.then(Commands.literal("warn")
 				.requires(src -> Permissions.check(src, Nodes.WARN))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
@@ -406,11 +420,14 @@ public final class StaffCommands {
 											NameAndId target = singleProfile(ctx, "target");
 											if (target == null) return fail(ctx, "Unknown player.");
 											int index = IntegerArgumentType.getInteger(ctx, "index");
-											audit(ctx, "/staff notes " + target.name() + " remove " + index);
+											audit(ctx, "/staff notes " + target.name() + " retract " + index);
 
-											return Mods.notes().removeByIndex(target.id(), index)
-													? ok(ctx, "Note " + index + " deleted.")
-													: fail(ctx, "There is no note " + index + ".");
+											return Mods.notes().retractByIndex(target.id(), index,
+															Mc.name(ctx.getSource().getPlayer()))
+													? ok(ctx, "Note " + index + " retracted. It stays "
+															+ "on the record marked as withdrawn.")
+													: fail(ctx, "There is no note " + index
+															+ ", or it was already retracted.");
 										})))));
 	}
 
@@ -1439,6 +1456,8 @@ public final class StaffCommands {
 				.requires(src -> Permissions.check(src, Nodes.RELOAD))
 				.executes(StaffCommands::selfTest));
 
+		registerCases(staff);
+		registerAccountability(staff);
 		registerPerms(staff);
 
 		staff.then(Commands.literal("reload")
@@ -1849,7 +1868,7 @@ public final class StaffCommands {
 
 		audit(ctx, "/staff owed undo " + id);
 		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.reverse(
-				id, target, Mc.name(ctx.getSource().getPlayer()));
+				id, target, Actor.of(ctx.getSource()));
 
 		if (outcome.wasRefused()) {
 			ctx.getSource().sendFailure(Theme.bad("Refused: " + outcome.refused()));
@@ -1953,6 +1972,318 @@ public final class StaffCommands {
 	 * that is not being consulted would appear to work and change nothing, which is a worse
 	 * outcome than being told to go and use LuckPerms.
 	 */
+	/**
+	 * The case commands. Chat is the primary surface, so this is where the real work happens.
+	 * <p>
+	 * Actions are subcommands of {@code /staff case <id>} rather than buttons in a screen.
+	 * That keeps one permission check and one audit trail per action, and it means every case
+	 * action is a thing somebody can be shown how to do over voice chat.
+	 */
+	private static void registerCases(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("cases")
+				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
+				.executes(ctx -> caseList(ctx, null, null))
+				.then(Commands.literal("mine")
+						.executes(ctx -> caseList(ctx, null, Mc.name(ctx.getSource().getPlayer()))))
+				.then(Commands.argument("status", StringArgumentType.word())
+						.suggests((c, b) -> {
+							for (Case.Status status : Case.Status.values()) b.suggest(status.stored());
+							return b.buildFuture();
+						})
+						.executes(ctx -> caseList(ctx,
+								Case.Status.of(StringArgumentType.getString(ctx, "status")), null))));
+
+		staff.then(Commands.literal("case")
+				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
+				.then(Commands.argument("id", StringArgumentType.word())
+						.executes(StaffCommands::caseShow)
+						.then(Commands.literal("note")
+								.then(Commands.argument("text", StringArgumentType.greedyString())
+										.executes(ctx -> caseNote(ctx))))
+						.then(Commands.literal("assign")
+								.then(Commands.argument("staff", StringArgumentType.word())
+										.executes(ctx -> caseAssign(ctx,
+												StringArgumentType.getString(ctx, "staff")))))
+						.then(Commands.literal("claim")
+								.executes(ctx -> caseAssign(ctx,
+										Mc.name(ctx.getSource().getPlayer()))))
+						.then(Commands.literal("investigating")
+								.executes(ctx -> caseStatus(ctx, Case.Status.INVESTIGATING, null)))
+						.then(Commands.literal("cleared")
+								.then(Commands.argument("why", StringArgumentType.greedyString())
+										.executes(ctx -> caseStatus(ctx, Case.Status.CLEARED,
+												StringArgumentType.getString(ctx, "why")))))
+						.then(Commands.literal("actioned")
+								.then(Commands.argument("why", StringArgumentType.greedyString())
+										.executes(ctx -> caseStatus(ctx, Case.Status.ACTIONED,
+												StringArgumentType.getString(ctx, "why")))))));
+	}
+
+	/** Resolves the id argument, or explains why it did not resolve. */
+	private static Case requireCase(CommandContext<CommandSourceStack> ctx) {
+		String typed = StringArgumentType.getString(ctx, "id");
+		var found = Mods.cases().store().byId(typed);
+
+		if (found.isEmpty()) {
+			// Distinguishing these two matters. "Not a case id" sends somebody back to check
+			// what they typed; "no such case" sends them looking for a deleted record that
+			// never existed, and cases are never deleted.
+			fail(ctx, CaseId.isValid(typed)
+					? "No case " + CaseId.normalise(typed) + "."
+					: "\"" + typed + "\" is not a case id. They are eight characters, like A1B2C3D4.");
+			return null;
+		}
+		return found.get();
+	}
+
+	private static int caseShow(CommandContext<CommandSourceStack> ctx) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+
+		audit(ctx, "/staff case " + found.id(), found.id());
+		CaseView.print(ctx.getSource(), found);
+		return 1;
+	}
+
+	private static int caseList(CommandContext<CommandSourceStack> ctx, Case.Status status,
+			String assignee) {
+
+		var cases = Mods.cases().store().list(status, assignee, 0, 20);
+
+		if (cases.isEmpty()) {
+			// Said explicitly rather than printing nothing. Silence reads as a broken command.
+			ctx.getSource().sendSuccess(() -> Theme.info(
+					status == null && assignee == null
+							? "No cases."
+							: "No cases match that."), false);
+			return 1;
+		}
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(cases.size() + " case(s)", Theme.ACCENT))
+				.append(Icon.text("  — strongest first", Theme.MUTED)), false);
+
+		for (Case one : cases) {
+			ctx.getSource().sendSuccess(() -> CaseView.line(one), false);
+		}
+		return 1;
+	}
+
+	private static int caseNote(CommandContext<CommandSourceStack> ctx) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+
+		String text = StringArgumentType.getString(ctx, "text");
+		String actor = Mc.name(ctx.getSource().getPlayer());
+		Mods.cases().store().note(found.id(), actor, text);
+
+		audit(ctx, "/staff case " + found.id() + " note", found.id());
+		return ok(ctx, "Noted on case " + found.id() + ".");
+	}
+
+	private static int caseAssign(CommandContext<CommandSourceStack> ctx, String assignee) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+
+		Mods.cases().store().assign(found.id(), assignee, Mc.name(ctx.getSource().getPlayer()));
+		audit(ctx, "/staff case " + found.id() + " assign " + assignee, found.id());
+		return ok(ctx, "Case " + found.id() + " assigned to " + assignee + ".");
+	}
+
+	private static int caseStatus(CommandContext<CommandSourceStack> ctx, Case.Status status,
+			String reason) {
+
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+
+		String actor = Mc.name(ctx.getSource().getPlayer());
+		Mods.cases().store().setStatus(found.id(), status, actor, reason);
+
+		audit(ctx, "/staff case " + found.id() + " " + status.stored(), found.id());
+		ctx.getSource().sendSuccess(() -> Theme.good(
+				"Case " + found.id() + " is now " + status.stored() + "."), false);
+
+		if (status == Case.Status.CLEARED) {
+			// Said out loud because it is the point of clearing rather than a side effect:
+			// a cleared case is the corpus a threshold change gets validated against, which
+			// is the permanent fix for tuning a detector on how often it speaks.
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  Kept as an example of what should not have been flagged.",
+					Theme.MUTED), false);
+		}
+		return 1;
+	}
+
+	/** Auditing staff, and the two-person approval flow. */
+	/**
+	 * Writes a note against a player, attributed and timestamped.
+	 * <p>
+	 * Attached to whatever case is open about them, if there is one, and to nothing if there
+	 * is not. Requiring a case would either produce empty cases or stop the note being
+	 * written, and most notes are context rather than evidence.
+	 */
+	private static int addNote(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+
+		NameAndId target = singleProfile(ctx, "target");
+		if (target == null) return fail(ctx, "Could not work out who you meant.");
+
+		String text = StringArgumentType.getString(ctx, "text");
+		String author = Mc.name(ctx.getSource().getPlayer());
+
+		String caseId = Mods.cases().store().openCaseFor(target.id())
+				.map(io.github.alphain24.staffcore.modules.cases.Case::id).orElse(null);
+
+		if (!Mods.notes().add(target.id(), author, text, caseId)) {
+			return fail(ctx, "The note could not be saved. The server log says why.");
+		}
+
+		if (caseId != null) {
+			Mods.cases().store().note(caseId, author, "note on " + target.name() + ": " + text);
+		}
+
+		audit(ctx, "/staff note " + target.name(), caseId);
+
+		int total = Mods.notes().count(target.id());
+		ctx.getSource().sendSuccess(() -> Theme.good(
+				"Noted on " + target.name() + " (" + total + " total)."), false);
+
+		if (caseId != null) {
+			final String linked = caseId;
+			ctx.getSource().sendSuccess(() -> Icon.text("  Attached to case ", Theme.MUTED)
+					.append(Link.caseId(linked)), false);
+		}
+		return 1;
+	}
+
+	private static void registerAccountability(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("audit")
+				.requires(src -> Permissions.check(src, Nodes.AUDIT))
+				.then(Commands.argument("staff", StringArgumentType.word())
+						.executes(ctx -> auditStaff(ctx, 7))
+						.then(Commands.argument("days", IntegerArgumentType.integer(1, 365))
+								.executes(ctx -> auditStaff(ctx,
+										IntegerArgumentType.getInteger(ctx, "days"))))
+						// Separate subcommand behind its own node, so reaching the addresses
+						// is a thing somebody chose to do rather than a column that came along.
+						.then(Commands.literal("origins")
+								.requires(src -> Permissions.check(src, Nodes.AUDIT_ADDRESSES))
+								.executes(ctx -> auditOrigins(ctx, 30)))));
+
+		staff.then(Commands.literal("approve")
+				.requires(src -> Permissions.check(src, Nodes.APPROVE))
+				.executes(StaffCommands::approvalList)
+				.then(Commands.argument("id", StringArgumentType.word())
+						.executes(StaffCommands::approve)));
+	}
+
+	private static int auditStaff(CommandContext<CommandSourceStack> ctx, int days) {
+		String who = StringArgumentType.getString(ctx, "staff");
+		var entries = Mods.accountability().audit().forStaff(who, days, 40);
+
+		if (entries.isEmpty()) {
+			// Said rather than printed as nothing: silence reads as a broken command, and
+			// "this person did nothing" is a real and useful answer.
+			return ok(ctx, who + " has done nothing recorded in the last " + days + " day(s).");
+		}
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(who, Theme.ACCENT))
+				.append(Icon.text("  " + entries.size() + " action(s), last " + days + " day(s)",
+						Theme.MUTED)), false);
+
+		for (var entry : entries) {
+			ctx.getSource().sendSuccess(() -> {
+				var line = Icon.text("  " + TimeFormat.ago(entry.at()), Theme.MUTED)
+						.append(Icon.text("  " + entry.kind(), Theme.TEXT))
+						.append(Icon.text("  " + entry.detail(), Theme.MUTED));
+				if (entry.isCaseWork()) {
+					line.append(Icon.text("  ", Theme.MUTED))
+							.append(Link.caseId(entry.caseId()));
+				}
+				return line;
+			}, false);
+		}
+
+		audit(ctx, "/staff audit " + who);
+		return 1;
+	}
+
+	/**
+	 * Where a staff member acted from.
+	 * <p>
+	 * Behind its own node and its own subcommand. An account acting from an address it has
+	 * never used, in a week it did something out of character, is the difference between a
+	 * staff member who has gone bad and one whose account was taken — and that is worth being
+	 * able to establish without every staff member being able to ask it about their colleagues.
+	 */
+	private static int auditOrigins(CommandContext<CommandSourceStack> ctx, int days) {
+		String who = StringArgumentType.getString(ctx, "staff");
+		var origins = Mods.accountability().audit().addressesFor(who, days);
+
+		if (origins.isEmpty()) {
+			return ok(ctx, "No recorded origins for " + who + " in the last " + days + " day(s).");
+		}
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(who + " acted from " + origins.size() + " address(es)",
+						Theme.ACCENT)), false);
+		ctx.getSource().sendSuccess(() -> Icon.text(
+				"  Addresses are stored hashed. Compare them, do not read them.",
+				Theme.MUTED), false);
+
+		for (var origin : origins) {
+			var accounts = Mods.accountability().audit().accountsAt(origin.hashedAddress());
+			ctx.getSource().sendSuccess(() -> Icon.text("  " + origin.display(), Theme.TEXT)
+					.append(Icon.text("  " + origin.actions() + " action(s)", Theme.MUTED))
+					.append(Icon.text("  last " + TimeFormat.ago(origin.lastSeen()), Theme.MUTED))
+					.append(Icon.text(accounts.isEmpty() ? ""
+							: "  accounts: " + String.join(", ", accounts), Theme.MUTED)), false);
+		}
+
+		audit(ctx, "/staff audit " + who + " origins");
+		return 1;
+	}
+
+	private static int approvalList(CommandContext<CommandSourceStack> ctx) {
+		var waiting = Mods.accountability().approvals().waiting();
+		if (waiting.isEmpty()) return ok(ctx, "Nothing is waiting for approval.");
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(waiting.size() + " waiting for a second signature",
+						Theme.ACCENT)), false);
+
+		for (var staged : waiting) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  ", Theme.MUTED)
+					.append(Link.run(staged.id(), "/staff approve " + staged.id(), Theme.ACCENT,
+							"Approve this " + staged.action().label()))
+					.append(Icon.text("  " + staged.action().label(), Theme.TEXT))
+					.append(Icon.text("  by " + staged.stagedByName(), Theme.MUTED))
+					.append(Icon.text("  " + staged.summary(), Theme.MUTED)), false);
+		}
+		return 1;
+	}
+
+	private static int approve(CommandContext<CommandSourceStack> ctx) {
+		// No console special case here any more. Whether this source is answerable for an
+		// approval is one rule living in Accountable, applied inside approve() — so the
+		// command, the GUI and Phase 5's Discord path all get the same answer without any of
+		// them restating it.
+		String id = StringArgumentType.getString(ctx, "id").toUpperCase(java.util.Locale.ROOT);
+		var outcome = Mods.accountability().approvals()
+				.approve(Actor.of(ctx.getSource()), id);
+
+		if (!outcome.approved()) return fail(ctx, outcome.refusal());
+
+		audit(ctx, "/staff approve " + id);
+		ctx.getSource().sendSuccess(() -> Theme.good(
+				"Approved " + outcome.staged().action().label() + " staged by "
+						+ outcome.staged().stagedByName() + "."), true);
+		ctx.getSource().sendSuccess(() -> Icon.text(
+				"  " + outcome.staged().summary(), Theme.MUTED), false);
+		return 1;
+	}
+
 	private static void registerPerms(LiteralArgumentBuilder<CommandSourceStack> staff) {
 		staff.then(Commands.literal("perms")
 				.requires(src -> Permissions.check(src, Nodes.PERMS_ADMIN))
@@ -2137,8 +2468,21 @@ public final class StaffCommands {
 				: player + " is now " + group + ".");
 	}
 
+	/**
+	 * Records a staff command.
+	 * <p>
+	 * Goes through the accountability audit rather than straight to the analytics log, so
+	 * every command picks up who was acting, from where, and under which build without each
+	 * call site having to pass any of it.
+	 */
 	private static void audit(CommandContext<CommandSourceStack> ctx, String command) {
-		Mods.analytics().logCommand(ctx.getSource().getTextName(), command);
+		audit(ctx, command, null);
+	}
+
+	/** As above, tied to the case the action was taken on. */
+	private static void audit(CommandContext<CommandSourceStack> ctx, String command, String caseId) {
+		Mods.accountability().audit().record(
+				ctx.getSource().getPlayer(), ctx.getSource().getTextName(), command, caseId);
 
 		MinecraftServer server = ctx.getSource().getServer();
 		if (server != null) {

@@ -47,6 +47,7 @@ public class StaffPanelMenu extends Gui {
 	private static final int NOTES = 23;
 	private static final int HISTORY = 24;
 	private static final int SECURITY = 25;
+	private static final int CASES = 26;
 
 	// Band 3 — server
 	private static final int CONTROL = 28;
@@ -278,6 +279,18 @@ public class StaffPanelMenu extends Gui {
 				.action("Click", "pick who")
 				.build(), false, click ->
 				PlayerListMenu.open(viewer, PlayerListMenu.Purpose.SECURITY));
+
+		// Beside the other people-shaped screens, because a case is about a person. Browsing
+		// only: clicking one closes the panel and prints it into chat, where the actions live.
+		int openCases = Mods.cases().openCount();
+		gated(CASES, Nodes.STAFF_GUI, Icon.of(Items.WRITABLE_BOOK)
+				.name("Cases", openCases > 0 ? Theme.WARN : Theme.TEXT)
+				.field("Open", String.valueOf(openCases), openCases > 0 ? Theme.WARN : Theme.MUTED)
+				.lore("Everything the detectors noticed, grouped by who.")
+				.gap()
+				.action("Click", "browse them")
+				.count(Math.max(1, openCases))
+				.build(), openCases > 0, click -> CasesMenu.open(viewer));
 	}
 
 	// ---------------------------------------------------------------- band three

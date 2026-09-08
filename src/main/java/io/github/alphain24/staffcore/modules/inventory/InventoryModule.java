@@ -307,7 +307,8 @@ public class InventoryModule implements Module {
 		// them up — and is exactly why the state being overwritten has to be kept.
 		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.replaceAll(
 				target, io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.SNAPSHOT_RESTORE,
-				snapshot.takenBy(), "restored from a snapshot taken " + snapshot.label(), contents);
+				io.github.alphain24.staffcore.permission.Actor.named(snapshot.takenBy()),
+				"restored from a snapshot taken " + snapshot.label(), contents);
 
 		if (outcome.wasRefused()) {
 			target.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.bad(
@@ -612,22 +613,20 @@ public class InventoryModule implements Module {
 	 * preserved automatically and can be put back in one click if the call was wrong.
 	 */
 	public Confiscation confiscate(ServerPlayer target, String by, Predicate<ItemStack> doomed) {
-		capture(target, "Before confiscation", by);
+		// Through the gateway, which snapshots and records before it takes anything. Taking
+		// contraband used to be the one removal that went round the door — so handing an item
+		// back out of the vault was auditable and taking it in the first place was not.
+		var removal = io.github.alphain24.staffcore.inventory.InventoryGateway.removeMatching(
+				target, io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, io.github.alphain24.staffcore.permission.Actor.named(by), "confiscation", doomed);
 
-		List<String> names = new ArrayList<>();
-		List<ItemStack> taken = new ArrayList<>();
-		int[] tally = { 0, 0 };   // stacks, items
-
-		sweep(target.getInventory(), doomed, names, taken, tally);
-		sweep(target.getEnderChestInventory(), doomed, names, taken, tally);
-
-		if (tally[0] > 0) {
-			target.getInventory().setChanged();
-			target.containerMenu.broadcastChanges();
-			target.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.warn(
-					"Staff removed " + tally[0] + " item stack(s) from your inventory."));
+		if (removal.wasRefused() || removal.isEmpty()) {
+			return new Confiscation(0, 0, List.of(), List.of());
 		}
-		return new Confiscation(tally[0], tally[1], names, taken);
+
+		target.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.warn(
+				"Staff removed " + removal.stacks() + " item stack(s) from your inventory."));
+		return new Confiscation(removal.stacks(), removal.items(), removal.names(),
+				removal.taken());
 	}
 
 	/** Removes one stack, wherever it is. Used by the per-slot confiscate button. */
@@ -635,33 +634,26 @@ public class InventoryModule implements Module {
 		ItemStack stack = container.getItem(slot);
 		if (stack.isEmpty()) return new Confiscation(0, 0, List.of(), List.of());
 
-		capture(target, "Before confiscation", by);
 		String name = stack.getCount() + "× " + stack.getHoverName().getString();
 		int count = stack.getCount();
 		ItemStack copy = stack.copy();
 
-		container.setItem(slot, ItemStack.EMPTY);
-		container.setChanged();
-		target.containerMenu.broadcastChanges();
+		// Matched by identity rather than by slot, so this works whichever of the player's
+		// containers the button was clicked in and cannot take the wrong stack if the
+		// inventory shifted between the click and here.
+		ItemStack chosen = stack;
+		var removal = io.github.alphain24.staffcore.inventory.InventoryGateway.removeMatching(target,
+				io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.CONFISCATION, io.github.alphain24.staffcore.permission.Actor.named(by),
+				"confiscated one stack", candidate -> candidate == chosen);
+
+		if (removal.wasRefused() || removal.isEmpty()) {
+			return new Confiscation(0, 0, List.of(), List.of());
+		}
+
 		target.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.warn(
 				"Staff removed " + name + " from your inventory."));
 
 		return new Confiscation(1, count, List.of(name), List.of(copy));
-	}
-
-	private void sweep(Container container, Predicate<ItemStack> doomed,
-			List<String> names, List<ItemStack> taken, int[] tally) {
-
-		for (int i = 0; i < container.getContainerSize(); i++) {
-			ItemStack stack = container.getItem(i);
-			if (stack.isEmpty() || !doomed.test(stack)) continue;
-
-			names.add(stack.getCount() + "× " + stack.getHoverName().getString());
-			taken.add(stack.copy());
-			tally[0]++;
-			tally[1] += stack.getCount();
-			container.setItem(i, ItemStack.EMPTY);
-		}
 	}
 
 	// --------------------------------------------------------------------- counts

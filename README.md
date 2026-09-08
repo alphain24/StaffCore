@@ -49,7 +49,7 @@ Everything it records goes in a SQLite file next to your world, backed up on eve
 
 1. Install **Fabric Loader 0.19.3 or newer** for Minecraft 26.2.
 2. Drop **[Fabric API](https://modrinth.com/mod/fabric-api)** into `mods/`.
-3. Drop `staffcore-1.0.0.jar` into `mods/`.
+3. Drop `staffcore-<version>.jar` into `mods/`.
 4. Start the server.
 
 SQLite is bundled inside the jar (~12 MB, mostly native libraries), so there is nothing else
@@ -112,7 +112,7 @@ the class names in this source are the real ones.
 The Gradle wrapper is committed, so:
 
 ```bash
-./gradlew build         # compile + tests -> build/libs/staffcore-1.0.0.jar
+./gradlew build         # compile + tests -> build/libs/staffcore-<version>.jar
 ./gradlew test          # the JUnit suite on its own
 ./gradlew runServer     # dev server with the mod loaded
 ```
@@ -193,12 +193,18 @@ has already logged off.
 | `/staff appeals` | `staff.appeals` | Appeal queue |
 | `/staff rollback area <radius> [minutes]` | `grief.rollback` | Undo **everyone's** changes here |
 | `/staff stats <player>` | `analytics.stats` | One staff member's totals |
+| `/staff note <player> <text>` | `staff.notes` | Attributed, timestamped, never deleted |
+| `/staff audit <staff> [days]` | `staff.audit` | Everything a staff member did, with case links |
+| `/staff audit <staff> origins` | `staff.audit.addresses` | Where they acted from — admin-only, hashed |
+| `/staff approve [id]` | `staff.approve` | Confirm somebody else's staged mass rollback, IP ban or inventory edit |
 | `/staff perms [list \| set \| unset \| explain]` | `staff.perms` | Built-in groups, when no permissions mod is installed; `explain <player>` prints their resolved nodes |
 | `/staff backup` | `staff.reload` | Write a database backup now |
 | `/staff export [addresses [confirm]]` | `staff.reload` | Dump every table to CSV; addresses are redacted unless asked for |
 | `/staff selftest` | `staff.reload` | Prove the mod works, not just that it started |
 | `/staff nbt` | `security.invsee` | Read the held item's component data |
 | `/staff panel` | `staff.gui` | Open the panel |
+| `/staff cases [status \| mine]` | `staff.gui` | Open cases, strongest first |
+| `/staff case <id>` | `staff.gui` | Read one case; add `note`, `assign`, `claim`, `investigating`, `cleared`, `actioned` |
 | `/staff vault` | `security.vault` | The contraband vault; `security.vault.destroy` to destroy an item for good |
 | `/staff contraband` | `security.vault` | The contraband rules; `security.contraband.edit` to change them |
 | `/staff anticheat [player]` | `security.check` | Bridge state, or one player's findings |
@@ -365,6 +371,20 @@ open, every module that needs it degrades quietly and the rest of the mod still 
 Stated plainly rather than papered over. Everything here is a deliberate boundary or a
 known gap — not a bug list.
 
+**Accountability**
+
+- **The console can stage a two-person action but can never approve one.** Intended, not an
+  oversight. Approval exists to put a second *person* behind something irreversible, and the
+  console, RCON, a command block, a scheduled function and an unlinked Discord user are all
+  the same case: each holds every permission or none, and none of them belongs to an account
+  anybody could ask about it afterwards. An approval granted by nobody satisfies the letter of
+  the check and none of its purpose.
+- Proposing is a different matter, and still allowed — an automated job that stages a mass
+  rollback for a human to confirm is a perfectly good arrangement.
+- **The practical cost:** on a server with one admin online, a mass rollback, an IP ban and an
+  inventory edit wait until somebody else signs in. Turn it off with
+  `requireTwoPersonApproval` if that trade is wrong for you.
+
 **Recovery and evidence**
 
 - **Rollback only reaches the area and window you give it.** That is the scope you asked
@@ -404,6 +424,17 @@ known gap — not a bug list.
 
 **Structural**
 
+- **A permission node written by hand, rather than taken from `Nodes`, fails in a shape that
+  looks like success.** `Actor` resolves permissions by walking the nodes declared in `Nodes`,
+  so a string that is not one of them is in nobody's resolved set — denied to every player, and
+  granted to operators through the operator fallback. It therefore works perfectly for whoever
+  is testing it, because whoever is testing it is opped, and is silently missing for everyone
+  else. A typo has the same shape: `staff.punsh` compiles, resolves to nothing, and quietly
+  removes a permission from every non-operator. `NodeLiteralTest` fails the build on a literal
+  at a permission check, so the source tree is covered. The shape is still worth recognising
+  on sight, because it applies to every node written by hand outside it — a permissions
+  plugin's group definition, an LuckPerms command, a wiki page somebody copies from — and
+  no test here can reach any of those.
 - **Almost every mixin is non-fatal.** Exactly one (the login gate behind bans and
   maintenance) is required; the rest use `defaultRequire: 0`, so an update that moves an
   injection point costs you that feature rather than your server. The startup check now asks

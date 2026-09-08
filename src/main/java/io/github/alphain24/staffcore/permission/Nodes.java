@@ -71,4 +71,20 @@ public final class Nodes {
 	public static final String BROADCAST       = "control.broadcast";
 	public static final String MAINTENANCE     = "control.maintenance";
 	public static final String PROXY           = "proxy.admin";
+
+	// accountability
+	/** Read another staff member's action history. */
+	public static final String AUDIT           = "staff.audit";
+	/**
+	 * Read the addresses a staff member acted from.
+	 * <p>
+	 * Separate from {@link #AUDIT} and deliberately admin-only. It is for establishing whether
+	 * a staff account was compromised, which is a question worth being able to answer and not
+	 * one every staff member needs to be able to ask about their colleagues.
+	 */
+	public static final String AUDIT_ADDRESSES = "staff.audit.addresses";
+	/** Skip the per-minute limits. For admins doing a genuine bulk cleanup. */
+	public static final String RATE_LIMIT_EXEMPT = "staff.ratelimit.exempt";
+	/** Confirm somebody else's staged mass rollback, IP ban or inventory edit. */
+	public static final String APPROVE         = "staff.approve";
 }

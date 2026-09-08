@@ -87,7 +87,14 @@ public class StaffModeModule implements Module {
 			return;
 		}
 
-		player.getInventory().clearContent();
+		// Emptied through the gateway, so clocking on leaves the same kind of record as any
+		// other removal. The stash is the recovery mechanism; the audit row is the answer to
+		// "where did my inventory go".
+		io.github.alphain24.staffcore.inventory.InventoryGateway.replaceAll(player,
+				io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.STAFF_MODE_STASH,
+				io.github.alphain24.staffcore.permission.Actor.of(player),
+				"clocked on; inventory moved to the stash",
+				new ItemStack[0]);
 		StaffToolset.give(player);
 		inStaffMode.add(player.getUUID());
 		StaffCore.state().setStaffMode(player.getUUID(), true, prior.getName());
@@ -248,7 +255,6 @@ public class StaffModeModule implements Module {
 		MinecraftServer server = Mc.server(player);
 		inStaffMode.remove(player.getUUID());
 
-		player.getInventory().clearContent();
 		restoreStash(server, player);
 
 		StateStore.State stored = StaffCore.state().loadAll().get(player.getUUID());
@@ -281,10 +287,23 @@ public class StaffModeModule implements Module {
 			return;
 		}
 
-		for (int i = 0; i < size && i < stored.length; i++) {
-			player.getInventory().setItem(i, stored[i]);
+		// replaceAll clears first, so the staff toolset goes with it and there is no separate
+		// clearContent to get out of step with this. Through the gateway for the same reason
+		// every other write is: this is the path that can lose somebody's whole inventory.
+		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.replaceAll(player,
+				io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.STAFF_MODE_STASH,
+				io.github.alphain24.staffcore.permission.Actor.of(player),
+				"clocked off; stash handed back", stored);
+
+		if (outcome.wasRefused()) {
+			// The stash is untouched, so they can try again. Refusing to hand it back is
+			// recoverable; handing it back unrecorded is not.
+			player.sendSystemMessage(Theme.bad(
+					"Your saved inventory could not be handed back: " + outcome.refused()
+							+ " It is still saved — try clocking off again."));
+			return;
 		}
-		player.containerMenu.broadcastChanges();
+
 		// Cleared only after a successful hand-back, so a crash mid-restore leaves the
 		// stash intact for the next attempt.
 		StaffCore.state().clearStash(player.getUUID());

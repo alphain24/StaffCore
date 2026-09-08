@@ -502,10 +502,13 @@ public class GriefModule implements Module {
 		if (count == cfg.massGriefBlocks) {
 			MinecraftServer server = Mc.server(player);
 			if (server != null) {
-				Mods.alerts().onSecurityFlag(server, Mc.name(player),
+				Mods.cases().emit(server,
+						io.github.alphain24.staffcore.modules.cases.Signal.Type.MASS_GRIEF,
+						player.getUUID(), Mc.name(player), cfg.massGriefSignalConfidence,
 						"broke %d blocks in %d seconds at %d, %d, %d".formatted(
 								count, cfg.massGriefWindowSeconds,
-								player.getBlockX(), player.getBlockY(), player.getBlockZ()));
+								player.getBlockX(), player.getBlockY(), player.getBlockZ()),
+						"grief");
 			}
 		}
 		bursts.put(id, new BreakBurst(burst.windowStart(), count));
@@ -1425,6 +1428,29 @@ public class GriefModule implements Module {
 			int radius, long windowMs, boolean dryRun, String staff) {
 
 		if (!StaffCore.storage().isReady()) return RollbackResult.NOTHING;
+
+		// Rate limited here rather than in the command, for the same reason punishments are:
+		// this is the funnel every path already goes through, so the GUI and anything added
+		// later are covered without anybody having to remember them.
+		//
+		// A dry run is exempt. Previewing costs nothing and refusing it would push people
+		// towards running the real thing to find out what it would do, which is the opposite
+		// of what the limit is for.
+		if (!dryRun && staff != null) {
+			ServerPlayer acting = level.getServer().getPlayerList().getPlayerByName(staff);
+			var verdict = Mods.accountability().limits().check(
+					io.github.alphain24.staffcore.permission.Actor.of(acting),
+					io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.ROLLBACK);
+
+			if (!verdict.allowed()) {
+				if (acting != null) {
+					acting.sendSystemMessage(
+							io.github.alphain24.staffcore.gui.Theme.bad(verdict.refusal()));
+				}
+				StaffCore.LOGGER.warn("[Grief] rate limit refused a rollback by {}", staff);
+				return RollbackResult.NOTHING;
+			}
+		}
 
 		String world = Mc.dimensionId(level);
 		long cutoff = System.currentTimeMillis() - windowMs;

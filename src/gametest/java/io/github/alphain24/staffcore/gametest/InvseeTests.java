@@ -38,7 +38,7 @@ public class InvseeTests {
 		var before = InventoryGateway.historyFor(target.getUUID(), 50).size();
 
 		var outcome = InventoryGateway.give(target, InventoryGateway.Origin.INVSEE_EDIT,
-				"TestStaff", "gametest edit", java.util.List.of(new ItemStack(Items.DIAMOND, 4)));
+				Harness.staff(), "gametest edit", java.util.List.of(new ItemStack(Items.DIAMOND, 4)));
 
 		Harness.check(helper, outcome.applied(), "the write was refused: " + outcome.refused());
 		Harness.checkEquals(helper, 4, count(target, Items.DIAMOND),
@@ -48,7 +48,9 @@ public class InvseeTests {
 		Harness.check(helper, after.size() > before,
 				"the items moved and nothing recorded it, which is the state the gateway "
 						+ "exists to make impossible");
-		Harness.check(helper, after.get(0).actor().equals("TestStaff"),
+		// The audit stores the actor's name, so this compares against that rather than
+		// against the Actor itself.
+		Harness.check(helper, after.get(0).actor().equals(Harness.staff().name()),
 				"the audit row does not name who did it");
 		Harness.check(helper, after.get(0).items().contains("diamond"),
 				"the audit row does not say what moved: " + after.get(0).items());
@@ -63,19 +65,68 @@ public class InvseeTests {
 
 		// Opening a screen and changing nothing is what staff do most of the time. A row for
 		// every one of those is a log nobody reads, which is the same as no log.
-		var quiet = InventoryGateway.beginEdit(target, "TestStaff", "looked, changed nothing");
-		var quietOutcome = InventoryGateway.endEdit(quiet);
+		var quiet = InventoryGateway.beginEdit(target, Harness.staff(), "looked, changed nothing");
+		var quietOutcome = InventoryGateway.endEdit(quiet, Harness.staff());
 		Harness.checkEquals(helper, 0, quietOutcome.items(),
 				"a session that changed nothing wrote a row");
 
 		// A session that does change something records the net effect, not the clicks.
-		var session = InventoryGateway.beginEdit(target, "TestStaff", "took some iron");
+		var session = InventoryGateway.beginEdit(target, Harness.staff(), "took some iron");
 		target.getInventory().clearContent();
 		target.getInventory().add(new ItemStack(Items.IRON_INGOT, 3));
-		var outcome = InventoryGateway.endEdit(session);
+		var outcome = InventoryGateway.endEdit(session, Harness.staff());
 
 		Harness.checkEquals(helper, 7, outcome.items(),
 				"the recorded change does not match what actually moved");
+		helper.succeed();
+	}
+
+	@GameTest
+	public void anEditIsAttributedToWhoeverClosedIt(GameTestHelper helper) {
+		ServerPlayer target = Harness.mockPlayer(helper);
+		target.getInventory().clearContent();
+		target.getInventory().add(new ItemStack(Items.GOLD_INGOT, 8));
+
+		// An invsee screen stays open for as long as somebody leaves it open, so the session
+		// carries a UUID and a name rather than a resolved permission set. Whoever closes it is
+		// resolved at that moment. This is the case that proves it: one person opens, another
+		// closes, and the row has to name the second without losing the first.
+		var session = InventoryGateway.beginEdit(target, Harness.staff(), "took some gold");
+		target.getInventory().clearContent();
+		target.getInventory().add(new ItemStack(Items.GOLD_INGOT, 2));
+		InventoryGateway.endEdit(session, Harness.otherStaff());
+
+		var rows = InventoryGateway.historyFor(target.getUUID(), 50);
+		Harness.check(helper, !rows.isEmpty(), "the edit left no audit row at all");
+
+		var row = rows.get(0);
+		Harness.check(helper, row.actor().equals(Harness.otherStaff().name()),
+				"the row names " + row.actor() + " rather than whoever actually closed the "
+						+ "session, so the permissions that authorised it are not the ones "
+						+ "recorded against it");
+		Harness.check(helper, row.reason().contains(Harness.staff().name()),
+				"the row does not say who opened the session: " + row.reason());
+		helper.succeed();
+	}
+
+	@GameTest
+	public void theSamePersonClosingLeavesAPlainReason(GameTestHelper helper) {
+		ServerPlayer target = Harness.mockPlayer(helper);
+		target.getInventory().clearContent();
+		target.getInventory().add(new ItemStack(Items.EMERALD, 6));
+
+		// The other half. Noting the opener on every row would be noise, and noise in an audit
+		// log is how the one row that matters gets skipped over.
+		var session = InventoryGateway.beginEdit(target, Harness.staff(), "took some emerald");
+		target.getInventory().clearContent();
+		target.getInventory().add(new ItemStack(Items.EMERALD, 1));
+		InventoryGateway.endEdit(session, Harness.staff());
+
+		var rows = InventoryGateway.historyFor(target.getUUID(), 50);
+		Harness.check(helper, !rows.isEmpty(), "the edit left no audit row at all");
+		Harness.check(helper, !rows.get(0).reason().contains("opened by"),
+				"one person opened and closed it, so there is nothing to disambiguate: "
+						+ rows.get(0).reason());
 		helper.succeed();
 	}
 
@@ -116,7 +167,7 @@ public class InvseeTests {
 		owed.put(Items.DIAMOND, 6);
 
 		var outcome = InventoryGateway.take(target, InventoryGateway.Origin.ROLLBACK_DEBIT,
-				"TestStaff", "gametest debit", owed);
+				Harness.staff(), "gametest debit", owed);
 
 		Harness.checkEquals(helper, 6, outcome.items(), "took the wrong amount");
 		Harness.checkEquals(helper, 14, count(target, Items.DIAMOND),

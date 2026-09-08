@@ -65,6 +65,35 @@ final class Harness {
 		return Mc.name(player);
 	}
 
+	/**
+	 * A staff identity for tests, built without a player.
+	 * <p>
+	 * The gateway takes an {@code Actor} rather than a name so the same call works from a
+	 * command, a menu and — later — a Discord bridge with no player anywhere. That this is
+	 * constructible here with nothing but a UUID is the property that makes it worth having.
+	 */
+	static io.github.alphain24.staffcore.permission.Actor staff() {
+		return io.github.alphain24.staffcore.permission.Actor.of(
+				java.util.UUID.nameUUIDFromBytes("TestStaff".getBytes()), "TestStaff",
+				io.github.alphain24.staffcore.permission.Actor.Source.PLAYER,
+				io.github.alphain24.staffcore.permission.Actor.all());
+	}
+
+	/**
+	 * A second staff identity, for the cases where two different people touch one thing.
+	 * <p>
+	 * An invsee screen is opened by one staff member and can be closed by the server — or, once
+	 * a Discord bridge exists, acted on by someone else entirely. Having two identities to hand
+	 * is what lets a test tell "the same person finished what they started" apart from "somebody
+	 * else did", which is the distinction the audit row exists to record.
+	 */
+	static io.github.alphain24.staffcore.permission.Actor otherStaff() {
+		return io.github.alphain24.staffcore.permission.Actor.of(
+				java.util.UUID.nameUUIDFromBytes("OtherStaff".getBytes()), "OtherStaff",
+				io.github.alphain24.staffcore.permission.Actor.Source.PLAYER,
+				io.github.alphain24.staffcore.permission.Actor.all());
+	}
+
 	static GameType survival() {
 		return GameType.SURVIVAL;
 	}

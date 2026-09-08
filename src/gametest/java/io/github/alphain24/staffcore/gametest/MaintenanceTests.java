@@ -105,6 +105,56 @@ public class MaintenanceTests {
 		helper.succeed();
 	}
 
+	/** Makes a mock player an operator, which is what the maintenance node resolves to here. */
+	private void asStaff(MinecraftServer server, ServerPlayer player, Runnable body) {
+		server.getPlayerList().getOps().add(
+				new net.minecraft.server.players.ServerOpListEntry(player.nameAndId(),
+						net.minecraft.server.permissions.LevelBasedPermissionSet.OWNER, false));
+		try {
+			body.run();
+		} finally {
+			server.getPlayerList().getOps().remove(player.nameAndId());
+		}
+	}
+
+	@GameTest
+	public void theKickTakesPlayersAndLeavesStaff(GameTestHelper helper) {
+		MinecraftServer server = Harness.server(helper);
+		ServerPlayer player = Harness.mockPlayer(helper);
+		ServerPlayer staff = Harness.mockPlayer(helper);
+
+		// Blocking new logins alone is half a feature: without this, whatever the server was
+		// closed to fix is still being played through by everybody already on. The half that
+		// goes wrong the other way is kicking the staff who turned it on.
+		asStaff(server, staff, () -> {
+			var targets = ControlModule.kickTargets(java.util.List.of(player, staff));
+
+			Harness.check(helper, targets.contains(player),
+					"maintenance would leave an ordinary player online, so closing the server "
+							+ "does not close it");
+			Harness.check(helper, !targets.contains(staff),
+					"maintenance would kick the staff member who turned it on");
+			Harness.checkEquals(helper, 1, targets.size(), "wrong number selected");
+		});
+		helper.succeed();
+	}
+
+	@GameTest
+	public void aKickedPlayerIsActuallyDisconnected(GameTestHelper helper) {
+		ServerPlayer player = Harness.mockPlayer(helper);
+
+		Harness.check(helper, !player.hasDisconnected(), "already gone before we started");
+
+		// The selection above decides who; this is the half that has to actually happen to
+		// them. Driven through the same helper the kick uses.
+		io.github.alphain24.staffcore.compat.Mc.disconnect(player,
+				ControlModule.maintenanceScreen());
+
+		Harness.check(helper, player.hasDisconnected(),
+				"the kick selected this player and then did not remove them");
+		helper.succeed();
+	}
+
 	@GameTest
 	public void theKickScreenSaysSomething(GameTestHelper helper) {
 		// A refusal with an empty screen is a disconnect with no reason, which reads to a
