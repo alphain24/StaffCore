@@ -3091,6 +3091,14 @@
                   <td class="wrap">The decoy shows through rock; breaking it is a mis-swing and the block turns out to be stone. A ghost block left behind means the resync did not arrive.</td></tr>
                 <tr><td class="wrap">Tunnel past a decoy so an ordinary swing exposes it</td>
                   <td class="wrap">It vanishes the moment the neighbour breaks &mdash; no diamond appears in the tunnel wall, and nothing is recorded against you. This is the false positive the whole design is built around.</td></tr>
+                <tr><td class="wrap">Run <code>/staff xray &lt;player&gt; replay</code>, fly the tunnel, then <code>/staff xray exit</code></td>
+                  <td class="wrap">You arrive at the entrance in spectator and vanished, the dig is drawn in tinted glass with ore lit, the sidebar shows the odds and both fractions, and exiting puts you back exactly where you were in the gamemode you left in. Nobody else sees any of it.</td></tr>
+                <tr><td class="wrap">Start a replay, disconnect without exiting, rejoin</td>
+                  <td class="wrap">You come back at your own position in your own gamemode. The drawn blocks are gone &mdash; a fresh client was sent the honest chunks &mdash; and the sidebar is gone with them.</td></tr>
+                <tr><td class="wrap">Start a replay, fly through a portal</td>
+                  <td class="wrap">The replay ends within five seconds and puts you back, rather than leaving a tunnel drawn over a different world.</td></tr>
+                <tr><td class="wrap">Start a replay and stop the server without exiting</td>
+                  <td class="wrap">On restart the log names the open sessions; rejoining restores you. This is the case that strands somebody if the record is only in memory.</td></tr>
                 <tr><td class="wrap">Kill the server process mid-snapshot</td>
                   <td class="wrap">It boots, and the snapshot is either whole or absent — never half.</td></tr>
               </tbody>

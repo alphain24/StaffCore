@@ -804,8 +804,17 @@ public final class StaffCommands {
 
 		staff.then(Commands.literal("xray")
 				.requires(src -> Permissions.check(src, Nodes.SECURITY_CHECK))
+				// Before the player argument, so "exit" is never read as somebody's name.
+				// A staff member trying to get out of a replay and instead being told there
+				// is no player called exit is the worst moment for a parsing surprise.
+				.then(Commands.literal("exit").executes(StaffCommands::xrayExit))
 				.then(Commands.argument("player", StringArgumentType.word())
 						.executes(ctx -> xray(ctx, 6))
+						.then(Commands.literal("replay")
+								.executes(ctx -> xrayReplay(ctx, 6))
+								.then(Commands.argument("hours", IntegerArgumentType.integer(1, 168))
+										.executes(ctx -> xrayReplay(ctx,
+												IntegerArgumentType.getInteger(ctx, "hours")))))
 						.then(Commands.argument("hours", IntegerArgumentType.integer(1, 168))
 								.executes(ctx -> xray(ctx,
 										IntegerArgumentType.getInteger(ctx, "hours"))))));
@@ -2863,6 +2872,36 @@ public final class StaffCommands {
 					.append(Icon.text(" to ", Theme.MUTED))
 					.append(Link.time(past.lastSeen())), false);
 		}
+	}
+
+	/**
+	 * Stands the caller inside somebody's excavation.
+	 * <p>
+	 * Separate from the report rather than replacing it. Reading the numbers is a few seconds
+	 * and going to look costs a teleport out of wherever you were — so the cheap one stays the
+	 * default and this is asked for.
+	 */
+	private static int xrayReplay(CommandContext<CommandSourceStack> ctx, int hours)
+			throws CommandSyntaxException {
+
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		String name = StringArgumentType.getString(ctx, "player");
+		audit(ctx, "/staff xray " + name + " replay");
+
+		var entry = io.github.alphain24.staffcore.modules.security.XrayReplayView.enter(
+				ctx.getSource().getServer(), self, name, null, hours * 3_600_000L);
+
+		return entry.started() ? 1 : fail(ctx, entry.refusal());
+	}
+
+	private static int xrayExit(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		boolean left = io.github.alphain24.staffcore.modules.security.XrayReplayView.exit(
+				ctx.getSource().getServer(), self, null);
+
+		return left ? 1 : fail(ctx, "You are not in a replay.");
 	}
 
 	// ------------------------------------------------------------ operation lookup

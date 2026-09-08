@@ -1043,6 +1043,35 @@ final class Schema {
 					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_name_history_name "
 							+ "ON name_history(name)");
 				}
+			},
+
+			// 22 - where a staff member was before they started spectating an excavation.
+			//
+			// On disk rather than in memory, and that is the whole design. A replay puts
+			// somebody in spectator somewhere they did not walk to, and every way of leaving
+			// has to put them back: the command, a disconnect, a death, walking into another
+			// dimension, and the server going down underneath them. Only the last of those
+			// needs persistence, and it is the one that would otherwise leave somebody
+			// permanently in spectator at the bottom of a stranger's mine with no way back.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS replay_session (
+							    uuid           TEXT PRIMARY KEY,
+							    case_id        TEXT,
+							    subject        TEXT    NOT NULL,
+							    prior_gamemode TEXT,
+							    prior_world    TEXT    NOT NULL,
+							    prior_x        REAL    NOT NULL,
+							    prior_y        REAL    NOT NULL,
+							    prior_z        REAL    NOT NULL,
+							    prior_yaw      REAL    NOT NULL,
+							    prior_pitch    REAL    NOT NULL,
+							    prior_vanished INTEGER NOT NULL DEFAULT 0,
+							    started_at     INTEGER NOT NULL
+							)
+							""");
+				}
 			}
 	);
 
@@ -1145,6 +1174,23 @@ final class Schema {
 			)
 			""",
 			"CREATE INDEX IF NOT EXISTS idx_name_history_name ON name_history(name)",
+
+			"""
+			CREATE TABLE IF NOT EXISTS replay_session (
+			    uuid           TEXT PRIMARY KEY,
+			    case_id        TEXT,
+			    subject        TEXT    NOT NULL,
+			    prior_gamemode TEXT,
+			    prior_world    TEXT    NOT NULL,
+			    prior_x        REAL    NOT NULL,
+			    prior_y        REAL    NOT NULL,
+			    prior_z        REAL    NOT NULL,
+			    prior_yaw      REAL    NOT NULL,
+			    prior_pitch    REAL    NOT NULL,
+			    prior_vanished INTEGER NOT NULL DEFAULT 0,
+			    started_at     INTEGER NOT NULL
+			)
+			""",
 
 			// Created lazily by AddressPrivacy the first time a salt is needed, which works
 			// and puts one table's shape somewhere nobody looking at the schema would find it.
