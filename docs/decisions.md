@@ -646,6 +646,45 @@ covers the resolver behaviourally including the survival case a mock player cann
 other three need a real player in a real player list in survival, and are written up as a
 ten-minute script in `docs/manual-checks/vanish.md`.
 
+### A taxonomy tells you where to look, never what you will find
+
+The list above named two hollow vanish tests. The probe found four. The two extra ones failed
+for a mock-player property that was not in the taxonomy at all — not being in the server's
+player list, as opposed to being permanently creative — and it stayed invisible for exactly as
+long as anybody reasoned about which tests were hollow instead of switching the feature off and
+reading what still passed.
+
+So the ordering is: **the taxonomy is the prompt, the probe is the method.** A list of past
+failures is worth having because it makes somebody suspicious in the right area. It is not worth
+trusting, because the next instance is by definition the one the list does not describe — and a
+list read as a checklist produces a search that stops at the last familiar shape.
+
+This is the same mistake in a different costume as reasoning about branch topology from a
+mental picture of three parallel branches rather than running `rev-list`, or listing four
+inventory paths from the code that named them rather than from the code that writes to
+inventories. Each time, a model that was right about most of the territory was treated as the
+territory.
+
+### A control has to exercise the same path the assertion does
+
+The anti-vacuity rule — a check that can pass by finding nothing must assert that it found
+something — would have called the mob test sound. It had a control. The control established
+that `setTarget` worked on that zombie by targeting *another mob*, which is a real mechanism
+check and passed for real reasons.
+
+The assertion then called `setTarget` with a **player** argument, and that path failed for a
+reason nothing to do with vanish: `Mob.asValidTarget` refuses a creative player before checking
+anything else, and the mock player is permanently creative. The control proved the machinery
+worked on the path it took. The assertion took a different one.
+
+So the rule needs its second half: **the control must differ from the assertion only in the
+thing being tested.** Same call, same argument types, same code path — with the feature off
+rather than on. A control that reaches the assertion by another route is measuring a mechanism
+nobody is worried about.
+
+The cheapest form of a correct control is the probe: run the assertion with the feature
+disabled and require that it fails.
+
 ### Why this belongs in a decision record
 
 Because the instinct it fights is a good one. Every one of these was written by somebody trying

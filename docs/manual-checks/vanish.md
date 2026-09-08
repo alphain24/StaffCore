@@ -34,6 +34,9 @@ The other three need a real player in a real player list, in survival. That is t
 
 **Time needed: about ten minutes.** You need two accounts.
 
+> Running the decoy checks in the same sitting? Start from
+> [`README.md`](README.md) instead — it sequences both scripts so the setup happens once.
+
 ---
 
 ## What you need

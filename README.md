@@ -456,8 +456,10 @@ known gap — not a bug list.
   that never reaches a client produces a false-positive rate of zero *and* a true-positive rate
   of zero, and only the first shows up in the corpus — so the measured zero in
   [decisions.md](docs/decisions.md) says the retirement rule holds, not that decoys work. The check that closes this is written out step by step in
-  [docs/manual-checks/decoy-visibility.md](docs/manual-checks/decoy-visibility.md) — about
-  five minutes, and it says what to change in this file when it passes. It has not been run.
+  [docs/manual-checks/](docs/manual-checks/) — one sitting covers this and the vanish claims
+  together, and each script says what to change in this file when it passes. **If only one
+  check is ever run, it should be this one:** a decoy that never reaches a client makes the
+  whole canary layer detect nothing rather than detect less. It has not been run.
 - **Alt detection is still a lead, never a verdict.** It links accounts by exact address and
   by address range, scores each link 0-100 from how often the address was shared and whether
   the two accounts have ever been online together, and shows its reasoning. A shared house

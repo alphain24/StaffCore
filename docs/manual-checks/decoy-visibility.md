@@ -31,6 +31,9 @@ measured zero in `docs/decisions.md` means "the retirement rule holds", not "dec
 
 **Time needed: about five minutes**, plus however long it takes to get an x-ray resource pack.
 
+> Running the vanish checks in the same sitting? Start from
+> [`README.md`](README.md) instead — it sequences both scripts so the setup happens once.
+
 ---
 
 ## What you need
