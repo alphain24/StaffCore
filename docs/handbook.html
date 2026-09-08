@@ -1414,7 +1414,7 @@
         <h3>X-ray</h3>
         <p>
           The x-ray check reads the grief log rather than watching players, and it will not
-          fire at all until they have broken at least 200 blocks.
+          fire at all until the dig reaches a volume of at least 512 blocks of rock.
         </p>
         <p>
           A single ratio is a bad detector, so it is not one. Four independent signals are
@@ -3038,7 +3038,7 @@
           <h3>Detection</h3>
           <ul>
             <li><strong>Alt detection is a lead, never a verdict.</strong> It links accounts by exact address and by address range, scores each link out of a hundred from how often the address was shared and whether the two accounts have ever been online at the same moment, and shows its reasoning on the screen. A shared household still trips it. A determined evader with a clean VPN still beats it. Only an exact address match can ever ban anybody automatically.</li>
-            <li><strong>The x-ray check is a heuristic.</strong> It flags, it never acts, and by default it will not commit to a verdict below 200 mined blocks. It no longer counts ore a player placed themselves, but it is still inference drawn from a block log. Its thresholds are measured against generated mining patterns, not against real player data &mdash; <code>docs/decisions.md</code> records exactly what that does and does not establish.</li>
+            <li><strong>The x-ray check is a heuristic.</strong> It flags, it never acts, and by default it will not commit to a verdict below a 512-block volume of rock. It no longer counts ore a player placed themselves, but it is still inference drawn from a block log. Its thresholds are measured against generated mining patterns, not against real player data &mdash; <code>docs/decisions.md</code> records exactly what that does and does not establish.</li>
             <li><strong>Analytics cannot read judgement.</strong> Follow-through, response time and overturn rate sit beside the raw counts now, so the leaderboard is no longer purely a volume ranking &mdash; but no number here can tell you whether a ban was the right call. Read it as a prompt to go and look at someone's work.</li>
           </ul>
           <h3>Not built</h3>
@@ -3087,6 +3087,16 @@
                   <td class="wrap">The preview warns; running it cold is refused and points at the preview.</td></tr>
                 <tr><td class="wrap">Have two staff preview overlapping rollbacks at once</td>
                   <td class="wrap">The second is refused <em>by name</em>, so there is somebody to go and talk to.</td></tr>
+                <tr><td class="wrap">Decoy blocks: are they visible to a cheating client, and does the resync arrive</td>
+                  <td class="wrap">Follow <code>docs/manual-checks/decoy-visibility.md</code> &mdash; a numbered five-minute script with the config to set, what to look at, and pass/fail for each claim. <strong>Not yet run.</strong> Until it is, the decoy layer is packet-verified rather than client-verified, and the measured false-positive rate says the retirement rule holds rather than that decoys work.</td></tr>
+                <tr><td class="wrap">Run <code>/staff xray &lt;player&gt; replay</code>, fly the tunnel, then <code>/staff xray exit</code></td>
+                  <td class="wrap">You arrive at the entrance in spectator and vanished, the dig is drawn in tinted glass with ore lit, the sidebar shows the odds and both fractions, and exiting puts you back exactly where you were in the gamemode you left in. Nobody else sees any of it.</td></tr>
+                <tr><td class="wrap">Start a replay, disconnect without exiting, rejoin</td>
+                  <td class="wrap">You come back at your own position in your own gamemode. The drawn blocks are gone &mdash; a fresh client was sent the honest chunks &mdash; and the sidebar is gone with them.</td></tr>
+                <tr><td class="wrap">Start a replay, fly through a portal</td>
+                  <td class="wrap">The replay ends within five seconds and puts you back, rather than leaving a tunnel drawn over a different world.</td></tr>
+                <tr><td class="wrap">Start a replay and stop the server without exiting</td>
+                  <td class="wrap">On restart the log names the open sessions; rejoining restores you. This is the case that strands somebody if the record is only in memory.</td></tr>
                 <tr><td class="wrap">Kill the server process mid-snapshot</td>
                   <td class="wrap">It boots, and the snapshot is either whole or absent — never half.</td></tr>
               </tbody>

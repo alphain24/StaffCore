@@ -213,6 +213,9 @@ public class StaffCore implements ModInitializer {
 		// skipped the ending entirely.
 		ServerLifecycleEvents.SERVER_STARTED.register(mc -> Mods.punish().sweepExpired(mc));
 
+		ServerLifecycleEvents.SERVER_STARTED.register(
+				io.github.alphain24.staffcore.modules.security.XrayReplayView::restoreAfterRestart);
+
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(mc -> {
 			// A minute of lateness on a ban that has already lasted a week is nothing, and a
 			// query per tick to find that out would be absurd. Enforcement does not depend on
@@ -220,6 +223,24 @@ public class StaffCore implements ModInitializer {
 			// out regardless of when the row is retired.
 			if (mc.getTickCount() % 1200 != 0) return;
 			Mods.punish().sweepExpired(mc);
+		});
+
+		// Decoys, topped up slowly. Every candidate position costs seven block reads and is
+		// usually rejected, so this runs once every five seconds and gives up after ten
+		// attempts per player rather than looking until it succeeds — a player standing in a
+		// cave has no valid positions at all, and a loop would rediscover that every time.
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(mc -> {
+			if (mc.getTickCount() % 100 != 0) return;
+
+			// A spectator can fly through a portal, and one who does is looking at a different
+			// world with somebody else's tunnel drawn over it.
+			io.github.alphain24.staffcore.modules.security.XrayReplayView.checkDimensions(mc);
+
+			if (!io.github.alphain24.staffcore.modules.security.Canaries.enabled()) return;
+
+			for (ServerPlayer player : mc.getPlayerList().getPlayers()) {
+				io.github.alphain24.staffcore.modules.security.Canaries.maintain(player);
+			}
 		});
 
 		ServerLifecycleEvents.SERVER_STOPPING.register(mc -> {
@@ -241,6 +262,10 @@ public class StaffCore implements ModInitializer {
 			// State restore runs before the greeting so a returning staff member is told
 			// what StaffCore put back rather than discovering it themselves.
 			Mods.staffMode().restoreOnJoin(mc, player);
+			// Before vanish is restored, because leaving a replay decides what the vanish
+			// state should be — running them the other way round would restore the replay's
+			// concealment as though the staff member had chosen it.
+			io.github.alphain24.staffcore.modules.security.XrayReplayView.restoreOnJoin(mc, player);
 			Mods.freeze().restoreOnJoin(player);
 			Mods.vanish().onPlayerJoined(mc, player);
 
@@ -286,6 +311,15 @@ public class StaffCore implements ModInitializer {
 			// convenience and avoids somebody returning to an /staff undo aimed at something
 			// they no longer remember doing.
 			io.github.alphain24.staffcore.command.StaffSession.forget(player.getUUID());
+			// A decoy only exists while a client believes it, and a reconnecting client is
+			// sent the honest chunk again. Keeping one across a session would leave a
+			// position we think is fake and the player sees as stone, which is a false
+			// positive waiting for somebody to mine there.
+			io.github.alphain24.staffcore.modules.security.Canaries.forget(player.getUUID());
+			// The painted path goes; the row saying where they were does not. A disconnect
+			// mid-replay is restored when they come back, and the way home has to outlive the
+			// session to make that possible.
+			io.github.alphain24.staffcore.modules.security.XrayReplayView.forget(player.getUUID());
 			ChatRouter.onPlayerLeft(player);
 		});
 
@@ -293,6 +327,12 @@ public class StaffCore implements ModInitializer {
 		// cannot be reconstructed afterwards.
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, damageSource, damageAmount) -> {
 			if (entity instanceof ServerPlayer player) {
+				// A spectator should not be able to die, so reaching this while replaying means
+				// something else changed their gamemode underneath us. Getting them out first
+				// is the difference between a respawn and a respawn in spectator at the bottom
+				// of a stranger's mine.
+				io.github.alphain24.staffcore.modules.security.XrayReplayView.exit(
+						server, player, "you died");
 				Mods.inventory().capture(player, "On death", "system");
 
 				String cause = damageSource.getLocalizedDeathMessage(player).getString();

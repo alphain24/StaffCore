@@ -1,6 +1,6 @@
 package io.github.alphain24.staffcore.security;
 
-import io.github.alphain24.staffcore.modules.security.XrayDetector.Break;
+import io.github.alphain24.staffcore.modules.security.Excavation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,8 +25,84 @@ import java.util.Random;
 final class MiningPatterns {
 	private MiningPatterns() {}
 
-	/** One generated session and what it is meant to represent. */
-	record Pattern(String name, String description, List<Break> breaks, boolean clean) {}
+	/**
+	 * One generated session, what it is meant to represent, and the ore density it was
+	 * generated against.
+	 * <p>
+	 * The density is the ground truth the new statistics need and the old score did not.
+	 * Scoring a dig means comparing what the player took against what was there to take, and
+	 * on a real server the second number comes from counting the ore still standing. There is
+	 * no world here — so the corpus states it, which it can, because it is the thing that
+	 * chose it.
+	 *
+	 * @param oreFraction share of the surrounding rock that was target ore, as generated.
+	 *                    Target only: coal and copper are not worth detouring for and are not
+	 *                    counted by the detector either.
+	 */
+	record Pattern(String name, String description, List<Excavation.Dig> breaks, boolean clean,
+			boolean deep) {
+
+		/** The measured ambient density for this pattern's depth band. */
+		double oreFraction() {
+			return ambientFraction(deep);
+		}
+
+		/**
+		 * How much ore was in reach, found and unfound together.
+		 * <p>
+		 * The density applies to the rock they did <em>not</em> take. Applying it to the whole
+		 * population and taking the larger of that and what they found says "there were exactly
+		 * as many ores as they got", which is maximally incriminating and true of nobody — it
+		 * scored every honest pattern in this corpus at 99 the first time it was written.
+		 */
+		int oresPresent(int population, int drawn, int found) {
+			return found + (int) Math.round(Math.max(0, population - drawn) * oreFraction());
+		}
+	}
+
+	/**
+	 * Ambient target-ore density, measured from the corpus rather than assumed.
+	 * <p>
+	 * This is the number a p-value is compared against, and picking it by hand was wrong twice
+	 * over: the value would be a guess, and it would be a guess about generated rock rather
+	 * than about real rock, so it could not be checked against anything.
+	 * <p>
+	 * Measured instead. An unguided miner's find rate <em>is</em> the ambient density — that is
+	 * what unguided means — so the honest patterns define it and the guided one is scored
+	 * against it. Not circular: the question being asked of the guided pattern is precisely
+	 * "did this player find more than an unguided miner would in the same rock", and the clean
+	 * patterns are the only available statement of what that rate is.
+	 */
+	static double ambientFraction(boolean deep) {
+		Double cached = deep ? deepFraction : shallowFraction;
+		if (cached != null) return cached;
+
+		int found = 0;
+		int drawn = 0;
+
+		// Reads the break lists rather than the Patterns' own density, which is what breaks
+		// the cycle: measuring the density used to require building a Pattern, and building a
+		// Pattern used to require the density.
+		for (Pattern pattern : deep ? List.of(deepslateDiamondHunt()) : shallowClean()) {
+			for (Excavation.Dig dig : pattern.breaks()) {
+				drawn++;
+				if (dig.isTarget()) found++;
+			}
+		}
+
+		double fraction = drawn == 0 ? 0 : (double) found / drawn;
+		if (deep) deepFraction = fraction;
+		else shallowFraction = fraction;
+		return fraction;
+	}
+
+	private static Double shallowFraction;
+	private static Double deepFraction;
+
+	/** The clean patterns that mine above y=0, which is where the shallow rate comes from. */
+	private static List<Pattern> shallowClean() {
+		return List.of(stripMine(), branchMine(), caveClearing(), quarry());
+	}
 
 	// Ore as it actually turns up, roughly by how common each is at the depth in question.
 	private static final String[] SHALLOW_ORE = {
@@ -48,7 +124,7 @@ final class MiningPatterns {
 
 	/** A builder that keeps the running position, so every break is adjacent to the last. */
 	private static final class Dig {
-		private final List<Break> breaks = new ArrayList<>();
+		private final List<Excavation.Dig> breaks = new ArrayList<>();
 		private final String filler;
 		private long at = 1_000L;
 		private int x;
@@ -68,7 +144,7 @@ final class MiningPatterns {
 			y += dy;
 			z += dz;
 			at += 900L;
-			breaks.add(new Break(block, x, y, z, at));
+			breaks.add(new Excavation.Dig(block, "overworld", x, y, z, at));
 		}
 
 		void tunnel(int dx, int dy, int dz, int length) {
@@ -90,7 +166,7 @@ final class MiningPatterns {
 			return y;
 		}
 
-		List<Break> done() {
+		List<Excavation.Dig> done() {
 			return breaks;
 		}
 	}
@@ -136,7 +212,7 @@ final class MiningPatterns {
 		}
 		return new Pattern("strip mine",
 				"720 blocks of straight tunnel at y=12, veins taken from the walls",
-				dig.done(), true);
+				dig.done(), true, false);
 	}
 
 	/**
@@ -170,7 +246,7 @@ final class MiningPatterns {
 		}
 		return new Pattern("branch mine",
 				"a 90-block spine with eighteen ribs, ore taken where it appears",
-				dig.done(), true);
+				dig.done(), true, false);
 	}
 
 	/**
@@ -208,7 +284,7 @@ final class MiningPatterns {
 		}
 		return new Pattern("cave clearing",
 				"wandering an open cave system and taking what is already exposed",
-				dig.done(), true);
+				dig.done(), true, false);
 	}
 
 	/** Everything in a rectangle, layer by layer. Almost pure filler by volume. */
@@ -235,7 +311,7 @@ final class MiningPatterns {
 			}
 		}
 		return new Pattern("quarry", "a 14x12 pit taken down five layers, everything removed",
-				dig.done(), true);
+				dig.done(), true, false);
 	}
 
 	/**
@@ -272,7 +348,7 @@ final class MiningPatterns {
 		}
 		return new Pattern("deepslate diamond hunt",
 				"880 blocks at y=-54, going for diamond and finding what is down there",
-				dig.done(), true);
+				dig.done(), true, true);
 	}
 
 	/**
@@ -305,7 +381,7 @@ final class MiningPatterns {
 		}
 		return new Pattern("guided tunnelling",
 				"48 veins reached by short right-angle approaches, mostly diamond",
-				dig.done(), false);
+				dig.done(), false, true);
 	}
 
 	/** Every clean pattern — the set a threshold has to leave alone. */

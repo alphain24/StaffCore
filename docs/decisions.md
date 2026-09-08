@@ -326,6 +326,358 @@ was written, compiled, and ran zero times, and the suite reported success — wh
 result a test must never be able to give.
 ---
 
+## X-ray detection, rebuilt
+
+**Date:** 2026-09-08
+
+The weighted 0-100 score is gone. It combined four signals with weights somebody chose, and
+its problem was not accuracy — it separated the corpus — but that it had no units. Moving the
+threshold from 70 to 65 changed the number of alerts and nothing in the repository could say
+what it changed about the claim being made.
+
+A hypergeometric p-value has units: if this player had been digging without knowing where the
+ore was, the chance of doing at least this well is one in whatever. That is a sentence a staff
+member can repeat to the person they are confronting, and one an appeal can argue with.
+
+### The population is the modelling decision
+
+Not the blocks removed — every one of those was drawn, so the sample is the population and the
+question is vacuous. Not the bounding box — somebody mining at two ends of a corridor gets half
+a million blocks they were never near.
+
+It is **the excavation plus one step of rock**: what they were choosing between at each swing.
+That shape decides the answer. A straight tunnel draws nearly its whole shell, so a tunneller
+scores as unremarkable whatever they find — correctly, because they were not choosing. A dig
+that wanders has a shell far larger than the path through it.
+
+Six-connected, not twenty-six. A diagonal is not reachable in one swing, and counting it would
+inflate the population roughly fourfold — which makes every result look more surprising than it
+is, in the direction that accuses people. **Where the tie could go either way, it goes towards
+saying nothing.** Degenerate inputs are the same principle applied to arithmetic: an empty
+volume, more ore than blocks, more found than drawn all return p = 1, because a one-in-a-million
+p-value out of a bookkeeping mistake is how somebody gets banned for a division by zero.
+
+### Tool and fortune are not axes of this model
+
+The brief asked for segmentation by y-band, dimension, cave-versus-solid-rock, **and tool and
+fortune level**. The first three are in. The last two are not, and will not be.
+
+`block_log` records neither, so they could not be applied to a single existing row — but that is
+the smaller reason. The three that are in all change **how much ore was in the rock**, which is
+the population term the calculation needs. Fortune changes what drops from an ore once it has
+been found; it is not a term in a draw-without-replacement model at all. Tool tier is a proxy
+for intent, and intent does not belong in the statistic — it belongs in the human reading it.
+
+Recorded so it is not re-proposed by analogy with the axes that do belong.
+
+### A correctness bug the rewrite fixed, not a performance win
+
+The old sweep iterated `server.getPlayerList().getPlayers()`. **It only ever scored players who
+were online at the moment it ran** — and somebody who mines for an hour and then logs off is
+exactly the profile worth scoring. The block log outlives the session; the sweep did not use it
+that way. The window now decides who is examined, not who happens to be connected.
+
+Moving the work off the tick was the reason for touching it. This was the more important thing
+found while doing so.
+
+### Timings
+
+Measured by `XrayTimingTests` on a real server: 8 players x 1200 breaks = 9,600 rows of
+`block_log`, one segment scored, 2,740 block states censused. Three runs, cold JVM each time:
+
+| Stage | Runs | Where it runs |
+|---|---|---|
+| Read `block_log` | 11.6 / 14.7 / 30.7 ms | **worker thread** in the sweep; caller's thread for `/staff xray` |
+| Ore census | 2.7 / 2.7 / 4.5 ms | **server thread** — unavoidable, see Known limits |
+| Arithmetic | 2.0 / 2.0 / 3.0 ms | server thread |
+
+So roughly **5 ms of a 50 ms tick, once every `xraySweepMinutes`**. The read — the largest part
+by far, and the part that grows with history — is the half that moved off.
+
+Two optimisations came directly out of taking the measurement rather than assuming:
+
+- The census turned every block state into a string to compare it, allocating an `Identifier`
+  and a `String` per block. Comparing `Block` instances instead took it from 8.6 ms to 2.7 ms.
+- The tail sum called six log-gammas per term. A log-space recurrence made it three
+  multiplications and a logarithm. **Three earlier versions of that loop were wrong**, each
+  quietly: summing with per-term log-gammas was merely slow; walking down from the top risked
+  the first term underflowing to zero, which reads downstream as certainty of guilt; and
+  walking down with an early exit stopped on the first iteration, because terms rise towards
+  the mode before they fall — that one turned an ordinary result into one in 10^242. All three
+  are now tests.
+
+### Thresholds
+
+`xrayAlertConfidence` stays at 65, and now has a justification rather than a history. Across
+twenty seeds of each of six honest techniques and the guided one, the corpus separates: the
+worst honest session and the weakest guided one do not overlap, and 65 sits in the gap.
+`XrayThresholdTest` asserts the gap exists rather than asserting the number.
+
+`xraySampleFloor` (200 blocks broken) is replaced by `xrayMinimumVolume` (512 blocks of rock
+within reach). A count of blocks broken says nothing about whether the arithmetic can work; a
+player who removed thirty blocks from a pocket of forty has drawn almost all of it, and the
+statistics on a population that small are confident and meaningless. That is where the old
+detector's false positives lived.
+
+`xrayRatioThreshold` and `xrayDirectnessFloor` are gone with the signals they weighted.
+
+### The corpus states its own ore density
+
+The synthetic patterns have no world to census, so they have to supply the ground truth. The
+first attempt guessed a density from real Minecraft generation rates and applied it to the whole
+population, taking the larger of that and what the player found — which says "there were exactly
+as many ores as they got", and scored **every honest pattern at 99**.
+
+The density is now measured from the corpus itself: an unguided miner's find rate *is* the
+ambient density, so the clean patterns define it and the guided one is scored against it. Not
+circular — the question asked of the guided pattern is precisely whether it beat an unguided
+miner in the same rock, and the clean patterns are the only available statement of that rate.
+---
+
+## Two decisions in the replay viewer
+
+**Date:** 2026-09-08
+
+Both are places where the brief asked for one thing and the code does another. Recorded with
+the reasoning rather than the outcome, because the outcome on its own reads as an oversight.
+
+### The inventory is not stashed
+
+The brief says to restore state "through the existing staff-mode stash machinery". The
+gamemode, the position and the vanish flag go through the same *rule* as the stash — written
+before anything changes, cleared only after the player is demonstrably back. The inventory does
+not go through it at all.
+
+A spectator cannot pick anything up, drop anything, or be hit. There is nothing for a stash to
+protect the inventory from, and `InventoryGateway.replaceAll` is the one piece of code in this
+mod that can lose somebody's entire inventory. Adding a second caller to it to solve a problem
+that does not exist trades a real risk for an imaginary one.
+
+The rule that was worth taking from the stash is the ordering, not the storage.
+
+### The replay sidebar is sent, not registered
+
+A vanilla sidebar lives on `ServerScoreboard`, which is shared by everybody on the server. A
+staff member investigating a player would have put a panel reading "Ore taken: 30 of 40" on
+that player's screen, along with everyone else's.
+
+So the objective and its rows are sent as packets to one connection. The objective exists only
+in the client that receives it: nothing is stored server-side, nothing is broadcast, and a
+disconnect takes it away with no cleanup because there was never anything on the server to
+clean up. Same technique as the decoys and the rollback preview — tell one client something the
+server does not believe.
+
+### And one thing deliberately absent from that sidebar
+
+There is no "Decoys broken: 0" line. Canaries are switched off entirely when a bulk anti-xray
+mod is installed, so a zero means "no separate signal was available" and not "this player
+passed a test" — and on a panel somebody reads immediately before deciding whether to ban
+someone, it would be the most reassuring line there. Absence of signal reading as a passed test
+is how a panel misleads the person who trusts it.
+
+---
+
+## Canary false-positive rate
+
+**Date:** 2026-09-08
+
+Gate 3 asks for this measured against a synthetic legit-mining corpus. Run by
+`CanaryFalsePositiveTests` on a real server, against real decoy placement and the real
+retirement path.
+
+**Sixty-two decoys across five honest mining shapes. Zero hits.**
+
+| Scenario | Decoys | Hits |
+|---|---|---|
+| Tunnel passing beside decoys | 3 | 0 |
+| Neighbour then decoy, back to back | 4 | 0 |
+| Two miners converging on one decoy field | 3 | 0 |
+| Explosion, then mining the rubble | 16 | 0 |
+| Branch mine across a decoy field | 36 | 0 |
+| **Control: decoy broken cold** | **3** | **3** |
+
+### Why the control is the important row
+
+A decoy layer that never places, never matches the rock, or never records a hit scores a
+false-positive rate of zero — the same number a perfect one scores. Every clean result above is
+worthless without a sequence that must fire and does.
+
+### The conditions, since a percentage is not actionable
+
+The rate is zero because of a structural property rather than a threshold: a decoy is placed
+only in fully encased rock, so reaching it requires breaking one of its six neighbours, and
+**that break retires it inside its own event**. The orderings tried:
+
+- **Immediate succession.** Neighbour break and decoy break with nothing between them, which is
+  the fastest a player with efficiency and haste can produce and the ordering that would break
+  a queue. Retirement is synchronous, so the second break finds nothing.
+- **Across breakers.** One player's tunnel exposing another player's decoy. Retirement is
+  global; scoping it per owner would leak false positives between people who never met.
+- **Without a break event at all.** An explosion uncovering sixteen decoys at once, then a
+  player mining the rubble. Handled through `logExplosion`, and retired *before* the
+  `logExplosions` config gate — whether explosions are logged is a preference, whether a decoy
+  is left in a crater is correctness.
+
+`CanaryRetirementIsSynchronousTest` guards the property the corpus rests on: nothing in
+`Canaries` may use an executor, a future or a scheduler, and the break hook must reach it
+inline. A behavioural corpus keeps passing after somebody moves the work off-thread for a good
+reason; this does not.
+
+### What this measurement cannot tell you
+
+**A clean rate is also what a completely invisible decoy would produce.** If the block update
+never reaches a client, or reaches it and is not drawn, then the false-positive rate is zero
+and so is the true-positive rate — and only the first of those appears in this corpus.
+
+The packet is verified: `CanaryPacketTests` checks the decoy matches its surrounding rock, that
+the packet carries that state at that position, that it differs from what is really there, and
+that the resync carries the real block back. What is **not** verified is a client rendering it.
+That needs a real client with an x-ray pack and a person watching a screen. Until somebody runs
+`docs/manual-checks/decoy-visibility.md` — a numbered script with a blank result line, so it is
+one person-hour away rather than a research task — the decoy layer is packet-verified rather
+than client-verified, and this measurement should be read as "the retirement rule holds" rather than
+"decoys work".
+---
+
+## The failure class: verified by something that was not running
+
+**Date:** 2026-09-08
+
+This project has now found the same bug seven times in seven unrelated places. Each looked like
+a different mistake and each was found by accident. Naming the class is worth more than the
+seven fixes, because the eighth will not resemble any of them.
+
+**The shape: a green result that is not evidence.** Something reports success, and the reason it
+reports success is that the thing meant to be checking never examined what it claimed to.
+
+A passing test and a vacuously passing test are identical in every observable way. There is no
+warning, no slower run, no different output — the only difference is that one of them would go
+red if the code broke and the other would not. That is why these survive: every signal a person
+uses to decide whether a check is working says the same thing in both cases.
+
+### The seven
+
+| What looked verified | Why it was not |
+|---|---|
+| Permission checks using a string literal | A node absent from `Nodes` is in nobody's resolved set, so it is denied to every player and granted to operators through the fallback. It works perfectly for whoever is testing, because whoever is testing is opped. |
+| `./gradlew build` covering the gametests | The gametest source set was never compiled by `check`. A signature change broke it while the build stayed green. |
+| `AccountabilityTests` running | Gametest classes are listed by hand in `fabric.mod.json`. The file was written, compiled, and ran zero times; the suite said "all tests passed". |
+| `VanishCollisionMixin` stopping pushes | It hooked `Entity.isPushable`, which `LivingEntity` overrides. The mixin applied cleanly, was reported healthy, and never ran. |
+| The maintenance kick being tested | The tests called `toggleMaintenance` against an empty player list. The kick ran, kicked nobody, asserted nothing, and passed by having nothing to do. |
+| Two vanish gametests | Mock players override `gameMode()` to return CREATIVE outright, and `Mob.asValidTarget` returns null for creative players before looking at anything else. Both tests would have passed with vanish switched off. |
+| `CanaryRetirementIsSynchronousTest` | The deferral pattern was written `"\b(?:...)"`. In a Java string that is a backspace character, not a word boundary. It compiled, matched nothing, and both real assertions passed on an empty result. |
+
+### Four ways in, all producing the same green
+
+- **The verifier never ran.** Not compiled, not registered, not reached.
+- **The subject never ran.** The check executed; the code under it did not — a mixin on an
+  overridden method, a sweep over an empty list.
+- **The verifier ran and found nothing.** A scan whose pattern stopped matching, a query whose
+  filter excludes everything. An empty result set satisfies "no offenders found".
+- **It passed for the wrong reason.** Creative players are never targeted by mobs regardless of
+  vanish; operators hold every node regardless of the permission file.
+
+### The countermeasure, stated once
+
+**Any check that can pass by finding nothing must assert that it found something.**
+
+That is the whole rule, and it is why several tests in this repository look like they are
+testing themselves. They are:
+
+- `NodeLiteralTest` asserts its scan matched more than fifty call sites before trusting that it
+  found no literals.
+- `ActorBoundaryTest`, `GatewayIsTheOnlyDoorTest`, `FreshInstallTest` and `AuditVersionsTest`
+  each carry a companion test that hands the scan something it must catch.
+- `CanaryFalsePositiveTests` pairs every honest scenario with a control that must register a
+  hit, because a decoy layer that never places scores the same zero as a perfect one.
+- `GametestRegistrationTest` compares the files on disk against the entrypoint list, in both
+  directions.
+- `XrayTimingTests` asserts a non-zero block-state count alongside the timing, so a census that
+  read nothing cannot report itself as fast.
+
+Where a planted failure is cheap, plant one and watch it fail before trusting the pass. That is
+how the gateway bypass check, the node literal check, the fresh-install check and the audit
+version check were each confirmed. It takes two minutes and it is the only way to tell the two
+kinds of green apart.
+
+### Why this belongs in a decision record
+
+Because the instinct it fights is a good one. Every one of these was written by somebody trying
+to be careful, and the check was the careful part. The lesson is not "be more careful" — it is
+that carefulness produces checks, and a check is a piece of code that can itself be wrong in a
+way that makes it silent. The verifier needs a verifier, and the cheapest one is a deliberate
+failure.
+---
+
+## The feedback loop, and why a clear needs a reason
+
+**Date:** 2026-09-08
+
+The tuning mistake this fixes is written into this repository's history. The last time the
+x-ray thresholds moved, the reason recorded was that the detector was too quiet. That reason
+cannot be wrong — any bar can be lowered until a feature speaks — and nothing anywhere could say
+who it would start speaking about.
+
+A resolved case answers that. Every cleared case is a player the detector flagged and a human
+then decided was fine; every actioned one is a player the detector flagged and a human agreed
+about. Those are labels, and a threshold can be measured against them instead of against its own
+volume.
+
+### Cleared is not one thing
+
+"I looked at the tunnel and they were following a vein they could see" and "nobody got round to
+this and it aged out" both leave a case marked cleared. They are completely different labels
+wearing the same status, and only the first is evidence about the detector.
+
+With one value for both, the corpus fills with the second kind — because on a busy server the
+second kind is far more common — and a threshold validated against it drifts toward whatever
+staff had capacity for rather than toward what was true. Nothing about that failure announces
+itself. The number simply gets larger and means less.
+
+So a clear carries a reason, and **only one reason counts as a negative**:
+
+| Reason | Counts as a negative? |
+|---|---|
+| `investigated` — looked into it, they were not cheating | **yes** |
+| `unclear` — looked into it, could not tell | no |
+| `not-investigated` — closed without looking | no |
+| `left` — subject left the server | no |
+| `duplicate` — same incident as another case | no |
+| `stale` — aged out with nobody acting | no |
+
+An actioned case is a positive whatever note is attached: somebody punished a player over it,
+which is as clear a statement that the detector was right as this system can produce.
+
+The `unclear` exclusion is the one most worth having. An inconclusive case is not evidence the
+detector was wrong, and counting it as one would train the threshold to fire less often on
+exactly the cases that are hardest to judge — which is the population where it earns its keep.
+
+### Size is never quoted without composition
+
+"Validated against 209 resolved cases" and "validated against 9 real clears and 200 timeouts"
+describe the same query and completely different amounts of evidence. The first is what a bare
+count looks like.
+
+`TrainingCorpus.Composition` carries both, and nothing returns a size on its own. It appears
+under every `/staff xray` report and in `/staff corpus`, and below thirty usable cases both say
+so plainly rather than letting a number stand in for a mandate.
+
+### Two exclusions that are about honesty rather than statistics
+
+- **Cases closed before the reason column existed are unlabelled, not innocent.** Backfilling
+  them as investigated would invent a judgement nobody made, and every invented one would be a
+  vote that the detector was wrong.
+- **A reason the enum cannot read is excluded, not guessed at.** Silently mapping an unknown
+  value to the one that counts as a negative is how a schema change becomes a shifted threshold.
+
+### The staleness sweep records its own reason
+
+It sets `stale` as a value, not only as a status. A row with no reason would be merely
+unlabelled — the same bucket as a case closed before reasons existed — rather than the bucket
+that names why it does not count. The distinction matters when reading the composition: one is
+"we did not ask", the other is "nobody answered".
+---
+
 # Moved from the README
 
 The README had grown to eight hundred lines, and the reasoning was the best material in it and

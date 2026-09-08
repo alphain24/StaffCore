@@ -166,9 +166,9 @@ class ConfigDocsTest {
 						.matcher(line);
 				while (m.find()) {
 					int quoted = Integer.parseInt(m.group(1));
-					if (quoted != defaults.xraySampleFloor) {
-						found.add(file + ":" + (i + 1) + "  quotes a sample floor of " + quoted
-								+ ", code says " + defaults.xraySampleFloor);
+					if (quoted != defaults.xrayMinimumVolume) {
+						found.add(file + ":" + (i + 1) + "  quotes a minimum volume of " + quoted
+								+ ", code says " + defaults.xrayMinimumVolume);
 					}
 				}
 			}

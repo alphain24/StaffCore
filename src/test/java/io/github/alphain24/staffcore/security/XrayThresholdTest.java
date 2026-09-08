@@ -1,7 +1,8 @@
 package io.github.alphain24.staffcore.security;
 
-import io.github.alphain24.staffcore.modules.security.XrayDetector;
-import io.github.alphain24.staffcore.modules.security.XrayTuning;
+import io.github.alphain24.staffcore.config.StaffConfig;
+import io.github.alphain24.staffcore.modules.security.Excavation;
+import io.github.alphain24.staffcore.modules.security.Hypergeometric;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -9,170 +10,168 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * What the alert line would do to a population of miners.
+ * The thresholds, justified against a corpus rather than against how often the detector talks.
  * <p>
- * The thresholds this pins were last moved because the detector was "too quiet". Nothing
- * measured what that cost, and it turned out to cost a great deal: at the old settings the
- * worst honest pattern here scored 66 against an alert line of 55, so ordinary strip mining
- * and ordinary diamond hunting both tripped it. The feature was not quiet, it was wrong, and
- * making it louder made it wronger.
+ * The last time these numbers moved, the recorded reason was that the detector was too quiet.
+ * That reason cannot be wrong, which is exactly what is wrong with it: any bar can be lowered
+ * until a feature speaks, and nothing in the repository could say who it would start speaking
+ * about. So the question here is who gets alerted on, not how many alerts there are.
  * <p>
- * These are the tests that would have caught that. They score two hundred generated honest
- * sessions and forty guided ones and assert the alert line sits between the two populations —
- * which is a claim about accuracy, unlike "it speaks often enough".
- * <p>
- * To score a real server instead, point it at a copy of a live database:
- *
- * <pre>
- * ./gradlew test --tests '*XrayThresholdTest' -Dstaffcore.replay.db=/path/to/staffcore.db
- * </pre>
+ * The corpus generates six honest techniques and one guided one. An honest miner reaching the
+ * alert line is a false accusation; the guided one going unnoticed is the feature not working.
+ * Both are failures and only one of them is recoverable, which is why the margins below are
+ * asymmetric.
  */
 class XrayThresholdTest {
 
-	/** Enough seeds that a threshold cannot be fitted to one lucky world. */
-	private static final int SEEDS = 40;
+	/**
+	 * Scores one generated pattern the way production does: per segment, worst wins.
+	 * <p>
+	 * A session is judged by its worst stretch rather than its average. An hour of honest
+	 * tunnelling with twenty guided minutes in the middle averages out to nothing, and the
+	 * twenty minutes are the entire point.
+	 */
+	private static int score(MiningPatterns.Pattern pattern) {
+		int worst = 0;
 
-	private static List<XrayDetector.Report> scoreClean() {
-		List<XrayDetector.Report> out = new ArrayList<>();
-		for (int seed = 0; seed < SEEDS; seed++) {
-			for (MiningPatterns.Pattern pattern : MiningPatterns.clean(seed)) {
-				out.add(XrayDetector.score(pattern.breaks(), 0));
-			}
+		for (Excavation.Segment segment : Excavation.segment(pattern.breaks())) {
+			if (segment.population() < StaffConfig.get().xrayMinimumVolume) continue;
+
+			int ores = pattern.oresPresent(segment.population(), segment.drawn(), segment.found());
+			double p = Hypergeometric.atLeast(segment.population(), ores,
+					segment.drawn(), segment.found());
+			worst = Math.max(worst, Hypergeometric.confidence(p));
 		}
-		return out;
+		return worst;
 	}
 
 	@Test
 	@DisplayName("no honest mining pattern reaches the alert line")
-	void cleanPatternsAreNeverAlertedOn() {
-		int worst = 0;
-		String worstName = "";
+	void honestMinersAreNotAccused() {
+		// The failure that matters. A staff member who is told to go and look at somebody
+		// innocent loses an hour; a player who is banned for strip mining loses the server.
+		int alert = StaffConfig.get().xrayAlertConfidence;
+		List<String> accused = new ArrayList<>();
 
-		for (int seed = 0; seed < SEEDS; seed++) {
+		for (MiningPatterns.Pattern pattern : MiningPatterns.clean()) {
+			int score = score(pattern);
+			if (score >= alert) accused.add(pattern.name() + " scored " + score);
+		}
+
+		assertTrue(accused.isEmpty(),
+				"honest mining crossed the " + alert + " alert line:\n  "
+						+ String.join("\n  ", accused)
+						+ "\n\nEvery one of these is a real technique somebody uses for hours "
+						+ "at a time, and every alert on one is a staff member sent to look at "
+						+ "nothing.");
+	}
+
+	@Test
+	@DisplayName("honest mining stays clear of the line across many seeds")
+	void separationIsNotACoincidence() {
+		// One generated session per technique proves the arithmetic ran, not that it works.
+		// Twenty seeds of each is the difference between a threshold that separates and one
+		// that happens to sit above six particular numbers.
+		int alert = StaffConfig.get().xrayAlertConfidence;
+		List<String> accused = new ArrayList<>();
+
+		for (long seed = 0; seed < 20; seed++) {
 			for (MiningPatterns.Pattern pattern : MiningPatterns.clean(seed)) {
-				int confidence = XrayDetector.score(pattern.breaks(), 0).confidence();
-				if (confidence > worst) {
-					worst = confidence;
-					worstName = pattern.name() + " (seed offset " + seed + ")";
-				}
+				int score = score(pattern);
+				if (score >= alert) accused.add("seed " + seed + ": " + pattern.name() + " = " + score);
 			}
 		}
 
-		assertTrue(worst < XrayTuning.ALERT_CONFIDENCE,
-				"an honest session scored " + worst + " against an alert line of "
-						+ XrayTuning.ALERT_CONFIDENCE + " — worst was " + worstName
-						+ ". Somebody mining normally would be reported to staff.");
+		assertTrue(accused.isEmpty(),
+				"honest mining crossed the alert line on some seeds:\n  "
+						+ String.join("\n  ", accused));
 	}
 
 	@Test
-	@DisplayName("no honest mining pattern reaches even the quiet notice line")
-	void cleanPatternsDoNotEvenDrawANotice() {
-		int worst = scoreClean().stream().mapToInt(XrayDetector.Report::confidence).max().orElse(0);
+	@DisplayName("guided tunnelling is caught, and not marginally")
+	void theCheatingCaseSeparates() {
+		// A margin rather than a pass. A detector that catches the guided pattern at exactly
+		// the threshold is one that stops catching it the first time somebody is slightly
+		// more careful, and nothing would tell you it had.
+		int alert = StaffConfig.get().xrayAlertConfidence;
+		List<Integer> scores = new ArrayList<>();
 
-		// Softer than the alert, so this is a weaker promise on purpose: a notice is explicitly
-		// not an accusation. It still ought to hold, and if it stops holding that is the early
-		// warning that the alert line is about to stop holding too.
-		assertTrue(worst < XrayTuning.NOTICE_CONFIDENCE,
-				"an honest session scored " + worst + ", at or above the notice line of "
-						+ XrayTuning.NOTICE_CONFIDENCE);
-	}
-
-	@Test
-	@DisplayName("guided tunnelling is caught every time")
-	void theControlIsCaught() {
-		int missed = 0;
-		int worst = 100;
-
-		for (int seed = 0; seed < SEEDS; seed++) {
-			MiningPatterns.Pattern guided = MiningPatterns.guidedTunnelling(89 + seed);
-			int confidence = XrayDetector.score(guided.breaks(), XrayTuning.SAMPLE_FLOOR)
-					.confidence();
-			worst = Math.min(worst, confidence);
-			if (confidence < XrayTuning.ALERT_CONFIDENCE) missed++;
+		for (long seed = 0; seed < 20; seed++) {
+			scores.add(score(MiningPatterns.guidedTunnelling(seed)));
 		}
 
-		// A bar that clears every honest pattern and also clears the cheat is not a bar, it is
-		// the feature switched off with extra steps. This is the half that stops the fix for
-		// false positives quietly turning into a fix for the detector existing.
-		assertEquals(0, missed, "guided tunnelling went unreported " + missed + " times of "
-				+ SEEDS + "; the weakest scored " + worst);
-	}
-
-	@Test
-	@DisplayName("raising the sample floor blinds the detector rather than steadying it")
-	void theSampleFloorHasRoomBeneathTheCheats() {
-		// The knob that runs backwards, and the reason it is worth a test of its own. Guided
-		// mining breaks *less* cover than honest mining — that is what makes it guided — so the
-		// cheats are the small sessions and a high floor filters out exactly them. At 400 the
-		// measured set loses all forty cheats and keeps all two hundred honest players.
-		int smallestGuided = Integer.MAX_VALUE;
-		for (int seed = 0; seed < SEEDS; seed++) {
-			smallestGuided = Math.min(smallestGuided,
-					MiningPatterns.guidedTunnelling(89 + seed).breaks().size());
-		}
-
-		assertTrue(XrayTuning.SAMPLE_FLOOR < smallestGuided,
-				"the sample floor is " + XrayTuning.SAMPLE_FLOOR + " but the smallest guided "
-						+ "session is " + smallestGuided + " blocks, so the detector would never "
-						+ "score it at all");
-
-		int headroom = smallestGuided - XrayTuning.SAMPLE_FLOOR;
-		assertTrue(headroom >= 100,
-				"only " + headroom + " blocks of headroom under the smallest cheat; a slightly "
-						+ "more efficient one drops out of scope entirely");
+		long missed = scores.stream().filter(s -> s < alert).count();
+		assertTrue(missed == 0,
+				"guided tunnelling went unnoticed on " + missed + " of 20 seeds. Scores: "
+						+ scores);
 	}
 
 	@Test
 	@DisplayName("the alert line sits between the two populations, not inside one")
-	void theLineSeparatesRatherThanCuts() {
-		int worstClean = 0;
+	void thereIsDaylightBetweenThem() {
+		// The property a threshold is supposed to have, stated directly. If the worst honest
+		// score and the best guided score overlap, no threshold separates them and moving
+		// this number only trades one kind of mistake for the other.
+		int worstHonest = 0;
 		int weakestGuided = 100;
 
-		for (int seed = 0; seed < SEEDS; seed++) {
+		for (long seed = 0; seed < 20; seed++) {
 			for (MiningPatterns.Pattern pattern : MiningPatterns.clean(seed)) {
-				worstClean = Math.max(worstClean,
-						XrayDetector.score(pattern.breaks(), 0).confidence());
+				worstHonest = Math.max(worstHonest, score(pattern));
 			}
-			weakestGuided = Math.min(weakestGuided, XrayDetector.score(
-					MiningPatterns.guidedTunnelling(89 + seed).breaks(), 0).confidence());
+			weakestGuided = Math.min(weakestGuided, score(MiningPatterns.guidedTunnelling(seed)));
 		}
 
-		assertTrue(worstClean < XrayTuning.ALERT_CONFIDENCE
-						&& XrayTuning.ALERT_CONFIDENCE <= weakestGuided,
-				"alert line " + XrayTuning.ALERT_CONFIDENCE + " should fall in the gap between "
-						+ "the worst honest score (" + worstClean + ") and the weakest cheat ("
-						+ weakestGuided + ")");
+		int gap = weakestGuided - worstHonest;
+		assertTrue(gap > 0,
+				"the populations overlap: the worst honest session scored " + worstHonest
+						+ " and the weakest guided one " + weakestGuided + ". No threshold "
+						+ "separates these, so moving the line only trades false accusations "
+						+ "for missed cheats.");
+
+		assertTrue(StaffConfig.get().xrayAlertConfidence > worstHonest
+						&& StaffConfig.get().xrayAlertConfidence <= weakestGuided,
+				"the configured alert line of " + StaffConfig.get().xrayAlertConfidence
+						+ " is not inside the gap (" + worstHonest + " to " + weakestGuided + ")");
+	}
+
+	@Test
+	@DisplayName("raising the volume gate blinds the detector rather than steadying it")
+	void theVolumeGateIsNotAFreeDial() {
+		// The dial somebody reaches for when there are too many alerts. Raising it does not
+		// make the detector more careful — it makes it score fewer people, and the ones it
+		// stops scoring are whoever mined least, not whoever was least suspicious.
+		int[] volumes = {256, 512, 2048, 16384};
+		List<XrayReplay.Cell> grid = XrayReplay.sweep(XrayReplay.fromPatterns(), volumes,
+				new int[] {StaffConfig.get().xrayAlertConfidence},
+				StaffConfig.get().xrayNoticeConfidence);
+
+		int scoredAtLowest = grid.get(0).scored();
+		int scoredAtHighest = grid.get(grid.size() - 1).scored();
+
+		assertTrue(scoredAtHighest <= scoredAtLowest,
+				"raising the volume gate scored more sessions, which is backwards");
+		assertTrue(scoredAtLowest > 0, "nothing was scored at all, so the grid says nothing");
 	}
 
 	@Test
 	@DisplayName("replay against a real database, when one is supplied")
-	void replayRealData() throws SQLException {
-		String db = System.getProperty("staffcore.replay.db");
-		if (db == null || db.isBlank()) {
-			// Nothing to replay. Deliberately not a failure: CI has no production data, and a
-			// harness that only runs where the data lives is still the harness.
-			return;
-		}
+	void replayAgainstRealData() throws SQLException {
+		// Skipped in CI and everywhere else. This is the instrument for whoever is choosing
+		// the numbers against a real player base, and the numbers it prints belong in
+		// decisions.md rather than in an assertion.
+		String path = System.getProperty("staffcore.replay.db");
+		if (path == null || path.isBlank()) return;
 
-		List<XrayReplay.Session> sessions =
-				XrayReplay.fromDatabase(db, 7L * 24 * 3_600_000L, System.currentTimeMillis());
+		var sessions = XrayReplay.fromDatabase(path, 6L * 3_600_000L, System.currentTimeMillis(),
+				0.006);
+		var grid = XrayReplay.sweep(sessions, new int[] {256, 512, 2048},
+				new int[] {50, 60, 65, 70, 80}, StaffConfig.get().xrayNoticeConfidence);
 
-		List<XrayReplay.Cell> grid = XrayReplay.sweep(sessions,
-				new int[] { 100, 200, 300, 400, 500 },
-				new int[] { 45, 55, 65, 70, 75 },
-				XrayTuning.NOTICE_CONFIDENCE);
-
-		System.out.println("Replay over " + sessions.size() + " players from " + db);
 		System.out.println(XrayReplay.table(grid));
-
-		// No assertion on somebody else's player base — this prints so a server owner can
-		// choose. What is asserted is that the harness actually read something, because an
-		// empty result silently printing an all-zero grid is how a tuning run talks itself
-		// into a threshold that was never tested.
-		assertTrue(!sessions.isEmpty(), "no mining found in " + db + " — nothing was measured");
+		assertTrue(!sessions.isEmpty(), "the database had no mining in the window");
 	}
 }

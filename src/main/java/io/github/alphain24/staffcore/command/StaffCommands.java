@@ -9,7 +9,6 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import io.github.alphain24.staffcore.StaffCore;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.config.StaffConfig;
-import io.github.alphain24.staffcore.modules.security.XrayDetector;
 import io.github.alphain24.staffcore.gui.Icon;
 import io.github.alphain24.staffcore.gui.Sfx;
 import io.github.alphain24.staffcore.gui.Theme;
@@ -805,8 +804,17 @@ public final class StaffCommands {
 
 		staff.then(Commands.literal("xray")
 				.requires(src -> Permissions.check(src, Nodes.SECURITY_CHECK))
+				// Before the player argument, so "exit" is never read as somebody's name.
+				// A staff member trying to get out of a replay and instead being told there
+				// is no player called exit is the worst moment for a parsing surprise.
+				.then(Commands.literal("exit").executes(StaffCommands::xrayExit))
 				.then(Commands.argument("player", StringArgumentType.word())
 						.executes(ctx -> xray(ctx, 6))
+						.then(Commands.literal("replay")
+								.executes(ctx -> xrayReplay(ctx, 6))
+								.then(Commands.argument("hours", IntegerArgumentType.integer(1, 168))
+										.executes(ctx -> xrayReplay(ctx,
+												IntegerArgumentType.getInteger(ctx, "hours")))))
 						.then(Commands.argument("hours", IntegerArgumentType.integer(1, 168))
 								.executes(ctx -> xray(ctx,
 										IntegerArgumentType.getInteger(ctx, "hours"))))));
@@ -1121,127 +1129,94 @@ public final class StaffCommands {
 		String name = StringArgumentType.getString(ctx, "player");
 		audit(ctx, "/staff xray " + name);
 
-		StaffConfig cfg = StaffConfig.get();
-		XrayDetector.Report report = XrayDetector.explain(name, hours * 3_600_000L);
-		int sample = report.oreCount() + report.fillerCount();
+		MinecraftServer server = ctx.getSource().getServer();
+		long window = hours * 3_600_000L;
+		var findings = io.github.alphain24.staffcore.modules.security.XraySweep
+				.forPlayer(server, name, window);
 
 		ctx.getSource().sendSuccess(() -> Theme.prefix()
-				.append(Icon.text("X-ray report for ", Theme.MUTED))
+				.append(Icon.text("Mining report for ", Theme.MUTED))
 				.append(Icon.text(name, Theme.ACCENT))
 				.append(Icon.text(" — last " + hours + "h", Theme.MUTED)), false);
 
-		ctx.getSource().sendSuccess(() -> Icon.text("  Confidence: ", Theme.MUTED)
-				.append(Icon.text(report.confidence() + "%",
-						report.confidence() >= cfg.xrayAlertConfidence ? Theme.BAD
-								: report.confidence() > 0 ? Theme.WARN : Theme.GOOD))
-				.append(Icon.text("  (alerts at " + cfg.xrayAlertConfidence + "%)", Theme.MUTED)), false);
+		if (findings.isEmpty()) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  Nothing to report.", Theme.GOOD), false);
+			ctx.getSource().sendSuccess(() -> Icon.text("  "
+					+ io.github.alphain24.staffcore.modules.security.XraySweep
+							.whyNothing(server, name, window), Theme.MUTED), false);
+			return 1;
+		}
+
+		// Worst first. A session that produced four segments is usually one interesting dig
+		// and three ordinary ones, and burying the interesting one under a list sorted by
+		// depth is how it gets skimmed past.
+		var sorted = findings.stream()
+				.sorted(java.util.Comparator.comparingDouble(
+						io.github.alphain24.staffcore.modules.security.XraySweep.Finding::pValue))
+				.toList();
+
+		for (var finding : sorted) {
+			int confidence = io.github.alphain24.staffcore.modules.security.Hypergeometric
+					.confidence(finding.pValue());
+
+			ctx.getSource().sendSuccess(() -> Icon.text("  " + finding.world() + ", "
+					+ "y " + finding.band() + " to "
+					+ (finding.band() + io.github.alphain24.staffcore.modules.security.Excavation
+							.BAND_HEIGHT - 1), Theme.TEXT), false);
+
+			// The p-value is the finding. Everything under it is the arithmetic that produced
+			// it, printed so a staff member can check the claim rather than take it — and so
+			// the player it is about can argue with the numbers rather than the verdict.
+			ctx.getSource().sendSuccess(() -> Icon.text("    "
+					+ io.github.alphain24.staffcore.modules.security.Hypergeometric
+							.describe(finding.pValue()),
+					confidence >= StaffConfig.get().xrayAlertConfidence ? Theme.BAD
+							: confidence >= StaffConfig.get().xrayNoticeConfidence ? Theme.WARN
+							: Theme.MUTED), false);
+
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"    Took %d of the %d ore within reach, from %d blocks of a %d-block dig."
+							.formatted(finding.found(), finding.ores(), finding.drawn(),
+									finding.population()), Theme.MUTED), false);
+		}
+
+		explainTheModel(ctx);
+		return 1;
+	}
+
+	/**
+	 * What the number does and does not claim.
+	 * <p>
+	 * Printed every time, under every report, because this is the screen a staff member reads
+	 * immediately before deciding whether to ban somebody. The model assumes a miner who picks
+	 * blocks without regard to ore, and real miners follow veins — so a legitimate player who
+	 * found one and followed it scores as luckier than random, because they were.
+	 */
+	private static void explainTheModel(CommandContext<CommandSourceStack> ctx) {
+		// Size and composition together, always. "Validated against 209 resolved cases" and
+		// "against 9 real clears and 200 timeouts" are the same query and completely different
+		// amounts of evidence, and the first is what a bare count looks like.
+		var corpus = io.github.alphain24.staffcore.modules.cases.TrainingCorpus.composition();
+		ctx.getSource().sendSuccess(() -> Icon.text("  Threshold evidence: " + corpus.describe(),
+				corpus.isEnoughToTuneAgainst() ? Theme.MUTED : Theme.WARN), false);
+
+		if (!corpus.isEnoughToTuneAgainst()) {
+			ctx.getSource().sendSuccess(() -> Icon.text(
+					"  Not yet enough to move a threshold on. Clear cases with a reason as you "
+							+ "investigate them and this fills up.", Theme.MUTED), false);
+		}
 
 		ctx.getSource().sendSuccess(() -> Icon.text(
-				"  Sample: %d blocks (%d ore, %d filler)".formatted(sample, report.oreCount(), report.fillerCount()),
-				Theme.MUTED), false);
-
-		// What they found, not just how much. This line answers the question staff actually
-		// have — "is this a lot of diamond or a lot of coal" — which the percentage cannot.
-		if (report.oreCount() > 0) {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  Ore: " + report.oreBreakdown(6), Theme.TEXT), false);
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  Rarity: %.1f of 10 (an ordinary session sits near 2)"
-							.formatted(report.rarityIndex()), Theme.MUTED), false);
-		}
-
-		if (sample < cfg.xraySampleFloor) {
-			ctx.getSource().sendSuccess(() -> Theme.warn(
-					"  Below the sample floor of " + cfg.xraySampleFloor + " — the automatic sweep "
-							+ "stays silent on this player until they mine more."), false);
-		}
-
-		if (report.reasons().isEmpty()) {
-			ctx.getSource().sendSuccess(() -> Icon.text("  Nothing unusual.", Theme.GOOD), false);
-		} else {
-			report.reasons().forEach(r ->
-					ctx.getSource().sendSuccess(() -> Icon.text("  • " + r, Theme.TEXT), false));
-		}
-
-		explainSilence(ctx, report, sample, cfg);
-		windowComparison(ctx, name, cfg);
-		return Math.max(1, report.confidence());
-	}
-
-	/**
-	 * The same player scored over an hour, six hours, a day and a week.
-	 * <p>
-	 * One window hides two opposite things. Short, and an honest hour either side of a
-	 * cheating run drowns it; long, and a twenty-minute burst of pure diamond averages into
-	 * nothing. Four spans side by side make the shape obvious, and a row that is far worse
-	 * than the ones around it is a timestamp — it tells staff which session to go and read.
-	 */
-	private static void windowComparison(CommandContext<CommandSourceStack> ctx, String name,
-			StaffConfig cfg) {
-
-		var windows = XrayDetector.acrossWindows(name);
-		var worst = XrayDetector.worst(windows);
-		if (worst.report().confidence() == 0) return;
-
-		ctx.getSource().sendSuccess(() -> Icon.text("  Across time:", Theme.MUTED), false);
-		for (var window : windows) {
-			var report = window.report();
-			int sample = report.oreCount() + report.fillerCount();
-			ctx.getSource().sendSuccess(() -> Icon.text("    %-13s %3d%%  (%d blocks)"
-									.formatted(window.label(), report.confidence(), sample),
-							report.confidence() >= cfg.xrayAlertConfidence ? Theme.BAD
-									: report.confidence() >= cfg.xrayNoticeConfidence ? Theme.WARN
-									: Theme.MUTED),
-					false);
-		}
-
-		if (worst.report().confidence() >= cfg.xrayNoticeConfidence) {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"    Worst span: " + worst.label() + " — start there.", Theme.TEXT), false);
-		}
-	}
-
-	/**
-	 * Says which of the three things is keeping the detector quiet about this player.
-	 * <p>
-	 * Silence is the detector's normal state, and that makes a quiet server and a broken
-	 * feature look identical from the outside. There are only ever three reasons — not enough
-	 * mining, a score under the line, or the sweep being switched off — and naming the one
-	 * that applies is the difference between trusting the tool and assuming it never ran.
-	 */
-	private static void explainSilence(CommandContext<CommandSourceStack> ctx,
-			XrayDetector.Report report, int sample, StaffConfig cfg) {
-
-		if (report.confidence() >= cfg.xrayAlertConfidence) return;   // it would have alerted
-
-		ctx.getSource().sendSuccess(() -> Icon.text("  Why you have not been alerted:",
-				Theme.MUTED), false);
-
-		if (cfg.xraySweepMinutes <= 0) {
-			ctx.getSource().sendSuccess(() -> Theme.warn(
-					"    The automatic sweep is off (xraySweepMinutes is 0)."), false);
-		} else if (sample < cfg.xraySampleFloor) {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"    Only %d of the %d blocks the sweep needs before it will commit."
-							.formatted(sample, cfg.xraySampleFloor), Theme.MUTED), false);
-		} else if (report.confidence() == 0) {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"    Enough data, and nothing in it looks guided.", Theme.GOOD), false);
-		} else {
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"    %d%% is under the %d%% alert line%s."
-							.formatted(report.confidence(), cfg.xrayAlertConfidence,
-									cfg.xrayNoticeConfidence > 0
-											&& report.confidence() >= cfg.xrayNoticeConfidence
-											? " — staff did get the quiet notice" : ""),
-					Theme.MUTED), false);
-		}
+				"  This is how unlikely the result is for somebody digging without knowing "
+						+ "where the ore was.", Theme.MUTED), false);
+		ctx.getSource().sendSuccess(() -> Icon.text(
+				"  It is not a verdict. Following a vein you legitimately found looks lucky "
+						+ "too — go and look at the tunnel.", Theme.MUTED), false);
 
 		// The one that catches people out, because it is the natural way to test.
 		ctx.getSource().sendSuccess(() -> Icon.text(
-				"    Note: ore they placed themselves is excluded, so seeding a wall", Theme.MUTED), false);
-		ctx.getSource().sendSuccess(() -> Icon.text(
-				"    with ore and mining it back proves nothing.", Theme.MUTED), false);
+				"  Testing note: ore you placed yourself is excluded, so placing ore and "
+						+ "mining it back proves nothing.", Theme.MUTED), false);
 	}
 
 	/**
@@ -1556,6 +1531,8 @@ public final class StaffCommands {
 
 		registerCases(staff);
 		registerOperations(staff);
+		registerCanaryDiagnostic(staff);
+		registerCorpus(staff);
 		registerUndo(staff);
 		registerAccountability(staff);
 		registerPerms(staff);
@@ -1718,6 +1695,15 @@ public final class StaffCommands {
 						.formatted(StaffCore.modules().count(),
 								Mods.control().currentTps(server),
 								StaffCore.storage().isReady() ? "ready" : "unavailable")), false);
+
+		// Whether anything is actually preventing x-ray, as opposed to noticing it
+		// afterwards. This is not a hook and cannot be worked out from the config, and the
+		// difference between the two halves is the difference between a server that stops
+		// cheating and one that catalogues it.
+		ctx.getSource().sendSuccess(() -> Icon.text("  " + io.github.alphain24.staffcore
+				.modules.security.AntiXrayCompanion.startupLine(),
+				io.github.alphain24.staffcore.modules.security.AntiXrayCompanion.present()
+						? Theme.GOOD : Theme.WARN), false);
 
 		// Three numbers that separate the three reasons a grief log can look empty: the event
 		// never fired, the write failed, or the query is not finding rows that exist. Without
@@ -2217,10 +2203,24 @@ public final class StaffCommands {
 										Mc.name(ctx.getSource().getPlayer()))))
 						.then(Commands.literal("investigating")
 								.executes(ctx -> caseStatus(ctx, Case.Status.INVESTIGATING, null)))
+						// A clear takes a reason before it takes a note, because the reason is
+						// what the corpus counts and the note is what a person reads. Without
+						// it, "I looked and they were fine" and "nobody got round to this" are
+						// the same row, and the second kind is far more common.
 						.then(Commands.literal("cleared")
-								.then(Commands.argument("why", StringArgumentType.greedyString())
-										.executes(ctx -> caseStatus(ctx, Case.Status.CLEARED,
-												StringArgumentType.getString(ctx, "why")))))
+								.then(Commands.argument("reason", StringArgumentType.word())
+										.suggests((c, b) -> {
+											for (var r : io.github.alphain24.staffcore.modules
+													.cases.Resolution.values()) {
+												b.suggest(r.stored(), () -> r.label());
+											}
+											return b.buildFuture();
+										})
+										.executes(ctx -> caseCleared(ctx, ""))
+										.then(Commands.argument("note",
+												StringArgumentType.greedyString())
+												.executes(ctx -> caseCleared(ctx,
+														StringArgumentType.getString(ctx, "note"))))))
 						.then(Commands.literal("actioned")
 								.then(Commands.argument("why", StringArgumentType.greedyString())
 										.executes(ctx -> caseStatus(ctx, Case.Status.ACTIONED,
@@ -2298,6 +2298,43 @@ public final class StaffCommands {
 		return ok(ctx, "Case " + found.id() + " assigned to " + assignee + ".");
 	}
 
+	/**
+	 * Clears a case with a reason that the corpus can count.
+	 * <p>
+	 * The reason is a value and the note is free text, and keeping them apart is the whole
+	 * point: a corpus that read prose to decide whether somebody was cleared would be reading
+	 * English to decide whether to move a threshold.
+	 */
+	private static int caseCleared(CommandContext<CommandSourceStack> ctx, String note) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+
+		String typed = StringArgumentType.getString(ctx, "reason");
+		var reason = io.github.alphain24.staffcore.modules.cases.Resolution.of(typed);
+
+		if (reason == null) {
+			return fail(ctx, "\"" + typed + "\" is not a reason. Use one of: "
+					+ io.github.alphain24.staffcore.modules.cases.Resolution.names());
+		}
+
+		String actor = Mc.name(ctx.getSource().getPlayer());
+		Mods.cases().store().setStatus(found.id(), Case.Status.CLEARED, actor, note, reason);
+		audit(ctx, "/staff case " + found.id() + " cleared " + reason.stored(), found.id());
+
+		ctx.getSource().sendSuccess(() -> Theme.good(
+				"Case " + found.id() + " cleared — " + reason.label() + "."), false);
+
+		// Said out loud, and only when it is true. A clear that counts is the corpus a
+		// threshold change gets validated against; one that does not is still a closed case
+		// and is not evidence about the detector, and telling somebody otherwise would be the
+		// tool taking credit for a judgement nobody made.
+		ctx.getSource().sendSuccess(() -> Icon.text(reason.countsAsNegative()
+				? "  Kept as an example of what should not have been flagged."
+				: "  Not counted as evidence about the detector — nobody judged whether the "
+						+ "flag was right.", Theme.MUTED), false);
+		return 1;
+	}
+
 	private static int caseStatus(CommandContext<CommandSourceStack> ctx, Case.Status status,
 			String reason) {
 
@@ -2311,14 +2348,6 @@ public final class StaffCommands {
 		ctx.getSource().sendSuccess(() -> Theme.good(
 				"Case " + found.id() + " is now " + status.stored() + "."), false);
 
-		if (status == Case.Status.CLEARED) {
-			// Said out loud because it is the point of clearing rather than a side effect:
-			// a cleared case is the corpus a threshold change gets validated against, which
-			// is the permanent fix for tuning a detector on how often it speaks.
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  Kept as an example of what should not have been flagged.",
-					Theme.MUTED), false);
-		}
 		return 1;
 	}
 
@@ -2901,6 +2930,135 @@ public final class StaffCommands {
 					.append(Icon.text(" to ", Theme.MUTED))
 					.append(Link.time(past.lastSeen())), false);
 		}
+	}
+
+	/**
+	 * Stands the caller inside somebody's excavation.
+	 * <p>
+	 * Separate from the report rather than replacing it. Reading the numbers is a few seconds
+	 * and going to look costs a teleport out of wherever you were — so the cheap one stays the
+	 * default and this is asked for.
+	 */
+	private static int xrayReplay(CommandContext<CommandSourceStack> ctx, int hours)
+			throws CommandSyntaxException {
+
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		String name = StringArgumentType.getString(ctx, "player");
+		audit(ctx, "/staff xray " + name + " replay");
+
+		var entry = io.github.alphain24.staffcore.modules.security.XrayReplayView.enter(
+				ctx.getSource().getServer(), self, name, null, hours * 3_600_000L);
+
+		return entry.started() ? 1 : fail(ctx, entry.refusal());
+	}
+
+	private static int xrayExit(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		boolean left = io.github.alphain24.staffcore.modules.security.XrayReplayView.exit(
+				ctx.getSource().getServer(), self, null);
+
+		return left ? 1 : fail(ctx, "You are not in a replay.");
+	}
+
+	/**
+	 * Where your own decoys are, so the visibility check can be run at all.
+	 * <p>
+	 * Without this, verifying that a decoy is visible through rock means hunting for a diamond
+	 * ore that may or may not be one, in a world full of real ones. The check stops being a
+	 * five-minute job and becomes a research task, and a check that is a research task does not
+	 * get run — which is how the vanish behaviour stayed unverified for months.
+	 * <p>
+	 * <b>This does let an admin avoid their own decoys.</b> That is a real cost and a small one:
+	 * canaries never punish anybody, the node is the admin one, and a server owner who wants to
+	 * cheat on their own server has a much shorter route than this. Being unable to confirm the
+	 * feature works at all is the larger risk.
+	 */
+	/**
+	 * What the detection thresholds are actually justified against.
+	 * <p>
+	 * The tuning mistake this exists to prevent is written into this repository's history: the
+	 * last time these numbers moved, the reason recorded was that the detector was too quiet.
+	 * That reason cannot be wrong, and nothing said who it would start speaking about.
+	 */
+	private static void registerCorpus(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("corpus")
+				.requires(src -> Permissions.check(src, Nodes.SECURITY_CHECK))
+				.executes(ctx -> {
+					var corpus = io.github.alphain24.staffcore.modules.cases.TrainingCorpus
+							.composition();
+
+					ctx.getSource().sendSuccess(() -> Theme.info(
+							"Cases the thresholds can be validated against"), false);
+					ctx.getSource().sendSuccess(() -> Icon.text("  " + corpus.describe(),
+							Theme.TEXT), false);
+					ctx.getSource().sendSuccess(() -> Icon.text(
+							"  Only a case somebody investigated and cleared counts as evidence "
+									+ "the detector was wrong. A case that went stale, was "
+									+ "closed unlooked-at, or ended because the player left is "
+									+ "not a judgement about anybody.", Theme.MUTED), false);
+
+					if (!corpus.isEnoughToTuneAgainst()) {
+						ctx.getSource().sendSuccess(() -> Theme.warn(
+								"  Below thirty usable cases, moving a threshold is moving it on "
+										+ "an anecdote that will be defended afterwards with a "
+										+ "number."), false);
+					}
+					return 1;
+				}));
+	}
+
+	private static void registerCanaryDiagnostic(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("canary")
+				.requires(src -> Permissions.check(src, Nodes.RELOAD))
+				.executes(StaffCommands::canaryStatus));
+	}
+
+	private static int canaryStatus(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		CommandSourceStack src = ctx.getSource();
+
+		String off = io.github.alphain24.staffcore.modules.security.AntiXrayCompanion
+				.whyCanariesAreOff();
+		if (off != null) {
+			src.sendSuccess(() -> Theme.warn("Decoys are off."), false);
+			src.sendSuccess(() -> Icon.text("  " + off, Theme.MUTED), false);
+			return 1;
+		}
+		if (!io.github.alphain24.staffcore.modules.security.Canaries.enabled()) {
+			return fail(ctx, "Decoys are off in the config — canaryBlocks or canaryDensity is 0.");
+		}
+
+		var mine = io.github.alphain24.staffcore.modules.security.Canaries.all().stream()
+				.filter(c -> c.owner().equals(self.getUUID()))
+				.toList();
+
+		src.sendSuccess(() -> Theme.info(mine.size() + " decoy(s) out for you, "
+				+ io.github.alphain24.staffcore.modules.security.Canaries.hitsFor(self.getUUID())
+				+ " hit(s) this session."), false);
+
+		if (mine.isEmpty()) {
+			// The commonest reason, and it is not a fault. Placement needs fully encased plain
+			// stone below canaryMaxY within canaryRadius, and a player standing in a cave or
+			// on the surface has no valid position anywhere near them.
+			src.sendSuccess(() -> Icon.text("  Nothing placed yet. They go in fully encased "
+					+ "stone below y" + StaffConfig.get().canaryMaxY + ", within "
+					+ StaffConfig.get().canaryRadius + " blocks — stand underground and wait "
+					+ "five seconds.", Theme.MUTED), false);
+			return 1;
+		}
+
+		for (var canary : mine) {
+			src.sendSuccess(() -> Icon.text("  " + canary.shown().getBlock().getName().getString()
+					+ " at ", Theme.MUTED)
+					.append(Link.position(canary.world(), canary.pos())), false);
+		}
+		src.sendSuccess(() -> Icon.text("  Only you have been told these are there. The world "
+				+ "has ordinary stone at every one of them.", Theme.MUTED), false);
+		return 1;
 	}
 
 	// ------------------------------------------------------------ operation lookup

@@ -1,7 +1,7 @@
 package io.github.alphain24.staffcore.security;
 
-import io.github.alphain24.staffcore.modules.security.XrayDetector;
-import io.github.alphain24.staffcore.modules.security.XrayDetector.Break;
+import io.github.alphain24.staffcore.modules.security.Excavation;
+import io.github.alphain24.staffcore.modules.security.Hypergeometric;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -38,8 +38,15 @@ import java.util.Map;
 final class XrayReplay {
 	private XrayReplay() {}
 
-	/** One player's mining over the window being scored. */
-	record Session(String player, List<Break> breaks) {}
+	/**
+	 * One player's mining over the window being scored, and the ore density it happened in.
+	 * <p>
+	 * The density is the half a p-value needs and a weighted score did not: what the player
+	 * took only means something against what there was to take. A generated session states
+	 * the number it was built with; a real one has to be given an assumed density, and the
+	 * grid below is run across several so a threshold is not chosen against one guess.
+	 */
+	record Session(String player, List<Excavation.Dig> breaks, double oreFraction) {}
 
 	/**
 	 * What one candidate pair would have done to a population.
@@ -48,7 +55,7 @@ final class XrayReplay {
 	 * @param alerted players staff would have been alerted about
 	 * @param noticed players who would have drawn a quiet notice instead
 	 */
-	record Cell(int sampleFloor, int alertConfidence, int noticeConfidence,
+	record Cell(int minimumVolume, int alertConfidence, int noticeConfidence,
 			int players, int scored, int alerted, int noticed) {
 
 		double alertRate() {
@@ -57,20 +64,36 @@ final class XrayReplay {
 	}
 
 	/** Every candidate pair, scored against the same population. */
-	static List<Cell> sweep(List<Session> sessions, int[] floors, int[] alertLevels,
+	static List<Cell> sweep(List<Session> sessions, int[] volumes, int[] alertLevels,
 			int noticeConfidence) {
 
 		List<Cell> grid = new ArrayList<>();
 
-		for (int floor : floors) {
+		for (int volume : volumes) {
 			// Scoring is the expensive half and does not depend on the alert level, so it
-			// happens once per floor and the levels are counted off the same numbers.
+			// happens once per volume gate and the levels are counted off the same numbers.
 			List<Integer> confidences = new ArrayList<>();
+
 			for (Session session : sessions) {
-				XrayDetector.Report report = XrayDetector.score(session.breaks(), floor);
-				int total = report.oreCount() + report.fillerCount();
-				if (total < floor) continue;
-				confidences.add(report.confidence());
+				int worst = 0;
+				boolean scored = false;
+
+				// Per segment, exactly as production does. A session is scored by its worst
+				// stretch rather than its average: an hour of honest tunnelling with twenty
+				// guided minutes in the middle averages out to nothing, and the twenty
+				// minutes are the whole point.
+				for (Excavation.Segment segment : Excavation.segment(session.breaks())) {
+					if (segment.population() < volume) continue;
+					scored = true;
+
+					int ores = segment.found() + (int) Math.round(
+							Math.max(0, segment.population() - segment.drawn())
+									* session.oreFraction());
+					double p = Hypergeometric.atLeast(segment.population(), ores,
+							segment.drawn(), segment.found());
+					worst = Math.max(worst, Hypergeometric.confidence(p));
+				}
+				if (scored) confidences.add(worst);
 			}
 
 			for (int alert : alertLevels) {
@@ -80,7 +103,7 @@ final class XrayReplay {
 					if (confidence >= alert) alerted++;
 					else if (noticeConfidence > 0 && confidence >= noticeConfidence) noticed++;
 				}
-				grid.add(new Cell(floor, alert, noticeConfidence,
+				grid.add(new Cell(volume, alert, noticeConfidence,
 						sessions.size(), confidences.size(), alerted, noticed));
 			}
 		}
@@ -91,7 +114,7 @@ final class XrayReplay {
 	static List<Session> fromPatterns() {
 		List<Session> out = new ArrayList<>();
 		for (MiningPatterns.Pattern pattern : MiningPatterns.all()) {
-			out.add(new Session(pattern.name(), pattern.breaks()));
+			out.add(new Session(pattern.name(), pattern.breaks(), pattern.oreFraction()));
 		}
 		return out;
 	}
@@ -103,8 +126,10 @@ final class XrayReplay {
 	 * somebody's production database, and it should not be able to migrate it, write to it, or
 	 * take a lock on it. Read-only, and it never writes the file back.
 	 */
-	static List<Session> fromDatabase(String path, long windowMs, long now) throws SQLException {
-		Map<String, List<Break>> byPlayer = new LinkedHashMap<>();
+	static List<Session> fromDatabase(String path, long windowMs, long now, double oreFraction)
+			throws SQLException {
+
+		Map<String, List<Excavation.Dig>> byPlayer = new LinkedHashMap<>();
 
 		String url = "jdbc:sqlite:file:" + path.replace('\\', '/') + "?mode=ro";
 		try (Connection conn = DriverManager.getConnection(url)) {
@@ -112,7 +137,7 @@ final class XrayReplay {
 			// player placed themselves — scoring on a different query than production uses
 			// would measure something nobody is going to ship.
 			String sql = """
-					SELECT b.player_name, b.block, b.x, b.y, b.z, b.created_at
+					SELECT b.player_name, b.block, b.world, b.x, b.y, b.z, b.created_at
 					FROM block_log b
 					WHERE b.action = 'BREAK' AND b.created_at >= ?
 					  AND b.player_name NOT LIKE '#%'
@@ -131,7 +156,8 @@ final class XrayReplay {
 				try (ResultSet rs = ps.executeQuery()) {
 					while (rs.next()) {
 						byPlayer.computeIfAbsent(rs.getString("player_name"), k -> new ArrayList<>())
-								.add(new Break(rs.getString("block"), rs.getInt("x"), rs.getInt("y"),
+								.add(new Excavation.Dig(rs.getString("block"),
+										rs.getString("world"), rs.getInt("x"), rs.getInt("y"),
 										rs.getInt("z"), rs.getLong("created_at")));
 					}
 				}
@@ -139,7 +165,7 @@ final class XrayReplay {
 		}
 
 		List<Session> out = new ArrayList<>();
-		byPlayer.forEach((player, breaks) -> out.add(new Session(player, breaks)));
+		byPlayer.forEach((player, breaks) -> out.add(new Session(player, breaks, oreFraction)));
 		return out;
 	}
 
@@ -150,7 +176,7 @@ final class XrayReplay {
 				"floor", "alert", "scored", "alerted", "noticed"));
 		for (Cell cell : grid) {
 			sb.append(String.format("%-8d %-8d %-8d %-8d %-8d%n",
-					cell.sampleFloor(), cell.alertConfidence(),
+					cell.minimumVolume(), cell.alertConfidence(),
 					cell.scored(), cell.alerted(), cell.noticed()));
 		}
 		return sb.toString();

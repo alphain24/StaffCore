@@ -25,21 +25,7 @@ package io.github.alphain24.staffcore.modules.security;
 public final class XrayTuning {
 	private XrayTuning() {}
 
-	/**
-	 * Ore-plus-filler blocks a player must have broken before the sweep will score them.
-	 * <p>
-	 * This knob runs the opposite way to intuition and is the one worth being careful with.
-	 * Raising it does not make the detector safer — it makes it blind, and specifically blind
-	 * to the person it exists for. Guided mining is <em>efficient</em>: it breaks far less
-	 * cover to reach far more ore, so those sessions are the small ones. In the measured set
-	 * the guided sessions ran 328–450 blocks while every honest pattern ran 525–1020, and at a
-	 * floor of 400 the detector missed all forty cheats while keeping all two hundred honest
-	 * players in scope. That is worse than switching it off.
-	 * <p>
-	 * 200 leaves room below the smallest guided session and is still enough that a handful of
-	 * lucky finds cannot carry a score on their own.
-	 */
-	public static final int SAMPLE_FLOOR = 200;
+
 
 	/**
 	 * Confidence at which staff are alerted automatically.
@@ -59,17 +45,9 @@ public final class XrayTuning {
 	 */
 	public static final int NOTICE_CONFIDENCE = 55;
 
-	/**
-	 * Ore-to-total fraction above which the blunt ratio signal starts scoring.
-	 * <p>
-	 * Raised from 0.04, which was the single largest source of false positives: honest
-	 * deepslate mining at y=-54 genuinely returns 13% ore, and at 0.04 that alone scored the
-	 * full 40 points. The ground being rich is not evidence about the player.
-	 */
-	public static final double RATIO_THRESHOLD = 0.12D;
 
-	/** Mean filler blocks between veins below which mining starts to look guided. */
-	public static final double DIRECTNESS_FLOOR = 12.0D;
+
+
 
 	/** How often the background sweep scores active miners, in minutes. 0 disables. */
 	public static final int SWEEP_MINUTES = 5;

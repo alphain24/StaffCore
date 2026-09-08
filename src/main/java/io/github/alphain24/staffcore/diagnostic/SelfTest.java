@@ -86,17 +86,26 @@ public final class SelfTest {
 		}, detail -> !detail.startsWith("entries matching")));
 
 		results.add(check("xray scoring", () -> {
-			// A synthetic session the detector must have an opinion about. This is the whole
-			// scoring path, run against the real config thresholds.
-			var breaks = new ArrayList<io.github.alphain24.staffcore.modules.security.XrayDetector.Break>();
+			// A synthetic dig the arithmetic must have an opinion about: a scattered path
+			// through a large volume that came away with most of the ore in it. Run through
+			// the real statistics rather than a restatement of them.
+			var digs = new java.util.ArrayList<
+					io.github.alphain24.staffcore.modules.security.Excavation.Dig>();
 			for (int i = 0; i < 60; i++) {
-				breaks.add(new io.github.alphain24.staffcore.modules.security.XrayDetector.Break(
+				digs.add(new io.github.alphain24.staffcore.modules.security.Excavation.Dig(
 						i % 2 == 0 ? "minecraft:deepslate_diamond_ore" : "minecraft:deepslate",
-						i, 12, 0, i * 1000L));
+						"overworld", i * 4, 12, i * 3, i * 1000L));
 			}
-			int score = io.github.alphain24.staffcore.modules.security.XrayDetector.score(breaks, 0)
-					.confidence();
-			return "obvious session scored " + score + "%";
+
+			var segment = io.github.alphain24.staffcore.modules.security.Excavation
+					.segment(digs).get(0);
+			double p = io.github.alphain24.staffcore.modules.security.Hypergeometric.atLeast(
+					segment.population(), segment.found(), segment.drawn(), segment.found());
+
+			return "obvious session scored "
+					+ io.github.alphain24.staffcore.modules.security.Hypergeometric.confidence(p)
+					+ "% (" + io.github.alphain24.staffcore.modules.security.Hypergeometric
+							.describe(p) + ")";
 		}, detail -> !detail.contains(" 0%")));
 
 		results.add(check("grief query", Mods.grief()::areaQuerySelfCheck,

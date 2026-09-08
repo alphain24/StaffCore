@@ -178,6 +178,12 @@ public class GriefModule implements Module {
 		});
 
 		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, entity) -> {
+			// Before the ServerPlayer check, because a decoy has to be retired by any break
+			// next to it whoever made it — the position is reachable now regardless.
+			if (level instanceof ServerLevel server) {
+				io.github.alphain24.staffcore.modules.security.Canaries.onBreak(server,
+						player instanceof ServerPlayer breaker ? breaker : null, pos);
+			}
 			if (!(player instanceof ServerPlayer sp)) return;
 
 			long now = System.currentTimeMillis();
@@ -321,6 +327,11 @@ public class GriefModule implements Module {
 	 * @return how many positions were recorded
 	 */
 	public int logExplosion(ServerLevel level, List<BlockPos> positions, String source) {
+		// Retired before the config gate. Whether explosions are logged is a preference;
+		// whether a decoy is left standing in a crater is a correctness question, and tying
+		// the second to the first would make a logging setting quietly cause false positives.
+		io.github.alphain24.staffcore.modules.security.Canaries.onExplosion(level, positions);
+
 		if (!StaffConfig.get().logExplosions) return 0;
 		if (positions.isEmpty() || !StaffCore.storage().isReady() || worker == null) return 0;
 
@@ -823,6 +834,17 @@ public class GriefModule implements Module {
 	 * The fallback is deliberately an empty result rather than nothing at all. An empty
 	 * screen next to a logged error is diagnosable; a hung one is not.
 	 */
+	/**
+	 * The same worker, for anything else that needs to read the log without stopping the tick.
+	 * <p>
+	 * Shared rather than duplicated: a second pool would double the connections against a
+	 * database whose whole concurrency story is one connection and a write lock.
+	 */
+	public <T> void readOffThread(MinecraftServer server, java.util.function.Supplier<T> read,
+			T onFailure, Consumer<T> onDone) {
+		readAsync(server, read, onFailure, onDone);
+	}
+
 	private <T> void readAsync(MinecraftServer server, java.util.function.Supplier<T> read,
 			T onFailure, Consumer<T> onDone) {
 

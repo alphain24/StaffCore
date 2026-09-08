@@ -385,6 +385,75 @@ public final class StaffConfig {
 	 */
 	public int rollbackWarnBlocks = 500;
 
+	/**
+	 * The smallest excavation worth scoring, in blocks of rock within reach.
+	 * <p>
+	 * A volume gate rather than a block-count one, and the difference is where the old
+	 * detector's false positives lived. Somebody who removed thirty blocks from a pocket of
+	 * forty has drawn almost all of it; the statistics on a population that small are
+	 * confident and meaningless, and confident meaningless output is what gets acted on.
+	 * <p>
+	 * Raising it means only substantial digs are scored. Lowering it does not find more
+	 * cheating — it finds more noise, because the arithmetic below a few hundred blocks
+	 * cannot separate luck from anything.
+	 */
+	public int xrayMinimumVolume = 512;
+
+	// ---- canaries ------------------------------------------------------------
+
+	/**
+	 * Show each player a few fake ores in solid rock, and notice who goes straight to one.
+	 * <p>
+	 * Turned off automatically when a bulk anti-xray mod is installed, whatever this says.
+	 * Both rewrite what the client is told is there, so a canary is not guaranteed to arrive
+	 * and a player breaking a fake block cannot be told apart from one breaking the other
+	 * mod's — see the startup report, which says so when it happens.
+	 * <p>
+	 * Off means the detector still works. It reads the break log after the fact, which is the
+	 * more useful half and needs nothing sent to anybody.
+	 */
+	public boolean canaryBlocks = true;
+
+	/**
+	 * How many decoys one player has out at a time. 0 disables.
+	 * <p>
+	 * Deliberately tiny, and far below the density a bulk anti-xray uses. That mod is hiding
+	 * ore, so it wants fakes everywhere; this is asking a question, so each one has to stay
+	 * rare enough that walking into it means something. Raise it and the odds of a legitimate
+	 * miner meeting one by chance stop being negligible.
+	 */
+	public int canaryDensity = 6;
+
+	/**
+	 * The highest Y a canary is placed at.
+	 * <p>
+	 * Below the depth where people build and above nothing in particular. Placing them near
+	 * the surface would put decoys inside the ground under somebody's house, which is both
+	 * useless — nobody x-rays for stone at Y 60 — and the likeliest way to annoy a builder.
+	 */
+	public int canaryMaxY = 16;
+
+	/**
+	 * Blocks from a player a canary may be placed within.
+	 * <p>
+	 * Close enough to be inside their render distance, so an x-ray client actually shows it;
+	 * far enough that it is not underfoot. Outside this, the client has not been sent the
+	 * chunk and the decoy is invisible to everybody including a cheater.
+	 */
+	public int canaryRadius = 48;
+
+	/**
+	 * Canary hits in one session before a case is opened automatically.
+	 * <p>
+	 * One is noise: a decoy can end up in the path of a tunnel somebody was digging anyway,
+	 * and a single unlucky hit should never be the thing that opens an investigation. Three
+	 * separate ones is not luck.
+	 * <p>
+	 * Below the threshold the hits are still recorded and still visible in the player's
+	 * context — quiet, not discarded.
+	 */
+	public int canaryCaseThreshold = 3;
+
 	// ---- display -------------------------------------------------------------
 
 	/**
@@ -549,12 +618,6 @@ public final class StaffConfig {
 	// what lets a test prove the documentation still agrees with the code — the last round of
 	// tuning left three different sample floors in circulation across the docs and the source.
 
-	/** Ore-to-total fraction above which the blunt ratio signal starts scoring. */
-	public double xrayRatioThreshold = XrayTuning.RATIO_THRESHOLD;
-	/** Ore-plus-filler blocks a player must have broken before the detector will say anything. */
-	public int xraySampleFloor = XrayTuning.SAMPLE_FLOOR;
-	/** Mean filler blocks between veins below which mining looks guided. */
-	public double xrayDirectnessFloor = XrayTuning.DIRECTNESS_FLOOR;
 	/** Confidence at which staff are alerted automatically. */
 	public int xrayAlertConfidence = XrayTuning.ALERT_CONFIDENCE;
 	/** Confidence at which staff get a quieter heads-up rather than an alert. 0 disables. */

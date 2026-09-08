@@ -235,25 +235,31 @@ public class SecurityModule implements Module {
 	// -------------------------------------------------------------- mining checks
 
 	/**
-	 * X-ray heuristic over the grief log: what fraction of a player's recent mining was
-	 * ore? A legitimate strip-miner sits far below the threshold because they break
-	 * hundreds of stone blocks for every vein.
+	 * How unlikely this player's recent mining is for somebody who could not see the ore.
+	 * <p>
+	 * The same statistics the sweep runs, over the same window, through the same entry point.
+	 * A second scorer here would be a second answer to one question, and the first anybody
+	 * would hear of the disagreement is a staff member reading one number on this screen and a
+	 * different one in the case it opened.
 	 */
 	public List<Flag> scanMining(ServerPlayer target) {
 		List<Flag> flags = new ArrayList<>();
-		XrayDetector.Report report = XrayDetector.analyse(Mc.name(target), 6L * 3_600_000L);
-		if (report.confidence() == 0) return flags;
+		MinecraftServer server = Mc.server(target);
+		if (server == null) return flags;
 
-		Severity severity = report.isSuspicious() ? Severity.SUSPICIOUS : Severity.INFO;
-		flags.add(new Flag(severity, "MINING",
-				report.confidence() + "% confidence — " + String.join("; ", report.reasons())));
+		for (XraySweep.Finding finding
+				: XraySweep.forPlayer(server, Mc.name(target), 6L * 3_600_000L)) {
+
+			int confidence = Hypergeometric.confidence(finding.pValue());
+			if (confidence < StaffConfig.get().xrayNoticeConfidence) continue;
+
+			Severity severity = confidence >= StaffConfig.get().xrayAlertConfidence
+					? Severity.SUSPICIOUS : Severity.INFO;
+			flags.add(new Flag(severity, "MINING", finding.headline()));
+		}
 		return flags;
 	}
 
-	/** The full scored report, for the security screen's header. */
-	public XrayDetector.Report miningReport(ServerPlayer target) {
-		return XrayDetector.analyse(Mc.name(target), 6L * 3_600_000L);
-	}
 
 	// --------------------------------------------------------------- contraband watch
 
@@ -480,69 +486,69 @@ public class SecurityModule implements Module {
 	}
 
 	/**
-	 * Scores every online player and alerts on anyone who crosses the threshold.
+	 * Scores everyone who has been mining, off the tick loop.
 	 * <p>
-	 * The point of running this on a timer rather than waiting for a report is that x-ray
-	 * has no victim to complain — nobody files a report saying someone else found diamonds
-	 * too easily. Without a sweep the detector only ever runs on players staff already
-	 * suspect, which is exactly the population it adds least value for.
+	 * The old version queried the block log per online player from inside the tick, which was
+	 * a database round trip per player on the thread with sixteen milliseconds to do
+	 * everything else — and it scaled with the player count, so it was worst exactly when the
+	 * server could least afford it.
 	 * <p>
-	 * A player is only re-reported when their score climbs meaningfully, so a long session
-	 * produces one alert rather than one every ten minutes.
+	 * It also scored only online players. That was never right: the block log outlives the
+	 * session, and somebody who logs off after an hour of mining was precisely the person
+	 * worth scoring. The window now decides who is examined, not who happens to be connected.
 	 */
 	private void sweepMining(MinecraftServer server) {
-		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			// Only staff who are actually clocked on are skipped. Excluding everyone with
-			// staff.gui was wrong twice over: with no permissions plugin that node falls back
-			// to op level, so every operator — including whoever is testing — was silently
-			// never scored; and staff mining on their own time are not above suspicion.
-			if (StaffConfig.get().xraySkipStaffOnDuty && Mods.staffMode().isActive(player)) continue;
-
-			XrayDetector.Report report = XrayDetector.analyse(Mc.name(player), 6L * 3_600_000L);
+		XraySweep.run(server, findings -> {
 			StaffConfig cfg = StaffConfig.get();
 
-			int notice = cfg.xrayNoticeConfidence;
-			boolean worthSaying = report.isSuspicious()
-					|| (notice > 0 && report.confidence() >= notice);
-			if (!worthSaying) continue;
+			for (XraySweep.Finding finding : findings) {
+				ServerPlayer online = server.getPlayerList().getPlayerByName(finding.player());
 
-			// Re-reported only when the score climbs meaningfully, so a long session produces
-			// one line rather than one every sweep.
-			int previous = lastReported.getOrDefault(player.getUUID(), 0);
-			if (report.confidence() <= previous + 5) continue;
-			lastReported.put(player.getUUID(), report.confidence());
+				// Staff clocked on are skipped, and only them. Excluding everyone holding
+				// staff.gui was wrong twice over: with no permissions plugin that node falls
+				// back to op level, so every operator was silently never scored; and staff
+				// mining on their own time are not above suspicion.
+				if (cfg.xraySkipStaffOnDuty && online != null
+						&& Mods.staffMode().isActive(online)) {
+					continue;
+				}
 
-			if (report.isSuspicious()) {
-				// A verdict, not a shout. The detector's own confidence is carried through so
-				// a marginal 66 and a flagrant 96 are not treated as the same amount of "go
-				// and look" once they reach the case list — and so a marginal one about a
-				// player already under investigation lands in that case rather than scrolling
-				// past on its own.
-				Mods.cases().emit(server,
-						io.github.alphain24.staffcore.modules.cases.Signal.Type.XRAY,
-						player.getUUID(), Mc.name(player),
-						Math.max(cfg.xraySignalConfidence, report.confidence()),
-						report.headline(), "security");
-			} else {
-				// Deliberately not an alert. This exists so that silence is distinguishable
-				// from absence — a server owner who never sees anything should be able to
-				// tell "nobody is cheating" from "this has never run".
-				notifyNearMiss(server, Mc.name(player), report);
+				int confidence = Hypergeometric.confidence(finding.pValue());
+				if (confidence < cfg.xrayNoticeConfidence) continue;
+
+				// Re-reported only when it gets meaningfully worse, so a long session
+				// produces one line rather than one every sweep.
+				java.util.UUID id = online != null ? online.getUUID()
+						: java.util.UUID.nameUUIDFromBytes(finding.player().getBytes());
+				int previous = lastReported.getOrDefault(id, 0);
+				if (confidence <= previous + 5) continue;
+				lastReported.put(id, confidence);
+
+				if (confidence >= cfg.xrayAlertConfidence) {
+					Mods.cases().emit(server,
+							io.github.alphain24.staffcore.modules.cases.Signal.Type.XRAY,
+							id, finding.player(), confidence,
+							finding.headline() + " in " + finding.world() + " around y "
+									+ finding.band(), "security");
+				} else {
+					// Deliberately not an alert. This exists so silence is distinguishable
+					// from absence — an owner who never sees anything should be able to tell
+					// "nobody is cheating" from "this has never run".
+					notifyNearMiss(server, finding);
+				}
 			}
-		}
+		});
 	}
 
-	/** A quiet heads-up for a score below the alert line. Explicitly not an accusation. */
-	private void notifyNearMiss(MinecraftServer server, String player, XrayDetector.Report report) {
-		for (ServerPlayer staff : server.getPlayerList().getPlayers()) {
-			if (!io.github.alphain24.staffcore.permission.Permissions.check(
-					staff, io.github.alphain24.staffcore.permission.Nodes.SECURITY_CHECK)) {
-				continue;
-			}
-			staff.sendSystemMessage(Theme.info("Mining watch — " + player + " at "
-					+ report.confidence() + "%, below the " + StaffConfig.get().xrayAlertConfidence
-					+ "% alert line. Not a finding; /staff xray " + player + " for the detail."));
-		}
+	/**
+	 * A quiet line to staff about something that did not reach the alert threshold.
+	 * <p>
+	 * The point is that a server which never alerts is ambiguous between "nothing is
+	 * happening" and "this has stopped working", and only one of those needs acting on.
+	 */
+	private void notifyNearMiss(MinecraftServer server, XraySweep.Finding finding) {
+		Mods.alerts().onStaffAction(server, finding.player() + " — " + finding.headline()
+				+ ", below the alert line. Not a verdict; recorded so you can see it happening.");
 	}
 
 	public void forget(java.util.UUID player) {

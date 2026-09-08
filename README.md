@@ -279,9 +279,13 @@ Changing a default in the code alone would never reach a server that has already
   "displayTimezone": "UTC",           // staff-facing times only; logs stay UTC
   "confirmExpirySeconds": 60,         // how long a preview stays good for; 0 = forever
   "rollbackWarnBlocks": 500,          // preview says so loudly above this; 0 = never
+  "xrayMinimumVolume": 512,           // smallest dig worth scoring; below this is noise
+  "canaryBlocks": true,               // decoy ores; forced off by a bulk anti-xray mod
+  "canaryDensity": 6,                 // decoys per player at once; 0 disables
+  "canaryMaxY": 16,                   // below the depth where people build
+  "canaryRadius": 48,                 // must be inside their render distance
+  "canaryCaseThreshold": 3,           // hits in a session before a case opens
   "rootAliases": false,               // /ban, /vanish etc. at the root, if free
-  "xrayRatioThreshold": 0.12,         // ore fraction that trips the heuristic
-  "xraySampleFloor": 200,             // blocks needed before it will fire at all
   "tpsAlertFloor": 17.0,
   "defaultRollbackMinutes": 60,
 
@@ -330,7 +334,6 @@ Changing a default in the code alone would never reach a server that has already
   "autoSnapshotBeforeDebit": true,     // before a rollback takes items back off somebody
   "databaseBackups": 5,                // written on every start, rotated; 0 disables
   "hideMiningNoise": true,             // keep the log readable on a busy server
-  "xrayDirectnessFloor": 12.0,         // filler blocks between veins
   "xrayAlertConfidence": 65,          // no single signal can reach this on its own
   "xrayNoticeConfidence": 55,         // quiet heads-up below the alert line; 0 disables
   "xraySweepMinutes": 5,
@@ -368,6 +371,31 @@ open, every module that needs it degrades quietly and the rest of the mod still 
 | `staff_state`, `stash` | Vanish, freeze, duty state and on-duty inventories |
 | `contraband_vault` | Items taken off players and kept |
 | `pending_actions` | Items owed to a player who was offline when staff decided |
+
+## Recommended companion: an anti-xray mod
+
+StaffCore **detects** x-ray after the fact. It does not prevent it, and the two are different
+halves of the same problem — one catalogues cheating and the other stops it.
+
+Prevention means rewriting the block palette of every chunk on its way out, per player, without
+costing the server its tick budget. That is heavy, performance-sensitive work that already
+exists and already targets this Minecraft version, so StaffCore does not ship a second copy of
+it. Install one of these alongside:
+
+| Mod | Licence | Notes |
+|---|---|---|
+| [AntiXray](https://github.com/DrexHD/AntiXray) by DrexHD | MIT | Paper's `0367-Anti-Xray.patch`, ported. Fabric and NeoForge. |
+| [Meow Anti-Xray](https://github.com/xiaoyiluck666/MeowAnti-Xray) by xiaoyiluck | MIT | Paper-like obfuscation, engine mode 2 by default. Fabric and NeoForge. |
+
+Whichever is installed is named at startup and in `/staff status`. With neither, that line says
+so — silence there would read as "prevention is handled", which is the one thing it must not.
+
+**Installing one turns StaffCore's canary blocks off**, and the startup report says why. Both
+mods rewrite the same outbound chunk data, so a canary is not guaranteed to reach the client;
+and a player breaking a fake block cannot be told apart from one breaking the other mod's. A
+signal nobody can attribute reads as evidence and is not. The rest of the x-ray detection —
+which works from the block log, after the fact — is unaffected and is the more useful half
+anyway.
 
 ## Known limits
 
@@ -421,13 +449,22 @@ known gap — not a bug list.
 
 **Detection**
 
+- **Decoy blocks are packet-verified, not client-verified.** The server is checked to choose the
+  right fake ore for the surrounding rock, to send it at the right position, and to send the
+  real block back when the decoy is retired. What has **not** been confirmed by anybody watching
+  a screen is that an x-ray client actually draws it. That matters more than it sounds: a decoy
+  that never reaches a client produces a false-positive rate of zero *and* a true-positive rate
+  of zero, and only the first shows up in the corpus — so the measured zero in
+  [decisions.md](docs/decisions.md) says the retirement rule holds, not that decoys work. The check that closes this is written out step by step in
+  [docs/manual-checks/decoy-visibility.md](docs/manual-checks/decoy-visibility.md) — about
+  five minutes, and it says what to change in this file when it passes. It has not been run.
 - **Alt detection is still a lead, never a verdict.** It links accounts by exact address and
   by address range, scores each link 0-100 from how often the address was shared and whether
   the two accounts have ever been online together, and shows its reasoning. A shared house
   still trips it and a determined evader with a clean VPN still beats it. Only an exact
   match can ever auto-ban.
 - **The x-ray check is a heuristic.** It flags, it never acts, and by default it will not
-  commit to a verdict below 200 mined blocks. It no longer counts ore the player placed
+  commit to a verdict below a 512-block volume of rock. It no longer counts ore the player placed
   themselves, but it is still inference from a block log. The thresholds are measured
   against generated mining patterns rather than real player data — see
   [decisions.md](docs/decisions.md), which records what that does and does not establish.
@@ -446,6 +483,14 @@ known gap — not a bug list.
 
 **Structural**
 
+- **One part of x-ray detection runs on the server thread, deliberately.** Working out how
+  much ore a player *walked past* means reading block states, and a `ServerLevel` may only be
+  touched from the server thread — doing it anywhere else is a data race that surfaces as a
+  crash weeks later in somebody else's log. So the census stays on the tick. It is bounded to
+  the rock immediately around the dig, it skips unloaded chunks rather than loading them, and
+  it is timed: roughly 3 ms of a 50 ms tick per scored session, once every `xraySweepMinutes`.
+  The database read — the largest part, and the part that grows with history — runs on a
+  worker. Measurements are in [decisions.md](docs/decisions.md).
 - **A permission node written by hand, rather than taken from `Nodes`, fails in a shape that
   looks like success.** `Actor` resolves permissions by walking the nodes declared in `Nodes`,
   so a string that is not one of them is in nobody's resolved set — denied to every player, and
