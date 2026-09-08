@@ -17,7 +17,9 @@
 			"io.github.alphain24.staffcore.gametest.RollbackWarningTests",
 			"io.github.alphain24.staffcore.gametest.CanaryTests",
 			"io.github.alphain24.staffcore.gametest.XrayTimingTests",
-			"io.github.alphain24.staffcore.gametest.ReplayViewTests"
+			"io.github.alphain24.staffcore.gametest.ReplayViewTests",
+			"io.github.alphain24.staffcore.gametest.CanaryPacketTests",
+			"io.github.alphain24.staffcore.gametest.CanaryFalsePositiveTests"
 		]
 	},
 	"depends": {

@@ -449,6 +449,14 @@ known gap — not a bug list.
 
 **Detection**
 
+- **Decoy blocks are packet-verified, not client-verified.** The server is checked to choose the
+  right fake ore for the surrounding rock, to send it at the right position, and to send the
+  real block back when the decoy is retired. What has **not** been confirmed by anybody watching
+  a screen is that an x-ray client actually draws it. That matters more than it sounds: a decoy
+  that never reaches a client produces a false-positive rate of zero *and* a true-positive rate
+  of zero, and only the first shows up in the corpus — so the measured zero in
+  [decisions.md](docs/decisions.md) says the retirement rule holds, not that decoys work. The
+  two manual checks in the handbook close this and have not been run.
 - **Alt detection is still a lead, never a verdict.** It links accounts by exact address and
   by address range, scores each link 0-100 from how often the address was shared and whether
   the two accounts have ever been online together, and shows its reasoning. A shared house

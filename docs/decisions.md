@@ -434,6 +434,110 @@ circular — the question asked of the guided pattern is precisely whether it be
 miner in the same rock, and the clean patterns are the only available statement of that rate.
 ---
 
+## Two decisions in the replay viewer
+
+**Date:** 2026-09-08
+
+Both are places where the brief asked for one thing and the code does another. Recorded with
+the reasoning rather than the outcome, because the outcome on its own reads as an oversight.
+
+### The inventory is not stashed
+
+The brief says to restore state "through the existing staff-mode stash machinery". The
+gamemode, the position and the vanish flag go through the same *rule* as the stash — written
+before anything changes, cleared only after the player is demonstrably back. The inventory does
+not go through it at all.
+
+A spectator cannot pick anything up, drop anything, or be hit. There is nothing for a stash to
+protect the inventory from, and `InventoryGateway.replaceAll` is the one piece of code in this
+mod that can lose somebody's entire inventory. Adding a second caller to it to solve a problem
+that does not exist trades a real risk for an imaginary one.
+
+The rule that was worth taking from the stash is the ordering, not the storage.
+
+### The replay sidebar is sent, not registered
+
+A vanilla sidebar lives on `ServerScoreboard`, which is shared by everybody on the server. A
+staff member investigating a player would have put a panel reading "Ore taken: 30 of 40" on
+that player's screen, along with everyone else's.
+
+So the objective and its rows are sent as packets to one connection. The objective exists only
+in the client that receives it: nothing is stored server-side, nothing is broadcast, and a
+disconnect takes it away with no cleanup because there was never anything on the server to
+clean up. Same technique as the decoys and the rollback preview — tell one client something the
+server does not believe.
+
+### And one thing deliberately absent from that sidebar
+
+There is no "Decoys broken: 0" line. Canaries are switched off entirely when a bulk anti-xray
+mod is installed, so a zero means "no separate signal was available" and not "this player
+passed a test" — and on a panel somebody reads immediately before deciding whether to ban
+someone, it would be the most reassuring line there. Absence of signal reading as a passed test
+is how a panel misleads the person who trusts it.
+
+---
+
+## Canary false-positive rate
+
+**Date:** 2026-09-08
+
+Gate 3 asks for this measured against a synthetic legit-mining corpus. Run by
+`CanaryFalsePositiveTests` on a real server, against real decoy placement and the real
+retirement path.
+
+**Sixty-two decoys across five honest mining shapes. Zero hits.**
+
+| Scenario | Decoys | Hits |
+|---|---|---|
+| Tunnel passing beside decoys | 3 | 0 |
+| Neighbour then decoy, back to back | 4 | 0 |
+| Two miners converging on one decoy field | 3 | 0 |
+| Explosion, then mining the rubble | 16 | 0 |
+| Branch mine across a decoy field | 36 | 0 |
+| **Control: decoy broken cold** | **3** | **3** |
+
+### Why the control is the important row
+
+A decoy layer that never places, never matches the rock, or never records a hit scores a
+false-positive rate of zero — the same number a perfect one scores. Every clean result above is
+worthless without a sequence that must fire and does.
+
+### The conditions, since a percentage is not actionable
+
+The rate is zero because of a structural property rather than a threshold: a decoy is placed
+only in fully encased rock, so reaching it requires breaking one of its six neighbours, and
+**that break retires it inside its own event**. The orderings tried:
+
+- **Immediate succession.** Neighbour break and decoy break with nothing between them, which is
+  the fastest a player with efficiency and haste can produce and the ordering that would break
+  a queue. Retirement is synchronous, so the second break finds nothing.
+- **Across breakers.** One player's tunnel exposing another player's decoy. Retirement is
+  global; scoping it per owner would leak false positives between people who never met.
+- **Without a break event at all.** An explosion uncovering sixteen decoys at once, then a
+  player mining the rubble. Handled through `logExplosion`, and retired *before* the
+  `logExplosions` config gate — whether explosions are logged is a preference, whether a decoy
+  is left in a crater is correctness.
+
+`CanaryRetirementIsSynchronousTest` guards the property the corpus rests on: nothing in
+`Canaries` may use an executor, a future or a scheduler, and the break hook must reach it
+inline. A behavioural corpus keeps passing after somebody moves the work off-thread for a good
+reason; this does not.
+
+### What this measurement cannot tell you
+
+**A clean rate is also what a completely invisible decoy would produce.** If the block update
+never reaches a client, or reaches it and is not drawn, then the false-positive rate is zero
+and so is the true-positive rate — and only the first of those appears in this corpus.
+
+The packet is verified: `CanaryPacketTests` checks the decoy matches its surrounding rock, that
+the packet carries that state at that position, that it differs from what is really there, and
+that the resync carries the real block back. What is **not** verified is a client rendering it.
+That needs a real client with an x-ray pack and a person watching a screen. Until somebody runs
+the two manual checks in the handbook, the decoy layer is packet-verified rather than
+client-verified, and this measurement should be read as "the retirement rule holds" rather than
+"decoys work".
+---
+
 # Moved from the README
 
 The README had grown to eight hundred lines, and the reasoning was the best material in it and
