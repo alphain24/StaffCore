@@ -132,6 +132,10 @@ public class GriefModule implements Module {
 			});
 		}
 		pickups.attach(worker);
+		// Position sampling shares this thread rather than starting one of its own. The whole
+		// concurrency story of this database is a single connection and a single writer, so a
+		// second pool would be a second thread contending for the same lock to no benefit.
+		io.github.alphain24.staffcore.modules.replay.PositionSampler.attach(worker);
 
 		if (listenerRegistered) return;
 		listenerRegistered = true;
@@ -289,6 +293,12 @@ public class GriefModule implements Module {
 	@Override
 	public void onDisable() {
 		if (worker != null) {
+			// Queued before the shutdown so it runs behind the batches already accepted
+			// rather than racing them. Anything still in the sampler's queue at this point
+			// is the last few seconds of movement, which is the stretch somebody reaches for
+			// after a server goes down — the same reason the block log waits below.
+			worker.execute(io.github.alphain24.staffcore.modules.replay.PositionSampler::flush);
+
 			// Wait for the queue to drain. Block logging is asynchronous so a busy chunk of
 			// griefing does not stall the tick loop, which means at shutdown there are
 			// usually rows still queued — and shutdown() only stops new work, it does not
