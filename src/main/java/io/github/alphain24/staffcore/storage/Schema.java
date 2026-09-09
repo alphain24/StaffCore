@@ -1087,6 +1087,58 @@ final class Schema {
 			// that the detector was wrong.
 			conn -> {
 				addColumn(conn, "cases", "resolution_reason", "TEXT");
+			},
+
+			// 24 - where players have been, sampled over time.
+			//
+			// This is the largest table the mod can produce and the only one that records
+			// something other than an action somebody took. A block-log row exists because a
+			// player broke a block; a position row exists because a player existed. That
+			// makes it surveillance data rather than conduct data, and it is off by default,
+			// kept for days rather than months, and redacted from an ordinary export - the
+			// same treatment addresses get, for the same reason.
+			//
+			// Two tables rather than one, and the split is where nearly all the storage
+			// saving lives. A UUID is thirty-six bytes of text and a sample is a handful, so
+			// storing the identity beside every sample would have cost more than the
+			// measurements did. The identity, the world and the absolute origin live once per
+			// run; the samples carry only how far the player moved since the last one.
+			//
+			// position_log is WITHOUT ROWID on purpose. The read is always "every sample of
+			// this run in time order", so the primary key is the access path - and a rowid
+			// table would need a separate index over the same two columns, which on the
+			// biggest table in the database means storing the key twice.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS position_run (
+							    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+							    uuid       TEXT    NOT NULL,
+							    name       TEXT    NOT NULL,
+							    world      TEXT    NOT NULL,
+							    started_at INTEGER NOT NULL,
+							    ended_at   INTEGER NOT NULL,
+							    x0         INTEGER NOT NULL,
+							    y0         INTEGER NOT NULL,
+							    z0         INTEGER NOT NULL,
+							    samples    INTEGER NOT NULL DEFAULT 0
+							)
+							""");
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_position_run_lookup "
+							+ "ON position_run(uuid, started_at)");
+					st.executeUpdate("""
+							CREATE TABLE IF NOT EXISTS position_log (
+							    run   INTEGER NOT NULL,
+							    ms    INTEGER NOT NULL,
+							    dx    INTEGER NOT NULL,
+							    dy    INTEGER NOT NULL,
+							    dz    INTEGER NOT NULL,
+							    yaw   INTEGER NOT NULL,
+							    pitch INTEGER NOT NULL,
+							    PRIMARY KEY (run, ms)
+							) WITHOUT ROWID
+							""");
+				}
 			}
 	);
 
@@ -1206,6 +1258,37 @@ final class Schema {
 			    prior_vanished INTEGER NOT NULL DEFAULT 0,
 			    started_at     INTEGER NOT NULL
 			)
+			""",
+
+			// The position log. See migration 24 for why it is two tables and why
+			// position_log is WITHOUT ROWID.
+			"""
+			CREATE TABLE IF NOT EXISTS position_run (
+			    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			    uuid       TEXT    NOT NULL,
+			    name       TEXT    NOT NULL,
+			    world      TEXT    NOT NULL,
+			    started_at INTEGER NOT NULL,
+			    ended_at   INTEGER NOT NULL,
+			    x0         INTEGER NOT NULL,
+			    y0         INTEGER NOT NULL,
+			    z0         INTEGER NOT NULL,
+			    samples    INTEGER NOT NULL DEFAULT 0
+			)
+			""",
+			"CREATE INDEX IF NOT EXISTS idx_position_run_lookup ON position_run(uuid, started_at)",
+
+			"""
+			CREATE TABLE IF NOT EXISTS position_log (
+			    run   INTEGER NOT NULL,
+			    ms    INTEGER NOT NULL,
+			    dx    INTEGER NOT NULL,
+			    dy    INTEGER NOT NULL,
+			    dz    INTEGER NOT NULL,
+			    yaw   INTEGER NOT NULL,
+			    pitch INTEGER NOT NULL,
+			    PRIMARY KEY (run, ms)
+			) WITHOUT ROWID
 			""",
 
 			// Created lazily by AddressPrivacy the first time a salt is needed, which works
