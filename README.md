@@ -299,7 +299,7 @@ Changing a default in the code alone would never reach a server that has already
   "allowInGameAppeals": true,
   "detectBanEvasion": true,
   "altSubnetMatching": true,           // also link accounts sharing an address *range*
-  "connectionRetentionDays": 90,       // the only personal data here; 0 keeps forever
+  "connectionRetentionDays": 90,       // personal data; 0 keeps forever
   "hashConnectionAddresses": true,     // matching still works; the plaintext goes
   "altMinConfidence": 40,              // below this, a link is not worth an alert
   "logContainerAccess": true,          // most "griefing" is theft
@@ -313,6 +313,9 @@ Changing a default in the code alone would never reach a server that has already
   "logItemPickups": true,              // who picked what up; makes recovery work at any distance
   "pickupLogRetentionMinutes": 180,    // pickups are kept for hours, not days
   "rollbackPointRetentionDays": 7,     // how long a rollback stays undoable; 0 disables undo
+  "positionTracking": false,           // record where players go, so sessions can be replayed
+  "positionSampleHz": 2,               // samples per second, per moving player; 1-10
+  "positionRetentionDays": 7,          // personal data, and the biggest table; 0 keeps forever
   "debtExpiryDays": 7,                 // unpaid rollback debts are written off; 0 keeps them
   "massGriefBlocks": 120,              // alert threshold, 0 disables
   "massGriefWindowSeconds": 20,

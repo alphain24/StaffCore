@@ -1127,8 +1127,8 @@
 
         <h3>What is stored about a person, and for how long</h3>
         <p class="lede">
-          One category here is personal data rather than a record of conduct. It is worth
-          being exact about.
+          Two categories here are personal data rather than a record of conduct. They are
+          worth being exact about.
         </p>
         <table>
           <thead>
@@ -1146,6 +1146,17 @@
               <td><code>connectionRetentionDays</code>, default <strong>90 days</strong></td>
             </tr>
             <tr>
+              <td>
+                Where a player was, twice a second while they were moving &mdash; position,
+                facing and world, to about three centimetres
+              </td>
+              <td class="mono">position_run, position_log</td>
+              <td>
+                <code>positionRetentionDays</code>, default <strong>7 days</strong>.
+                <strong>Off unless you switch it on.</strong>
+              </td>
+            </tr>
+            <tr>
               <td>Username and UUID</td>
               <td>throughout</td>
               <td>For as long as the record they belong to</td>
@@ -1158,6 +1169,37 @@
           way somebody's home address does not, and it follows the retention setting for its
           own feature.
         </p>
+        <div class="note">
+          <p>
+            <span class="pill">Position history is off by default</span>
+            <code>positionTracking</code> is <code>false</code> on a new install, and that is a
+            judgement rather than caution about the code. Every other row in this database
+            exists because a player <em>did</em> something. A position row exists because the
+            player existed. Turning it on is a decision to keep a record of where the people on
+            your server go, and it should be a decision somebody makes rather than something
+            that starts happening because they installed a moderation tool.
+          </p>
+          <p>
+            It is also, by a wide margin, the largest thing this mod can write.
+            <code>/staff status</code> reports how much of it is on disk, whether tracking is
+            currently on or off.
+          </p>
+          <p>
+            Nothing about it is nudged towards being on. There is no alert telling you the
+            replay would have helped, and no prompt when a case is opened. If you do not need
+            it, leaving it alone is the supported configuration.
+          </p>
+        </div>
+        <div class="note">
+          <p>
+            <span class="pill">Exports withhold both</span>
+            <code>/staff export</code> redacts address columns and writes no position rows at
+            all &mdash; the file and its header line are still there, so a withheld table can be
+            told from a missing one. <code>/staff export personal confirm</code> includes both,
+            and says how many samples that is before it does. <code>addresses</code> still works
+            as the old name for the same flag.
+          </p>
+        </div>
         <div class="note">
           <p>
             <span class="pill">Addresses are hashed by default</span>
@@ -2622,7 +2664,7 @@
   "maxSnapshotsPerPlayer": 10,        // 0 keeps every one
   "snapshotRetentionDays": 30,
   "altSubnetMatching": true,          // also link accounts sharing an address range
-  "connectionRetentionDays": 90,      // the only personal data here; 0 keeps forever
+  "connectionRetentionDays": 90,      // personal data; 0 keeps forever
   "hashConnectionAddresses": true,    // matching still works; the plaintext goes
   "altMinConfidence": 40,             // below this, a link is not worth an alert
   "vanishLoadsChunks": true,          // false = vanish leaves no trace, and you fly into void

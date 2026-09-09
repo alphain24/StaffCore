@@ -141,6 +141,7 @@ public class GriefModule implements Module {
 		listenerRegistered = true;
 
 		purgeOldEntries();
+		purgePositionHistory();
 		StaffCore.pending().expireOldDebts(StaffConfig.get().debtExpiryDays);
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
 			preview.tick(server);
@@ -157,6 +158,7 @@ public class GriefModule implements Module {
 			if (++purgeTick >= 20 * 60 * 60 * 24) {
 				purgeTick = 0;
 				purgeOldEntries();
+				purgePositionHistory();
 				if (worker != null) worker.execute(points::purge);
 				if (worker != null) worker.execute(pickups::purge);
 				// Debts are anti-duplication, not sentences — see debtExpiryDays.
@@ -288,6 +290,24 @@ public class GriefModule implements Module {
 				}
 			}
 		}));
+	}
+
+	/**
+	 * Drops position history past its retention window.
+	 * <p>
+	 * Kept apart from {@link #purgeOldEntries} because the two answer different questions.
+	 * Block history is retired to stop a table growing without bound; position history is
+	 * retired because it is a record of where people have been, and keeping that for longer
+	 * than it is useful is a choice nobody should make by leaving a default alone. Its window
+	 * is days rather than weeks for the same reason.
+	 */
+	private void purgePositionHistory() {
+		int days = StaffConfig.get().positionRetentionDays;
+		if (days <= 0 || !StaffCore.storage().isReady() || worker == null) return;
+
+		long cutoff = System.currentTimeMillis() - days * 86_400_000L;
+		worker.execute(() ->
+				io.github.alphain24.staffcore.modules.replay.PositionLog.purge(cutoff));
 	}
 
 	@Override

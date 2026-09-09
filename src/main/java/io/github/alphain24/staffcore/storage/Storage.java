@@ -341,10 +341,11 @@ public final class Storage {
 	 * wanted for the punishment history or the grief log, and the addresses came along only
 	 * because they happened to be in the same database.
 	 *
-	 * @param includeAddresses write addresses in whatever form they are stored. The caller is
-	 *                         responsible for having asked a human first.
+	 * @param includePersonal write the personal data too — addresses in whatever form they are
+	 *                        stored, and the position history in full. The caller is
+	 *                        responsible for having asked a human first.
 	 */
-	public Path export(boolean includeAddresses) {
+	public Path export(boolean includePersonal) {
 		if (conn == null || worldDir == null) return null;
 
 		Path dir = worldDir.resolve("staffcore-export")
@@ -369,7 +370,7 @@ public final class Storage {
 
 		int written = 0;
 		for (String table : tables) {
-			if (exportTable(table, dir.resolve(table + ".csv"), includeAddresses)) written++;
+			if (exportTable(table, dir.resolve(table + ".csv"), includePersonal)) written++;
 		}
 
 		StaffCore.LOGGER.info("[StaffCore] Exported {} table(s) to {}", written, dir);
@@ -380,7 +381,23 @@ public final class Storage {
 	private static final java.util.Set<String> ADDRESS_COLUMNS =
 			java.util.Set.of("ip", "ip_prefix", "address", "staff_ip");
 
-	private boolean exportTable(String table, Path out, boolean includeAddresses) {
+	/**
+	 * Tables whose rows are withheld entirely from an ordinary export.
+	 * <p>
+	 * Position history gets the same treatment as addresses because it is the same kind of
+	 * record: not something a player did, but where a player was. It is withheld by the row
+	 * rather than by the column because there is no column of it that is not the point — a
+	 * position log with its coordinates redacted is a list of timestamps saying somebody was
+	 * online, which is both useless and still a disclosure.
+	 * <p>
+	 * The header line is still written, so anything reading the folder finds the file where it
+	 * expects it and can tell a withheld table from a missing one.
+	 */
+	private static final java.util.Set<String> PERSONAL_TABLES =
+			java.util.Set.of("position_run", "position_log");
+
+	private boolean exportTable(String table, Path out, boolean includePersonal) {
+		boolean withheld = !includePersonal && PERSONAL_TABLES.contains(table);
 		// Identifiers cannot be bound, and this one came from sqlite_master rather than from
 		// a user — but it is quoted anyway so a table with an odd name cannot break the SQL.
 		String sql = "SELECT * FROM \"" + table.replace("\"", "\"\"") + "\"";
@@ -395,12 +412,18 @@ public final class Storage {
 			boolean[] redact = new boolean[columns + 1];
 			for (int i = 1; i <= columns; i++) {
 				String label = meta.getColumnLabel(i);
-				redact[i] = !includeAddresses
+				redact[i] = !includePersonal
 						&& ADDRESS_COLUMNS.contains(label.toLowerCase(java.util.Locale.ROOT));
 				if (i > 1) writer.write(',');
 				writer.write(csv(label));
 			}
 			writer.write('\n');
+
+			if (withheld) {
+				StaffCore.LOGGER.info("[StaffCore] {} withheld from the export - it is position "
+						+ "history. /staff export personal confirm includes it.", table);
+				return true;
+			}
 
 			while (rs.next()) {
 				for (int i = 1; i <= columns; i++) {

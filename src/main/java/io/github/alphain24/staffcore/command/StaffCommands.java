@@ -1482,8 +1482,19 @@ public final class StaffCommands {
 		staff.then(Commands.literal("export")
 				.requires(src -> Permissions.check(src, Nodes.RELOAD))
 				.executes(ctx -> exportNow(ctx, false, false))
-				// Addresses are the one thing in the database that is personal data rather
-				// than a record of conduct, so including them is a deliberate act.
+				// Two things in this database are personal data rather than a record of
+				// conduct: the addresses people connected from, and where they went while
+				// they were here. Releasing either is a deliberate act.
+				//
+				// Named "personal" rather than "addresses" because it stopped being only
+				// addresses when position history arrived, and a flag that releases more
+				// than its name says is exactly the kind of quiet mismatch this project
+				// keeps finding after the fact. "addresses" still works, so nobody's muscle
+				// memory turns into a surprise.
+				.then(Commands.literal("personal")
+						.executes(ctx -> exportNow(ctx, true, false))
+						.then(Commands.literal("confirm")
+								.executes(ctx -> exportNow(ctx, true, true))))
 				.then(Commands.literal("addresses")
 						.executes(ctx -> exportNow(ctx, true, false))
 						.then(Commands.literal("confirm")
@@ -1725,6 +1736,28 @@ public final class StaffCommands {
 					() -> Icon.text("    • " + feature, Theme.BAD), false));
 			ctx.getSource().sendSuccess(() -> Icon.text(
 					"  Detail on the Server Status button in /staff.", Theme.MUTED), false);
+		}
+
+		// Position history reports itself because it is the one thing here that can grow
+		// without anybody noticing until the disk does. Reported whether it is on or off:
+		// "off" is the answer to "why is there no replay", and a server that switched it on
+		// months ago and forgot deserves to see the number rather than discover it.
+		if (StaffCore.storage().isReady()) {
+			var positions = io.github.alphain24.staffcore.modules.replay.PositionLog.size();
+			String line = StaffConfig.get().positionTracking
+					? "  Position history: " + positions.describe() + ", kept "
+							+ (StaffConfig.get().positionRetentionDays == 0
+									? "forever"
+									: StaffConfig.get().positionRetentionDays + " day(s)")
+							+ " (" + io.github.alphain24.staffcore.modules.replay.PositionSampler
+									.counters() + ")"
+					: "  Position history: off. " + (positions.samples() > 0
+							? positions.describe() + " still on disk from when it was on."
+							: "Nothing recorded.");
+
+			ctx.getSource().sendSuccess(() -> Icon.text(line,
+					io.github.alphain24.staffcore.modules.replay.PositionSampler.dropped() > 0
+							? Theme.WARN : Theme.MUTED), false);
 		}
 
 		int backups = StaffCore.storage().backups().size();
@@ -2117,7 +2150,7 @@ public final class StaffCommands {
 		return 1;
 	}
 
-	private static int exportNow(CommandContext<CommandSourceStack> ctx, boolean addresses,
+	private static int exportNow(CommandContext<CommandSourceStack> ctx, boolean personal,
 			boolean confirmed) {
 
 		if (!StaffCore.storage().isReady()) {
@@ -2125,34 +2158,47 @@ public final class StaffCommands {
 		}
 
 		// An export is nearly always wanted for the punishment history or the grief log; the
-		// addresses only came along because they share a database. Asking once is the
+		// personal data only came along because it shares a database. Asking once is the
 		// difference between a deliberate disclosure and an accidental one.
-		if (addresses && !confirmed) {
+		if (personal && !confirmed) {
+			var positions = io.github.alphain24.staffcore.modules.replay.PositionLog.size();
+
 			ctx.getSource().sendSuccess(() -> Theme.warn(
-					"This writes every address in the database to a CSV file."), false);
+					"This writes every address in the database to a CSV file"
+							+ (positions.samples() > 0
+									? ", and every position sample it holds." : ".")), false);
 			ctx.getSource().sendSuccess(() -> Icon.text(
 					io.github.alphain24.staffcore.modules.identity.AddressPrivacy.enabled()
-							? "  They are stored hashed, so the file will contain hashes rather "
-									+ "than addresses — still enough to link two accounts."
-							: "  They are stored in the clear, so the file will contain readable "
-									+ "addresses.", Theme.MUTED), false);
+							? "  Addresses are stored hashed, so the file will contain hashes "
+									+ "rather than addresses — still enough to link two "
+									+ "accounts."
+							: "  Addresses are stored in the clear, so the file will contain "
+									+ "readable addresses.", Theme.MUTED), false);
+			if (positions.samples() > 0) {
+				// Said with the number, because "position history" is abstract and
+				// "1,240,000 samples" is a decision somebody can actually make.
+				ctx.getSource().sendSuccess(() -> Icon.text(
+						"  Position history: " + positions.describe() + " — every route "
+								+ "every tracked player walked, at the recorded resolution.",
+						Theme.MUTED), false);
+			}
 			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  /staff export addresses confirm  writes it anyway.", Theme.MUTED), false);
+					"  /staff export personal confirm  writes it anyway.", Theme.MUTED), false);
 			return 1;
 		}
 
-		java.nio.file.Path out = StaffCore.storage().export(addresses);
+		java.nio.file.Path out = StaffCore.storage().export(personal);
 		if (out == null) {
 			return fail(ctx, "Export failed. The server log says why.");
 		}
 
-		audit(ctx, "/staff export" + (addresses ? " addresses" : ""));
+		audit(ctx, "/staff export" + (personal ? " personal" : ""));
 		ctx.getSource().sendSuccess(() -> Icon.text(
 				"  One CSV per table, under the world folder.", Theme.MUTED), false);
-		if (!addresses) {
+		if (!personal) {
 			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  Address columns are redacted. /staff export addresses includes them.",
-					Theme.MUTED), false);
+					"  Address columns are redacted and position history is withheld. "
+							+ "/staff export personal includes both.", Theme.MUTED), false);
 		}
 		return ok(ctx, "Exported to " + out.getFileName());
 	}
