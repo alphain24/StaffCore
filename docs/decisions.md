@@ -763,6 +763,76 @@ that names why it does not count. The distinction matters when reading the compo
 "we did not ask", the other is "nobody answered".
 ---
 
+## When the truth lives on the other side of the wire
+
+**Date:** 2026-09-10
+
+Found by a person running `docs/manual-checks/decoy-visibility.md` with an x-ray resource pack,
+and reported as: decoys "work but it's hit or miss — works for some diamonds but not others".
+
+### The bug
+
+A decoy was sent to the client exactly once, at placement, and `maintain` returned early once a
+player had their full complement — so no decoy packet ever went out a second time.
+
+But `ClientboundBlockUpdatePacket` is **a delta against the chunk the client is holding at that
+moment**. It is not state. The next time that chunk reaches the client — walking out of view
+distance and back, relogging, a dimension change, any resend the server does for its own
+reasons — the honest chunk arrives and the decoy is gone from the screen. The server carries on
+listing it in `/staff canary`.
+
+So the feature degraded with player movement: decoys placed recently in chunks held
+continuously worked, and the rest silently did not. Exactly "hit or miss", and the proportion
+that still worked fell the longer somebody played.
+
+### Why no test caught it, and why that is not the vacuous-pass class
+
+Every automated test asked the server what it believed, and the server's belief was correct
+throughout. The map had the right positions, the packet carried the right block at the right
+position, the retirement rule fired at the right times. All of that was true and the feature was
+broken anyway.
+
+This is a different failure from a check that was not running. It is **a check that ran, was
+right about everything it examined, and examined the wrong side of the boundary.** The
+correctness of a decoy does not live in the server's map. It lives in what a client is currently
+drawing, and no server-side assertion can reach that.
+
+The generalisation worth keeping: **when a feature's correctness lives in another process,
+server-side tests establish that you sent the right thing, never that the right thing is still
+true.** Anything delivered as a delta — a packet against a chunk, a patch against a document, an
+event against a subscriber's state — needs either a re-send that does not depend on knowing when
+the far side forgot, or a way to ask.
+
+### The fix
+
+Re-send on a timer, and validate while doing it. `maintain` now refreshes every live decoy each
+pass rather than returning early, and retires any whose underlying block is no longer plain
+stone — because blocks change without break events too, and a decoy over a position that is now
+air is a diamond floating in a tunnel.
+
+Re-sending on a timer rather than hooking chunk delivery is deliberate. There is no per-player
+chunk event in this Fabric API — `ServerChunkEvents.CHUNK_LOAD` is server-side lifecycle, not
+view distance — so catching every path would mean a mixin on `ChunkMap`, which is precisely the
+fragility the canary design avoided in the first place. A handful of ten-byte packets every five
+seconds is robust against paths nobody has thought of, including ones a future version invents.
+
+`CanaryRefreshTests` pins it, and was confirmed by restoring the early return and watching the
+regression test fail with the right message. Three companions guard the ways the fix could
+itself go wrong: refreshing must not count as finding a decoy, a retired decoy must never come
+back, and a decoy over changed rock must be dropped.
+
+### What this says about the manual check
+
+It found a real bug on its first run, in a feature that had sixty automated tests and a measured
+false-positive rate. That is the argument for writing checks a person can follow rather than
+filing the claim as a known limit — and it is why the script's result line was left blank rather
+than optimistically ticked.
+
+The visibility claim itself came back **positive**: decoys are drawn by an x-ray client. The
+intermittency was delivery, not rendering. The load-bearing question for item 3.2 — does a
+cheating client see the decoy at all — is answered yes.
+---
+
 # Moved from the README
 
 The README had grown to eight hundred lines, and the reasoning was the best material in it and

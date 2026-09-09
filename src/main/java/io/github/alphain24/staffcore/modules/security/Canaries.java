@@ -60,9 +60,15 @@ public final class Canaries {
 	/**
 	 * One decoy.
 	 *
-	 * @param shown what the client was told is there, kept so the hit can say what they went for
+	 * @param shown       what the client was told is there, kept so a hit can say what they
+	 *                    went for
+	 * @param refreshedAt when the client was last told. Not decoration: a block update is a
+	 *                    delta against the chunk the client holds at that moment, so a decoy
+	 *                    that has not been re-sent since the chunk was reloaded is one the
+	 *                    player can no longer see while the server still counts it.
 	 */
-	public record Canary(UUID owner, String world, BlockPos pos, BlockState shown, long sentAt) {}
+	public record Canary(UUID owner, String world, BlockPos pos, BlockState shown, long sentAt,
+			long refreshedAt) {}
 
 	/**
 	 * Decoys per player. Small, bounded by {@code canaryDensity}, and dropped on disconnect.
@@ -98,6 +104,11 @@ public final class Canaries {
 
 		Map<BlockPos, Canary> mine = LIVE.computeIfAbsent(player.getUUID(),
 				k -> new LinkedHashMap<>());
+
+		// Before topping up, and unconditionally — this used to return early once a player
+		// had their full complement, which is what made the whole feature intermittent.
+		refresh(player, level, mine);
+
 		int wanted = StaffConfig.get().canaryDensity;
 		if (mine.size() >= wanted) return;
 
@@ -108,6 +119,61 @@ public final class Canaries {
 			BlockPos candidate = pick(level, player);
 			if (candidate == null || mine.containsKey(candidate)) continue;
 			placeAt(player, level, candidate);
+		}
+	}
+
+	/**
+	 * Tells the client about its decoys again, and drops any the world has moved on from.
+	 *
+	 * <h2>Why re-sending is not optional</h2>
+	 * A {@link ClientboundBlockUpdatePacket} is a delta against the chunk the client is holding
+	 * <em>at that moment</em>. It is not state. The next time that chunk is sent — walking out
+	 * of view distance and back, relogging, changing dimension, or any resend the server does
+	 * for its own reasons — the client receives the honest chunk and the decoy is gone from
+	 * their screen, while the server goes on counting it as live.
+	 * <p>
+	 * That was the original implementation, and the symptom was exactly what it should have
+	 * been: decoys worked for a while and then quietly stopped, in a proportion that grew the
+	 * more the player moved around. The server said everything was fine because from the
+	 * server's side nothing had changed.
+	 * <p>
+	 * Re-sending on a timer rather than hooking chunk delivery is deliberate. There is no
+	 * per-player chunk event in the Fabric API here, so catching every path would mean a mixin
+	 * on {@code ChunkMap} — the version-fragile thing this feature was designed to avoid. A
+	 * handful of ten-byte packets every few seconds is robust against paths nobody has thought
+	 * of yet, including ones a future Minecraft version invents.
+	 *
+	 * <h2>And why it validates while it is there</h2>
+	 * A decoy describes a position that was plain stone when it was placed. Blocks change
+	 * without a break event — a rollback putting things back, a piston, flowing water, an
+	 * admin with WorldEdit — and a decoy over a position that is now air is a diamond floating
+	 * in a tunnel. Retiring it is both the honest answer and the one that frees the slot.
+	 */
+	private static void refresh(ServerPlayer player, ServerLevel level, Map<BlockPos, Canary> mine) {
+		if (mine.isEmpty() || player.connection == null) return;
+
+		String here = Mc.dimensionId(level);
+		long now = System.currentTimeMillis();
+
+		for (Map.Entry<BlockPos, Canary> entry : Map.copyOf(mine).entrySet()) {
+			Canary canary = entry.getValue();
+
+			// A decoy in a world the player is not in. Their client does not hold that chunk
+			// at all, so there is nothing to correct and nothing to check against — it gets
+			// picked up again when they go back.
+			if (!canary.world().equals(here)) continue;
+			if (!level.isLoaded(canary.pos())) continue;
+
+			if (decoyFor(level.getBlockState(canary.pos())) == null) {
+				mine.remove(entry.getKey());
+				resync(level, player.getUUID(), canary, player);
+				continue;
+			}
+
+			player.connection.send(
+					new ClientboundBlockUpdatePacket(canary.pos(), canary.shown()));
+			mine.put(entry.getKey(), new Canary(canary.owner(), canary.world(), canary.pos(),
+					canary.shown(), canary.sentAt(), now));
 		}
 	}
 
@@ -130,7 +196,7 @@ public final class Canaries {
 		BlockPos fixed = pos.immutable();
 		LIVE.computeIfAbsent(player.getUUID(), k -> new LinkedHashMap<>())
 				.put(fixed, new Canary(player.getUUID(), Mc.dimensionId(level), fixed, shown,
-						System.currentTimeMillis()));
+						System.currentTimeMillis(), System.currentTimeMillis()));
 
 		if (player.connection != null) {
 			player.connection.send(new ClientboundBlockUpdatePacket(fixed, shown));

@@ -101,7 +101,15 @@ can also fly to within a few blocks of D in creative and confirm nothing looks u
 normal resource pack on.
 
 **This step is what makes the check meaningful.** Seeing a diamond ore through rock proves
-nothing if there is really a diamond ore there.
+nothing if there is really a diamond ore there — and the world is full of real ones, which look
+identical through the pack. Check the coordinates against the `/staff canary` list rather than
+judging by eye.
+
+> **If a decoy in the list is not visible**, that is a bug, not a real-ore mix-up. One has been
+> found and fixed already: a decoy used to be sent once and never again, so any chunk reload
+> removed it from the client while the server went on listing it. Symptom was decoys working
+> "hit or miss". Decoys are now re-sent every few seconds, so give it five seconds after moving
+> before concluding one is missing.
 
 ---
 
