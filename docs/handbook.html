@@ -1146,6 +1146,25 @@
         </p>
         <div class="note">
           <p>
+            <span class="pill">The world is put back too</span>
+            A replay of the world as it is <em>now</em> is quietly the wrong world: every hole
+            the player made is already open when they arrive at it, and a rollback somebody ran
+            since has erased the lot. So the blocks that player broke or placed in the window
+            are painted back to how they were and released one at a time as the clock reaches
+            each one &mdash; a wall stands until they break it, a tower is absent until they
+            build it. Only the positions that changed are touched; everything else is the real
+            world, because everything else did not change. Nothing is written: these are block
+            packets sent to your client alone.
+          </p>
+          <p>
+            After a change has happened you see the world as the server actually has it. So a
+            block that was broken and later restored by a rollback is drawn coming down and
+            then standing again &mdash; which is the truth about both events rather than a
+            guess about one.
+          </p>
+        </div>
+        <div class="note">
+          <p>
             <span class="pill">Gaps are skipped, and announced</span>
             Nothing is recorded while a player stands still, so a session with an hour of AFK
             in it has an hour between two samples. Played at real speed that is an hour of

@@ -79,6 +79,12 @@ public final class SessionReplay {
 		final PositionLog.Track track;
 		final String world;
 
+		/** Blocks this player changed in the window, oldest first. Never null; often empty. */
+		final List<PathEvents.Change> changes;
+
+		/** How many were painted last redraw, so the overlay is only resent when it moves. */
+		int paintedThrough = -1;
+
 		/** Where the clock is, in the track's own wall-clock time base. */
 		long clock;
 		/** The frame the clock is at or just past. */
@@ -89,9 +95,15 @@ public final class SessionReplay {
 		int ticks;
 
 		Playback(String subject, PositionLog.Track track, String world) {
+			this(subject, track, world, List.of());
+		}
+
+		Playback(String subject, PositionLog.Track track, String world,
+				List<PathEvents.Change> changes) {
 			this.subject = subject;
 			this.track = track;
 			this.world = world;
+			this.changes = changes;
 			this.clock = track.first().at();
 		}
 
@@ -158,13 +170,21 @@ public final class SessionReplay {
 					+ "there. Nothing has changed. Check the server log.");
 		}
 
-		Playback playback = new Playback(subjectName, track, start.world());
+		// The blocks they changed, so the world can be shown as it was rather than as the
+		// grief and the rollbacks since have left it. Read here, once, on the same thread the
+		// command runs on: it is one indexed query bounded to MAX_EVENTS rows, and the
+		// alternative is a replay that starts before it knows what to draw.
+		List<PathEvents.Change> changes = PathEvents.inWindow(server, subjectName,
+				start.world(), track.first().at(), track.last().at());
+
+		Playback playback = new Playback(subjectName, track, start.world(), changes);
 		LIVE.put(staff.getUUID(), playback);
 
 		ReplayStage.begin(staff, level, start.x(), start.y(), start.z(),
 				start.yaw(), start.pitch(), () -> LIVE.remove(staff.getUUID()));
 
 		describe(staff, playback);
+		drawOverlay(staff, playback);
 		drawSidebar(staff, playback);
 		return Entry.OK;
 	}
@@ -185,6 +205,12 @@ public final class SessionReplay {
 			staff.sendSystemMessage(Icon.text("  " + track.runs() + " separate stretches — they "
 					+ "stopped, relogged or changed world in between. Gaps are announced as "
 					+ "they come.", Theme.MUTED));
+		}
+		if (!playback.changes.isEmpty()) {
+			staff.sendSystemMessage(Icon.text("  " + playback.changes.size()
+					+ (playback.changes.size() == PathEvents.MAX_EVENTS ? "+" : "")
+					+ " blocks they changed are put back as they were, and disappear as they "
+					+ "reach them. Everything else is the world as it is now.", Theme.MUTED));
 		}
 		if (track.truncated()) {
 			staff.sendSystemMessage(Theme.warn("  The window held more than "
@@ -220,6 +246,7 @@ public final class SessionReplay {
 			Playback playback = entry.getValue();
 			if (!playback.paused && !playback.finished) advance(staff, playback);
 
+			drawOverlay(staff, playback);
 			if (++playback.ticks % SIDEBAR_EVERY == 0) drawSidebar(staff, playback);
 		}
 	}
@@ -386,6 +413,9 @@ public final class SessionReplay {
 		playback.index = 0;
 		playback.finished = false;
 		playback.paused = false;
+		// Forces the overlay to be recomputed. Without it the blocks released on the first
+		// pass stay released, and a second viewing shows a world already broken.
+		playback.paintedThrough = -1;
 		return "Back to the start.";
 	}
 
@@ -412,11 +442,37 @@ public final class SessionReplay {
 				: playback.paused ? "held" : trim(playback.speed) + "× play"));
 		out.add(Math.round(playback.progress() * 100) + "% of "
 				+ io.github.alphain24.staffcore.util.TimeFormat.length(playback.track.span()));
+
+		// Added only when there is something to count, and then for the whole playback. The
+		// height has to stay constant once chosen: nothing tells a client to drop a
+		// scoreboard row, so a redraw with fewer lines leaves the old ones on screen.
+		if (!playback.changes.isEmpty()) {
+			out.add("Blocks: " + PathEvents.passed(playback.changes, playback.clock)
+					+ " of " + playback.changes.size());
+		}
 		return out;
 	}
 
 	private static void drawSidebar(ServerPlayer staff, Playback playback) {
 		ReplaySidebar.show(staff, sidebarLines(playback));
+	}
+
+	/**
+	 * Paints the blocks that have not been changed yet, and releases the ones that have.
+	 * <p>
+	 * Only when the count has actually moved. Recomputing is cheap; re-sending is not, and a
+	 * replay that re-asserted every overlay block twenty times a second would be sending
+	 * thousands of packets to one connection for a picture that had not changed.
+	 */
+	private static void drawOverlay(ServerPlayer staff, Playback playback) {
+		if (playback.changes.isEmpty()) return;
+		if (!(staff.level() instanceof ServerLevel level)) return;
+
+		int passed = PathEvents.passed(playback.changes, playback.clock);
+		if (passed == playback.paintedThrough) return;
+
+		playback.paintedThrough = passed;
+		ReplayStage.paint(staff, level, PathEvents.at(playback.changes, playback.clock));
 	}
 
 	// -------------------------------------------------------------- lifecycle
