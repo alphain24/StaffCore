@@ -465,6 +465,15 @@ known gap — not a bug list.
   together, and each script says what to change in this file when it passes. **If only one
   check is ever run, it should be this one:** a decoy that never reaches a client makes the
   whole canary layer detect nothing rather than detect less. It has not been run.
+- **Session replay is packet-verified, not client-verified, and it is the same primitive.**
+  The replay is tested to reconstruct a window coordinate by coordinate, to skip gaps rather
+  than fly across them, and to release each overlaid block at the right instant. What has
+  **not** been confirmed by anybody watching a screen is that the overlay is drawn at all, or
+  that it survives a chunk reload — and it is drawn with the same
+  `ClientboundBlockUpdatePacket` the decoys use, which was found to be "hit or miss" months
+  after every server-side test passed. The replay re-asserts its overlay on a five-second timer
+  for exactly that reason, and that fix has never been watched working. Ten-minute script in
+  [docs/manual-checks/replay.md](docs/manual-checks/replay.md). It has not been run.
 - **Alt detection is still a lead, never a verdict.** It links accounts by exact address and
   by address range, scores each link 0-100 from how often the address was shared and whether
   the two accounts have ever been online together, and shows its reasoning. A shared house

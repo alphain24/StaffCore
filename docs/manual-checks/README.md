@@ -1,23 +1,24 @@
-# One session, five claims
+# One session, seven claims
 
 **Status:** NOT YET RUN
 **Run by:** _______________
 **Date:** _______________
 **Server version / mod version:** _______________
-**Outcome:** ☐ all five pass ☐ some failed — see the two scripts for detail
+**Outcome:** ☐ all seven pass ☐ some failed — see the three scripts for detail
 
 ---
 
 ## What this is
 
-Five things about StaffCore cannot be checked by any automated test, because they need a person
-looking at a screen. They are written up in two scripts:
+Seven things about StaffCore cannot be checked by any automated test, because they need a person
+looking at a screen. They are written up in three scripts:
 
 - [`decoy-visibility.md`](decoy-visibility.md) — two claims about canary blocks
 - [`vanish.md`](vanish.md) — three claims about vanish
+- [`replay.md`](replay.md) — two claims about session replay
 
 This file sequences them so the setup happens **once**. Run in this order and nothing has to be
-installed, configured or restarted twice. About **twenty-five minutes** end to end.
+installed, configured or restarted twice. About **thirty-five minutes** end to end.
 
 > Read this page first, do the setup, then work through the two scripts in the order below,
 > filling in their result lines as you go. Come back here at the end.
@@ -49,11 +50,16 @@ Stop the server. In `config/staffcore.json`:
 | `canaryDensity` | `20` | `6` | Several appear quickly instead of one every few minutes |
 | `canaryMaxY` | `60` | `16` | You can dig a test chamber near the surface |
 | `canaryRadius` | `24` | `48` | They land near you rather than scattered |
+| `positionTracking` | `true` | `false` | Nothing to replay otherwise, and it only records from this restart on |
 
 **Write your current values down before changing them.** Step 4 at the end puts them back, and
 the real values are deliberately low so that meeting a decoy by chance stays negligible.
 
 Nothing in `vanish.md` needs config changes.
+
+`positionTracking` matters more than the others: it does **not** fill in the past. Whatever the
+subject account did before this restart is not recorded and cannot be replayed, which is why the
+replay checks come last and make their own material.
 
 ### Accounts
 
@@ -82,10 +88,16 @@ Each step leaves the world in the state the next one needs.
 | 3 | `vanish.md` | 2 — spawning resumes | Same dark area — carries straight on from step 2 |
 | 4 | `decoy-visibility.md` | 1 — decoy visible through rock | Underground, below y 60, in solid stone |
 | 5 | `decoy-visibility.md` | 2 — resync arrives | Same chamber, immediately after step 4 |
+| 6 | `replay.md` | 1 — the camera moves like a player | Anywhere; the subject makes the material first |
+| 7 | `replay.md` | 2 — the block overlay is drawn and survives a reload | Same place, straight on from step 6 |
 
 The vanish checks come first because they happen at the surface and need no digging. The decoy
-checks come last because they need you underground in solid rock, and step 5 continues from
-exactly where step 4 leaves you.
+checks need you underground in solid rock, and step 5 continues from exactly where step 4 leaves
+you. The replay checks are last because they need two minutes of recorded movement made on
+purpose, and by then both accounts have been walking around for half an hour anyway.
+
+Turn the x-ray resource pack **off** again before step 6. It does not break the replay checks,
+but seeing through walls makes it much harder to judge whether a block overlay is being drawn.
 
 Enable the x-ray resource pack only at step 4. Leave it off for the vanish checks — it changes
 nothing about them and it makes step 2 harder to judge, because you can see the zombie through
@@ -99,7 +111,9 @@ walls.
    in its result lines as you go.
 2. Open [`decoy-visibility.md`](decoy-visibility.md). Skip its Step 1 — the config is already
    set. Do its Step 2 onward: get decoys placed, confirm one is a lie, then checks 1 and 2.
-3. Come back here.
+3. Open [`replay.md`](replay.md). Skip its Step 1 — the config is already set. Do its Step 2
+   onward: make two minutes of material, then checks 1 and 2.
+4. Come back here.
 
 **Every check has a control step.** Confirm the zombie targets you before vanishing, confirm
 the plate fires before vanishing, confirm the server really has stone where the decoy is before
@@ -114,7 +128,8 @@ this whole exercise exists because of.
 ### 1. Put the config back
 
 Restore `canaryDensity`, `canaryMaxY` and `canaryRadius` to the values you wrote down (`6`, `16`
-and `48` if they were untouched) and restart. Leaving the test values in makes decoys common
+and `48` if they were untouched), and set `positionTracking` back to `false` unless you want to
+keep it, then restart. Leaving the test values in makes decoys common
 enough that an honest miner meeting one stops being negligible.
 
 Put both accounts back to whatever gamemode they were in.
@@ -128,6 +143,9 @@ Fill in the header of this file and of both scripts. Then, per their Step 5 / St
   "Canary false-positive rate" section in `docs/decisions.md`.
 - **All three vanish checks passed** — update the "port is compile-verified, not
   runtime-verified" entry in `README.md` Known limits.
+- **Both replay checks passed** — remove the "Session replay is packet-verified, not
+  client-verified" entry from `README.md` Known limits, and note the confirmation in the
+  position history section of `docs/decisions.md`.
 - **Anything failed** — leave Known limits exactly as it is and open an issue. It is currently
   correct that these are unverified, and it should stay correct.
 
@@ -151,6 +169,18 @@ It would leave the rest of Phase 3 standing: the p-value detector reads the bloc
 touches canaries, the replay viewer works from the same data, the corpus is about cases rather
 than decoys, and the anti-xray detection is a mod-id lookup.
 
+### The second one that invalidates rather than degrades: the replay overlay (replay check 2)
+
+Not the whole feature — the camera still walks the real route, and that alone answers "where
+did they go". But the block overlay is the reason the replay shows the world as it *was*, and
+without it a staff member is watching somebody walk through tunnels that are already open. That
+looks exactly like watching them dig, so it is not merely less useful: **it is the same picture
+for two different events**, which is the property that makes something unusable as evidence.
+
+If it fails in the "works, then reverts after flying away" way, that is the decoy bug in a
+second place, and it would mean the five-second re-assert does not do what both features now
+depend on it doing.
+
 ### The other four are bugs, not invalidations
 
 - **Resync (decoy check 2)** — decoys still work; the failure is a ghost block left on one
@@ -158,6 +188,10 @@ than decoys, and the anti-xray detection is a mod-id lookup.
   actually about still holds server-side.
 - **Vanish checks 1, 2 and 3** — a different feature. If they fail, vanish leaks in that
   specific way and needs fixing, but nothing about Phase 3's x-ray work depends on any of them.
+- **Replay check 1** — if the camera is jerky or a gap plays out in real time, the replay is
+  unpleasant rather than untrue. Tuning, not a rethink. The one variant that is not tuning is a
+  skip with no chat line: that removes time from a recording without saying so, and it has to be
+  fixed before anybody uses the replay to decide anything.
 
 ### So, plainly
 
