@@ -566,7 +566,7 @@ uses to decide whether a check is working says the same thing in both cases.
 | `VanishCollisionMixin` stopping pushes | It hooked `Entity.isPushable`, which `LivingEntity` overrides. The mixin applied cleanly, was reported healthy, and never ran. |
 | The maintenance kick being tested | The tests called `toggleMaintenance` against an empty player list. The kick ran, kicked nobody, asserted nothing, and passed by having nothing to do. |
 | Mobs do not acquire a vanished player | Mock players override `gameMode()` to return CREATIVE outright, and `Mob.asValidTarget` returns null for creative players before looking at anything else. It had a control, and the control tested the wrong path. |
-| `getNearestPlayer` cannot find a vanished player | A mock player is not in the server's player list, so it was never returned whether vanished or not. |
+| `getNearestPlayer` cannot find a vanished player | Passed with vanish switched off. **The explanation recorded here was wrong** — see the correction below. The finding held anyway, because it came from the probe rather than from the explanation. |
 | A vanished player does not press plates | The plate never detected the mock player at all, so "it did not fire" was true either way. |
 | Un-vanishing recomputes abilities | With nothing concealed, nothing was restored, so the abilities trivially matched what the resolver said they should be. |
 | `CanaryRetirementIsSynchronousTest` | The deferral pattern was written `"\b(?:...)"`. In a Java string that is a backspace character, not a word boundary. It compiled, matched nothing, and both real assertions passed on an empty result. |
@@ -625,12 +625,29 @@ claims.
 | A vanished player does not press plates | **no — deleted** |
 | Un-vanishing recomputes abilities | **no — deleted** |
 
-All four failed for the same underlying reason, and it is not a coincidence: a gametest mock
-player is permanently in creative and is not in the server's player list. Those two facts
-short-circuit exactly the paths the tests aimed at. `Mob.asValidTarget` refuses a creative
-player before checking anything else; `getNearestPlayer` never returns somebody absent from the
-list; the plate never detected the mock in the first place; and with nothing concealed, nothing
-is restored, so the abilities trivially matched.
+All four failed for a related reason: a gametest mock player is permanently in creative, which
+short-circuits exactly the paths the tests aimed at. `Mob.asValidTarget` refuses a creative
+player before checking anything else; the plate never detected the mock in the first place; and
+with nothing concealed, nothing is restored, so the abilities trivially matched.
+
+> **Correction, 2026-09-10.** The original version of this paragraph gave a second reason: that
+> a mock player is not in the server's player list. **That is false.**
+> `GameTestHelper.makeMockServerPlayerInLevel` calls `PlayerList.placeNewPlayer` — confirmed
+> from the 26.2 bytecode. Mock players are ordinary entries in the player list.
+>
+> It is worth leaving the correction visible rather than editing the claim away, because of
+> what the wrong explanation went on to cost. It was repeated in `Harness`, and from there it
+> was used to justify `MaintenanceTests` toggling a server-wide flag that **disconnects every
+> non-staff player in the list**. Gametests inside a batch run at the same time, so that test
+> was kicking other tests' players every run — five and seven of them, once somebody counted.
+> The victims failed with "Failed to invoke test method", which reads as an unrelated internal
+> error, and it was written off as flakiness.
+>
+> The `getNearestPlayer` finding itself still stands, because it was established by switching
+> vanish off and watching the test pass anyway. What was never established is *why*, and the
+> confident wrong answer is what made anybody stop looking. That is the taxonomy rule paying
+> out exactly as written: **the probe is the method, the explanation is a story about the
+> probe** — and a story is capable of being load-bearing somewhere else.
 
 **One of the four had a control and was still hollow.** The mob test established that
 `setTarget` worked on that zombie with another mob as the target — a real control, testing the
@@ -1125,6 +1142,113 @@ backup, server booted normally.
 
 **In memory only** (cleared on restart): `/back` return points, mass-grief burst counters,
 and inspect mode. Everything else survives.
+
+---
+
+<a id="shared-state"></a>
+
+## The suite is a concurrent program, and nobody was treating it as one
+
+**Date:** 2026-09-10
+
+Gametests inside a batch run **at the same time**, in different parts of the same world, on the
+same server, against the same singletons. That fact was known and had never been designed for.
+
+### What the audit found
+
+Every gametest class, checked for global mutable state touched in setup, teardown or at class
+level. Four things, and the ranking is not what it looked like going in.
+
+| Found | Actually shared? | Scoped by |
+|---|---|---|
+| `forgetAll()` in seven classes | **Yes, actively** | Deleted. Per-player UUIDs already isolate; leftover state costs nothing in a server about to exit |
+| `MaintenanceTests` toggling a server-wide flag | **Yes, and it was destroying other tests** | Splitting "set the flag" from "clear the room" |
+| `StaffConfig.get().canaryDensity = 1` | Yes | Deleted. The test asserts on its own decoy's position instead of on a count |
+| `XraySweep.lastTiming` static | Yes, read-after-write | Returned with the findings instead of stashed |
+
+Everything else that looked risky was not. Rate limits are keyed by staff UUID; vanish, vault,
+debts, replay sessions and illusions are all keyed by player UUID; the remaining mutable statics
+are written once at boot or are idempotent caches. **Fourteen of the mod's fifteen mutable
+statics were fine.** The dangerous ones were the two that hold a value somebody reads back
+expecting their own write.
+
+### The one that was doing real damage
+
+`toggleMaintenance` disconnects every non-staff player in the player list. `MaintenanceTests`
+called it on every run. Other tests' mock players were in that list — five and seven of them,
+once something counted — so it was kicking them mid-assertion, every run, and had been for
+months. The victims failed with `Failed to invoke test method: null`, which reads as an
+unrelated internal error rather than as somebody pulling the floor out.
+
+It survived because of a wrong sentence in `Harness`: that mock players are not in the player
+list. They are; `makeMockServerPlayerInLevel` calls `PlayerList.placeNewPlayer`. That sentence
+was written as an aside about what the harness can assert, and it ended up being the reason a
+destructive test was believed safe. **A comment can be load-bearing without anybody deciding it
+should be.**
+
+The fix is a decomposition rather than a workaround: closing the door and emptying the room are
+different decisions, `setMaintenance(server, on, disconnectPlayers)` says which is which, and
+the test takes the half it is actually about. Nothing was serialised — the coupling is gone, not
+deferred.
+
+### The structural test
+
+`SharedStateTest` runs in both directions, because either alone misses half of it.
+
+**Down** — no gametest may write to the config singleton or call a global reset. Both are
+source scans with their own anti-vacuity checks, and both were probed by planting a real
+offender.
+
+**Up** — every mutable `static` in the mod must be enumerated with what kind it is. This is the
+`ActorBoundaryTest` pattern: the list is not interesting, the *addition* is. A mutable static
+that is not a keyed collection is global by construction — there is no key, so there is nothing
+to scope it by, and any two callers in flight share it. `XraySweep.lastTiming` had exactly that
+shape, and adding it today would now fail the build until somebody classified it.
+
+---
+
+<a id="timing-assertions"></a>
+
+## Timing assertions: assert the work, record the clock
+
+**Date:** 2026-09-10
+
+`XrayTimingTests` required the on-thread ore census to finish inside half a tick. It failed
+about twice in twelve runs at 27ms and 41ms, against a 25ms budget, while the honest figure is
+under a millisecond. Nothing had got slower.
+
+The obvious fix is a wider budget and it is the wrong one, because **a timing test that is
+loosened every time it fails converges on asserting nothing**, and each loosening looks locally
+reasonable. Best-of-five was the second-best answer and still leaves a wall-clock number in a
+pass/fail gate, where a slow enough machine eventually reaches it anyway.
+
+**The rule: assert the work, record the clock.**
+
+The gate is now `blocksRead` — how many block states the census actually touched. It is a
+function of the input rather than of the hardware, it is what the census costs, and it is what
+Gate 3's claim was always about: the one part that cannot leave the server thread is *bounded*.
+Two consecutive runs make the case better than the argument does:
+
+| Run | census (µs) | blocks read |
+|---|---|---|
+| 1 | 31,764 | **2,740** |
+| 2 | 8,117 | **2,740** |
+
+A factor of four in the timing; not one block of difference in the work.
+
+Two assertions carry it. The census must read fewer than 10,000 block states for one player's
+session — reading the population instead of the shell, or censusing everybody rather than the
+one asked for, would each blow through that by an order of magnitude on any machine. And
+`timing.players()` must be 1, because the log holds eight players and only one was asked about:
+work proportional to the log rather than to the question would show there and nowhere else.
+
+The empty case is now asserted as **zero** block reads rather than "under 5ms". Zero is what
+"costs nothing" means, it cannot be reached by a fast machine, and it cannot be satisfied by a
+sweep that does a little work quickly.
+
+The microsecond figures are still measured and still logged. They belong here, as recorded
+numbers somebody can compare against next year, rather than as a threshold that fails on a busy
+afternoon. **No test in either suite now asserts on elapsed time.**
 
 ---
 

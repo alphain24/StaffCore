@@ -37,9 +37,17 @@ final class Harness {
 	 * test that would have passed for that reason is written here to assert something else
 	 * instead, and says so.
 	 * <p>
-	 * These players are also not in the player list, which bounds what can be asserted about
-	 * the tab list and player count. Those are covered through the mechanism each mixin
-	 * actually hooks rather than through the list.
+	 * <b>They are in the player list.</b> {@code makeMockServerPlayerInLevel} calls
+	 * {@code PlayerList.placeNewPlayer} — confirmed from the 26.2 bytecode. This javadoc said
+	 * the opposite for months and the claim was load-bearing: it was the reason
+	 * {@code MaintenanceTests} was believed safe to toggle a server-wide flag that disconnects
+	 * everybody, and it was the recorded explanation for why two deleted vanish tests were
+	 * vacuous. The first was wrong and was actively kicking other tests' players; the second
+	 * still stands, because it was established by probing rather than by that explanation.
+	 * <p>
+	 * What that means for a new test: a mock player is a real entry in the player list and can
+	 * be disconnected, counted, iterated and broadcast to by anything that walks it. Assume the
+	 * other tests running alongside yours can see it.
 	 */
 	static ServerPlayer mockPlayer(GameTestHelper helper) {
 		return helper.makeMockServerPlayerInLevel();

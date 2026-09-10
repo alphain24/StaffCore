@@ -59,7 +59,14 @@ public final class XraySweep {
 		}
 	}
 
-	/** Where the last sweep spent its time, for {@code /staff status} and for Gate 3. */
+	/**
+	 * Where one sweep spent its time, and how much of the world it had to read.
+	 * <p>
+	 * {@code blocksRead} is the one figure here that means the same thing on every machine.
+	 * The three microsecond counts describe this run on this hardware while it was doing
+	 * whatever else it was doing; the block count describes the work, and it is the number
+	 * Gate 3's claim is actually about.
+	 */
 	public record Timing(long readMicros, long censusMicros, long mathMicros, int blocksRead,
 			int players) {
 
@@ -68,11 +75,16 @@ public final class XraySweep {
 		}
 	}
 
-	private static volatile Timing lastTiming = new Timing(0, 0, 0, 0, 0);
-
-	public static Timing lastTiming() {
-		return lastTiming;
-	}
+	/**
+	 * Findings, and what producing them cost.
+	 * <p>
+	 * Returned rather than stashed in a static. There used to be a {@code lastTiming} field
+	 * holding the most recent measurement, read by exactly one test and nothing else — which
+	 * made it test-only global state living in production code, and gave a read-after-write
+	 * race between any two sweeps in flight. Two gametests running at once could easily have
+	 * one of them measuring the other's work and never know.
+	 */
+	public record Swept(List<Finding> findings, Timing timing) {}
 
 	/**
 	 * Reads the window on a worker, then finishes on the server thread.
@@ -89,7 +101,7 @@ public final class XraySweep {
 		Map<String, List<Excavation.Dig>> nothing = Map.of();
 		Mods.grief().readOffThread(server, () -> loadDigs(windowMs), nothing, byPlayer -> {
 			long readMicros = (System.nanoTime() - start) / 1000;
-			onDone.accept(analyse(server, byPlayer, readMicros));
+			onDone.accept(analyse(server, byPlayer, readMicros).findings());
 		});
 	}
 
@@ -150,7 +162,7 @@ public final class XraySweep {
 	 * p-value is a few dozen floating-point operations and the hop would cost more than the
 	 * sum it saves — a round trip to be seen doing the right thing is not the right thing.
 	 */
-	private static List<Finding> analyse(MinecraftServer server,
+	private static Swept analyse(MinecraftServer server,
 			Map<String, List<Excavation.Dig>> byPlayer, long readMicros) {
 
 		List<Finding> findings = new ArrayList<>();
@@ -189,9 +201,8 @@ public final class XraySweep {
 			}
 		}
 
-		lastTiming = new Timing(readMicros, censusNanos / 1000, mathNanos / 1000, blocksRead,
-				byPlayer.size());
-		return findings;
+		return new Swept(findings, new Timing(readMicros, censusNanos / 1000,
+				mathNanos / 1000, blocksRead, byPlayer.size()));
 	}
 
 	/**
@@ -206,7 +217,20 @@ public final class XraySweep {
 	 * sweep's scan of everybody.
 	 */
 	public static List<Finding> forPlayer(MinecraftServer server, String player, long windowMs) {
-		if (server == null || player == null || !StaffCore.storage().isReady()) return List.of();
+		return sweepOne(server, player, windowMs).findings();
+	}
+
+	/**
+	 * As {@link #forPlayer}, returning what the sweep cost as well as what it found.
+	 * <p>
+	 * Separate entry point so the ordinary callers keep a simple return type and the one that
+	 * cares about cost gets it handed back rather than reading it out of a shared field
+	 * afterwards.
+	 */
+	public static Swept sweepOne(MinecraftServer server, String player, long windowMs) {
+		if (server == null || player == null || !StaffCore.storage().isReady()) {
+			return new Swept(List.of(), new Timing(0, 0, 0, 0, 0));
+		}
 
 		long start = System.nanoTime();
 		Map<String, List<Excavation.Dig>> theirs = loadDigs(windowMs, player);

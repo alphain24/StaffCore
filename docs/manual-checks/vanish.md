@@ -16,14 +16,15 @@ testing nothing. They have been deleted rather than left occupying the slot wher
 would go.
 
 All four failed for the same underlying reason: a gametest mock player is not an ordinary
-player. It is **permanently in creative** and it is **not in the server's player list**. Those
-two facts short-circuit exactly the code paths the tests were aiming at:
+player. It is **permanently in creative**, which short-circuits exactly the code paths the
+tests were aiming at:
 
 | Deleted test | Why it could never fail |
 |---|---|
 | Mobs do not acquire a vanished player | `Mob.asValidTarget` refuses a creative player before it checks anything else |
-| `getNearestPlayer` cannot find a vanished player | A mock player is not in the player list, so it is never returned regardless |
+| `getNearestPlayer` cannot find a vanished player | Passed with vanish switched off, so it was testing nothing. **The reason first recorded here was wrong** — it said a mock player is not in the player list, and it is: `makeMockServerPlayerInLevel` calls `PlayerList.placeNewPlayer`. The finding stands because it came from probing, not from that explanation; the actual mechanism was never established |
 | A vanished player does not press plates | The plate never detected the mock player in the first place |
+
 | Un-vanishing recomputes abilities | With nothing concealed, nothing is restored, so the values trivially matched |
 
 The fourth claim is now pinned properly in code — `RevealResolvesAbilitiesTest` checks that

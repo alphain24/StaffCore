@@ -1,6 +1,5 @@
 package io.github.alphain24.staffcore.gametest;
 
-import io.github.alphain24.staffcore.config.StaffConfig;
 import io.github.alphain24.staffcore.modules.security.Canaries;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
@@ -68,36 +67,34 @@ public class CanaryPersistenceTests {
 		ServerPlayer player = Harness.mockPlayer(helper);
 		BlockPos pos = encased(helper, 1, 2, 1);
 
-		int density = StaffConfig.get().canaryDensity;
-		StaffConfig.get().canaryDensity = 1;
-		try {
-			Canaries.placeAt(player, level, pos);
-			Harness.check(helper, find(pos) != null, "the decoy was not placed");
+		Canaries.placeAt(player, level, pos);
+		Harness.check(helper, find(pos) != null, "the decoy was not placed");
 
-			// Twelve rounds of the maintenance pass with real time between them, which is
-			// more than twice the five-second cadence the live server runs it at.
-			for (int i = 0; i < 12; i++) {
-				Thread.sleep(2);
-				Canaries.maintain(player);
-			}
-
-			Canaries.Canary after = find(pos);
-			Harness.check(helper, after != null,
-					"a decoy disappeared while the player stood still and nothing touched it. "
-							+ "That is the elapsed-time mechanism, and it means the diagnosis "
-							+ "that chunk resend is responsible is wrong — fix the expiry "
-							+ "before building anything that hooks chunk sends.");
-			Harness.checkEquals(helper, 1, Canaries.liveFor(player.getUUID()),
-					"standing still changed how many decoys exist");
-			Harness.checkEquals(helper, 1,
-					io.github.alphain24.staffcore.illusion.BlockIllusions.countFor(
-							player.getUUID(),
-							io.github.alphain24.staffcore.illusion.BlockIllusions.Source.CANARY),
-					"the decoy is still listed but no longer registered as an illusion, so "
-							+ "nothing would put it back after a chunk resend");
-		} finally {
-			StaffConfig.get().canaryDensity = density;
+		// Twelve rounds of the maintenance pass with real time between them, which is more
+		// than twice the five-second cadence the live server runs it at.
+		//
+		// This used to pin canaryDensity to 1 first, so the count could be asserted exactly.
+		// That was a global config write in a suite whose tests run concurrently: every other
+		// test in the batch would have seen a density of 1 for the duration, and the one that
+		// tops decoys up would have been measuring a setting this test chose. Asserting on
+		// this decoy's own position instead needs no such thing — maintain is free to place as
+		// many others as the real configuration asks for.
+		for (int i = 0; i < 12; i++) {
+			Thread.sleep(2);
+			Canaries.maintain(player);
 		}
+
+		Harness.check(helper, find(pos) != null,
+				"a decoy disappeared while the player stood still and nothing touched it. "
+						+ "That is the elapsed-time mechanism, and it means the diagnosis "
+						+ "that chunk resend is responsible is wrong — fix the expiry "
+						+ "before building anything that hooks chunk sends.");
+		Harness.check(helper, io.github.alphain24.staffcore.illusion.BlockIllusions
+						.mine(player.getUUID(), io.github.alphain24.staffcore.illusion
+								.BlockIllusions.Source.CANARY)
+						.containsKey(pos),
+				"the decoy is still listed but no longer registered as an illusion, so "
+						+ "nothing would put it back after a chunk resend");
 		helper.succeed();
 	}
 
