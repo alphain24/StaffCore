@@ -62,13 +62,9 @@ public final class Canaries {
 	 *
 	 * @param shown       what the client was told is there, kept so a hit can say what they
 	 *                    went for
-	 * @param refreshedAt when the client was last told. Not decoration: a block update is a
-	 *                    delta against the chunk the client holds at that moment, so a decoy
-	 *                    that has not been re-sent since the chunk was reloaded is one the
-	 *                    player can no longer see while the server still counts it.
+	 * @param sentAt when the decoy was placed and the client first told about it
 	 */
-	public record Canary(UUID owner, String world, BlockPos pos, BlockState shown, long sentAt,
-			long refreshedAt) {}
+	public record Canary(UUID owner, String world, BlockPos pos, BlockState shown, long sentAt) {}
 
 	/**
 	 * Decoys per player. Small, bounded by {@code canaryDensity}, and dropped on disconnect.
@@ -88,7 +84,21 @@ public final class Canaries {
 	/** Whether decoys should exist at all right now. */
 	public static boolean enabled() {
 		StaffConfig cfg = StaffConfig.get();
-		return cfg.canaryBlocks && cfg.canaryDensity > 0 && !AntiXrayCompanion.present();
+		if (!cfg.canaryBlocks || cfg.canaryDensity <= 0) return false;
+		return !AntiXrayCompanion.present() || cfg.canaryForceWithBulkAntiXray;
+	}
+
+	/**
+	 * Whether decoys are running in the unsupported mode alongside a bulk anti-xray.
+	 * <p>
+	 * Reported wherever a canary signal is shown, because the signal means something different
+	 * here. With a bulk anti-xray filling the world with fabricated ore, an x-ray user learns
+	 * within an hour that nothing their pack shows is real and stops acting on any of it — so
+	 * a decoy nobody digs at is not evidence of innocence, and a decoy somebody does dig at is
+	 * one of hundreds of fake ores they were sampling anyway.
+	 */
+	public static boolean inUnsupportedMode() {
+		return StaffConfig.get().canaryForceWithBulkAntiXray && AntiXrayCompanion.present();
 	}
 
 	/**
@@ -105,9 +115,9 @@ public final class Canaries {
 		Map<BlockPos, Canary> mine = LIVE.computeIfAbsent(player.getUUID(),
 				k -> new LinkedHashMap<>());
 
-		// Before topping up, and unconditionally — this used to return early once a player
-		// had their full complement, which is what made the whole feature intermittent.
-		refresh(player, level, mine);
+		// Before topping up, and unconditionally. Retiring a decoy the world has moved on
+		// from frees the slot, so doing it second would top up against a stale count.
+		validate(player, level, mine);
 
 		int wanted = StaffConfig.get().canaryDensity;
 		if (mine.size() >= wanted) return;
@@ -123,57 +133,49 @@ public final class Canaries {
 	}
 
 	/**
-	 * Tells the client about its decoys again, and drops any the world has moved on from.
+	 * Drops any decoy the world has moved on from.
 	 *
-	 * <h2>Why re-sending is not optional</h2>
-	 * A {@link ClientboundBlockUpdatePacket} is a delta against the chunk the client is holding
-	 * <em>at that moment</em>. It is not state. The next time that chunk is sent — walking out
-	 * of view distance and back, relogging, changing dimension, or any resend the server does
-	 * for its own reasons — the client receives the honest chunk and the decoy is gone from
-	 * their screen, while the server goes on counting it as live.
+	 * <h2>This used to re-send them, and that was the wrong shape</h2>
+	 * A {@code ClientboundBlockUpdatePacket} is a delta against the chunk the client is holding
+	 * at that moment, so a chunk resend erases it while the server goes on counting the decoy
+	 * as live. The first fix for that was to re-send everything from here, every five seconds.
 	 * <p>
-	 * That was the original implementation, and the symptom was exactly what it should have
-	 * been: decoys worked for a while and then quietly stopped, in a proportion that grew the
-	 * more the player moved around. The server said everything was fine because from the
-	 * server's side nothing had changed.
+	 * It worked and it was wrong four times over: it polled a problem that has an exact event,
+	 * it cost packets proportional to decoys times players forever, it left up to five seconds
+	 * in which the client saw the truth, and — worst — <b>it made the ore flicker</b>. An x-ray
+	 * user who notices that some ores blink and others do not learns to distrust the ones that
+	 * blink, which loses precisely the users worth catching. A decoy that is occasionally wrong
+	 * is worse than no decoy, because it teaches the lesson.
 	 * <p>
-	 * Re-sending on a timer rather than hooking chunk delivery is deliberate. There is no
-	 * per-player chunk event in the Fabric API here, so catching every path would mean a mixin
-	 * on {@code ChunkMap} — the version-fragile thing this feature was designed to avoid. A
-	 * handful of ten-byte packets every few seconds is robust against paths nobody has thought
-	 * of yet, including ones a future Minecraft version invents.
+	 * Re-asserting now happens in {@link io.github.alphain24.staffcore.illusion.BlockIllusions}, driven by a hook
+	 * on the chunk-send path, in the same call that erased them.
 	 *
-	 * <h2>And why it validates while it is there</h2>
-	 * A decoy describes a position that was plain stone when it was placed. Blocks change
-	 * without a break event — a rollback putting things back, a piston, flowing water, an
-	 * admin with WorldEdit — and a decoy over a position that is now air is a diamond floating
-	 * in a tunnel. Retiring it is both the honest answer and the one that frees the slot.
+	 * <h2>What is left here, and why it still belongs on a timer</h2>
+	 * Validation. A decoy describes a position that was plain stone when it was placed, and
+	 * blocks change without a break event — a rollback putting things back, a piston, flowing
+	 * water, an admin with WorldEdit. A decoy over a position that is now air is a diamond
+	 * floating in a tunnel, and nothing else would ever notice. That genuinely has no event to
+	 * hang off, so a slow poll is the right answer for it.
 	 */
-	private static void refresh(ServerPlayer player, ServerLevel level, Map<BlockPos, Canary> mine) {
+	private static void validate(ServerPlayer player, ServerLevel level,
+			Map<BlockPos, Canary> mine) {
+
 		if (mine.isEmpty() || player.connection == null) return;
 
 		String here = Mc.dimensionId(level);
-		long now = System.currentTimeMillis();
-
 		for (Map.Entry<BlockPos, Canary> entry : Map.copyOf(mine).entrySet()) {
 			Canary canary = entry.getValue();
 
 			// A decoy in a world the player is not in. Their client does not hold that chunk
-			// at all, so there is nothing to correct and nothing to check against — it gets
-			// picked up again when they go back.
+			// at all, so there is nothing to check against — it is picked up again when they
+			// go back, and the chunk-send hook redraws it when that chunk arrives.
 			if (!canary.world().equals(here)) continue;
 			if (!level.isLoaded(canary.pos())) continue;
 
 			if (decoyFor(level.getBlockState(canary.pos())) == null) {
 				mine.remove(entry.getKey());
 				resync(level, player.getUUID(), canary, player);
-				continue;
 			}
-
-			player.connection.send(
-					new ClientboundBlockUpdatePacket(canary.pos(), canary.shown()));
-			mine.put(entry.getKey(), new Canary(canary.owner(), canary.world(), canary.pos(),
-					canary.shown(), canary.sentAt(), now));
 		}
 	}
 
@@ -196,11 +198,12 @@ public final class Canaries {
 		BlockPos fixed = pos.immutable();
 		LIVE.computeIfAbsent(player.getUUID(), k -> new LinkedHashMap<>())
 				.put(fixed, new Canary(player.getUUID(), Mc.dimensionId(level), fixed, shown,
-						System.currentTimeMillis(), System.currentTimeMillis()));
+						System.currentTimeMillis()));
 
-		if (player.connection != null) {
-			player.connection.send(new ClientboundBlockUpdatePacket(fixed, shown));
-		}
+		// Through BlockIllusions rather than straight down the connection. The packet is the
+		// easy part; what matters is that something now remembers this client is being lied
+		// to, so the chunk-send hook can put it back when a resend wipes it.
+		io.github.alphain24.staffcore.illusion.BlockIllusions.show(player, io.github.alphain24.staffcore.illusion.BlockIllusions.Source.CANARY, fixed, shown);
 		return true;
 	}
 
@@ -356,7 +359,11 @@ public final class Canaries {
 						: level.getServer().getPlayerList().getPlayer(owner);
 
 		if (player != null && player.connection != null) {
-			player.connection.send(new ClientboundBlockUpdatePacket(level, canary.pos()));
+			// Forgets the illusion as well as correcting it. A resync that only sent the
+			// packet would leave the chunk-send hook re-asserting a decoy that has been
+			// retired — putting the fake ore back on the screen of somebody who has already
+			// been cleared of finding it.
+			io.github.alphain24.staffcore.illusion.BlockIllusions.hide(player, level, io.github.alphain24.staffcore.illusion.BlockIllusions.Source.CANARY, canary.pos());
 		}
 	}
 
@@ -395,6 +402,10 @@ public final class Canaries {
 
 	/** Drops everything for one player. On disconnect: the client is no longer holding a lie. */
 	public static void forget(UUID player) {
+		// The illusions go too. There is nobody to correct — a reconnecting client is sent
+		// honest chunks from scratch — and leaving them registered would have the chunk-send
+		// hook redraw decoys the server no longer believes in.
+		io.github.alphain24.staffcore.illusion.BlockIllusions.forget(player);
 		if (player == null) return;
 		LIVE.remove(player);
 		HITS.remove(player);

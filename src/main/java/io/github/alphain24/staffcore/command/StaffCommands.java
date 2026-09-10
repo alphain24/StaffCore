@@ -1816,6 +1816,15 @@ public final class StaffCommands {
 				io.github.alphain24.staffcore.modules.security.AntiXrayCompanion.present()
 						? Theme.GOOD : Theme.WARN), false);
 
+		// Zero here is meaningful, which is why it is reported rather than hidden when idle.
+		// Every block StaffCore shows one client and the world does not have is a delta
+		// against the chunk that client holds, and a chunk resend erases it. If this stays at
+		// zero on a server with decoys out and players moving, the hook that puts them back is
+		// not firing — and the symptom of that is decoys quietly not working, not an error.
+		long reasserted = io.github.alphain24.staffcore.illusion.BlockIllusions.reasserted();
+		ctx.getSource().sendSuccess(() -> Icon.text(
+				"  Illusions re-asserted after a chunk send: " + reasserted, Theme.MUTED), false);
+
 		// Three numbers that separate the three reasons a grief log can look empty: the event
 		// never fired, the write failed, or the query is not finding rows that exist. Without
 		// them all three present as the same blank screen.

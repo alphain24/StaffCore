@@ -73,7 +73,6 @@ public class CanaryFalsePositiveTests {
 		for (BlockPos pos : placed) {
 			helper.getLevel().setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
 		}
-		Canaries.forgetAll();
 	}
 
 	// ------------------------------------------------------------------ scenarios
@@ -81,7 +80,6 @@ public class CanaryFalsePositiveTests {
 	@GameTest
 	public void aTunnelPassingBesideADecoyNeverRegisters(GameTestHelper helper) {
 		// The commonest shape by far: somebody digs past a decoy without ever touching it.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer miner = Harness.mockPlayer(helper);
 		List<BlockPos> placed = slab(helper, 10, 4, 6);
@@ -108,7 +106,6 @@ public class CanaryFalsePositiveTests {
 		// The race the whole design turns on. Two breaks with nothing between them: if
 		// retirement were queued behind anything at all, the second would land while the decoy
 		// was still live and an honest player would be charged for it.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer miner = Harness.mockPlayer(helper);
 		List<BlockPos> placed = slab(helper, 12, 4, 4);
@@ -136,7 +133,6 @@ public class CanaryFalsePositiveTests {
 		// Retirement is global across breakers on purpose. One player's tunnel exposes another
 		// player's decoy just as thoroughly as their own would, and scoping retirement per
 		// owner would leak false positives between people who never met.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer first = Harness.mockPlayer(helper);
 		ServerPlayer second = Harness.mockPlayer(helper);
@@ -167,7 +163,6 @@ public class CanaryFalsePositiveTests {
 		// TNT and bed mining destroy a volume with no break event at all. Missing this leaves
 		// decoys standing in a crater, visible to anybody walking past — and the first person
 		// to mine the obvious diamond in the rubble is charged for it.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer miner = Harness.mockPlayer(helper);
 		List<BlockPos> placed = slab(helper, 8, 5, 8);
@@ -205,7 +200,6 @@ public class CanaryFalsePositiveTests {
 	public void aBranchMineAcrossManyDecoysNeverRegisters(GameTestHelper helper) {
 		// Volume, so a rate has a denominator worth quoting. A spine with ribs is the shape
 		// that produces the most right-angle turns per hour of anything honest.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer miner = Harness.mockPlayer(helper);
 		List<BlockPos> placed = slab(helper, 14, 4, 10);
@@ -237,7 +231,6 @@ public class CanaryFalsePositiveTests {
 		// Without this every number above is meaningless. A decoy layer that never places,
 		// never matches or never records scores a false-positive rate of zero — the same
 		// number a working one scores — and only this tells the two apart.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer miner = Harness.mockPlayer(helper);
 		List<BlockPos> placed = slab(helper, 6, 4, 6);

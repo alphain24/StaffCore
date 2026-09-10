@@ -24,8 +24,9 @@ between the server being right and a staff member seeing something true:
 2. The block overlay is drawn with `ClientboundBlockUpdatePacket` — **the same primitive the
    canary decoys use.** That one was found to be "hit or miss" by a person with an x-ray pack,
    months after every server-side test passed, because a block update is a delta against the
-   chunk the client is holding and any chunk resend silently reverts it. The replay re-asserts
-   its overlay on a timer for exactly that reason, and that fix has never been watched working.
+   chunk the client is holding and any chunk resend silently reverts it. Both features now
+   re-assert through one hook on the chunk-send path, in the same call that erased them — and
+   that fix has never been watched working.
 
 **Time needed: about ten minutes.** You need two accounts.
 
@@ -146,12 +147,17 @@ This is the one that shares a failure mode with the decoys.
   overlay is not reaching the client at all. The replay is showing the world as it is now,
   which is the thing the overlay exists to prevent.
 - **It works, then everything reverts after flying away and back.** This is the decoy bug
-  exactly: sent once, never re-asserted, silently lost on a chunk resend. The re-assert is on a
-  five-second timer, so give it that long before concluding.
+  exactly: sent once, never re-asserted, silently lost on a chunk resend. The re-assert now
+  fires with the chunk itself, so there is nothing to wait for — if it is not back the instant
+  the chunk arrives, the hook is not firing. Check `/staff status`: the "Illusions re-asserted"
+  count should be climbing as you fly around, and a hook line should read 20/20.
+- **It comes back, but you can see it blink.** The re-assert should be indistinguishable from
+  the chunk arriving. A visible flicker means something is re-asserting late — which on the
+  decoy side is the failure that teaches an x-ray user which ores to distrust.
 - **Blocks release at visibly the wrong time** — a hole opening before the swing, or the player
   walking through a wall.
 
-**Result of check 2:** ☐ pass ☐ fail — which of the three: _______________
+**Result of check 2:** ☐ pass ☐ fail — which of the four: _______________
 **Notes:** _______________________________________________
 
 ---

@@ -68,7 +68,9 @@ public final class RollbackPreview {
 			// Remembered so the preview can be taken down exactly, rather than by guessing
 			// or by asking the client to reload a chunk.
 			real.put(pos.immutable(), level.getBlockState(pos));
-			viewer.connection.send(new ClientboundBlockUpdatePacket(pos, entry.getValue()));
+			io.github.alphain24.staffcore.illusion.BlockIllusions.show(viewer,
+					io.github.alphain24.staffcore.illusion.BlockIllusions.Source.PREVIEW,
+					pos, entry.getValue());
 			drawn++;
 		}
 
@@ -81,8 +83,13 @@ public final class RollbackPreview {
 		Showing showing = active.remove(viewer.getUUID());
 		if (showing == null || viewer.hasDisconnected()) return;
 
-		showing.real().forEach((pos, state) ->
-				viewer.connection.send(new ClientboundBlockUpdatePacket(pos, state)));
+		// Cleared through the primitive so the chunk-send hook stops re-asserting them. A
+		// preview left registered would keep redrawing proposed blocks over the real world
+		// every time the viewer reloaded a chunk, long after they closed the screen.
+		ServerLevel level = viewer.level() instanceof ServerLevel serverLevel
+				? serverLevel : null;
+		io.github.alphain24.staffcore.illusion.BlockIllusions.clear(viewer,
+				level, io.github.alphain24.staffcore.illusion.BlockIllusions.Source.PREVIEW);
 	}
 
 	public boolean isShowing(ServerPlayer viewer) {

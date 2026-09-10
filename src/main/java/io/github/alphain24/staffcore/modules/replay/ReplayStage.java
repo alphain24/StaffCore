@@ -49,9 +49,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ReplayStage {
 	private ReplayStage() {}
 
-	/** What is currently painted for one viewer, so it can be taken down exactly. */
-	private static final Map<UUID, Map<BlockPos, BlockState>> PAINTED = new ConcurrentHashMap<>();
-
 	/** The dimension each viewer is replaying in, to notice when they leave it. */
 	private static final Map<UUID, String> WATCHING = new ConcurrentHashMap<>();
 
@@ -103,65 +100,38 @@ public final class ReplayStage {
 	 * <p>
 	 * Anything previously painted and not in the new set is told the truth again, so a caller
 	 * that redraws a moving picture does not leave a trail of blocks behind it.
+	 * <p>
+	 * Registered with {@link io.github.alphain24.staffcore.illusion.BlockIllusions} rather than sent
+	 * straight down the connection, and that is what makes it survive a chunk resend. A block
+	 * update is a delta against the chunk the client holds; the honest chunk arriving erases
+	 * it. Before this, a replay overlay simply vanished when the viewer flew out of range and
+	 * back, and the server had no idea.
 	 */
 	public static void paint(ServerPlayer staff, ServerLevel level,
 			Map<BlockPos, BlockState> blocks) {
 
-		if (staff == null || staff.connection == null) return;
-
-		Map<BlockPos, BlockState> previous = PAINTED.get(staff.getUUID());
-		if (previous != null) {
-			for (BlockPos pos : previous.keySet()) {
-				if (!blocks.containsKey(pos)) {
-					staff.connection.send(new ClientboundBlockUpdatePacket(level, pos));
-				}
-			}
-		}
-
-		Map<BlockPos, BlockState> now = new LinkedHashMap<>(blocks);
-		PAINTED.put(staff.getUUID(), now);
-		now.forEach((pos, state) ->
-				staff.connection.send(new ClientboundBlockUpdatePacket(pos, state)));
+		io.github.alphain24.staffcore.illusion.BlockIllusions.replace(staff, level,
+				io.github.alphain24.staffcore.illusion.BlockIllusions.Source.REPLAY, blocks);
 	}
 
 	/**
-	 * Sends every painted block again, unchanged.
+	 * Takes the paint down, from the world as it is now rather than a remembered "before".
 	 * <p>
-	 * A block update is a delta against the chunk the client currently holds, so a chunk
-	 * resend — view distance, a dimension change, any reason the server has of its own —
-	 * silently reverts the lot while the server goes on believing it drew them. Called on a
-	 * slow timer for exactly that reason.
+	 * Anything that changed while they were watching would otherwise be corrected to a state
+	 * that is also wrong, and the point of taking this down is that their client stops
+	 * disagreeing with the server.
 	 */
-	public static void repaint(ServerPlayer staff) {
-		if (staff == null || staff.connection == null) return;
-
-		Map<BlockPos, BlockState> painted = PAINTED.get(staff.getUUID());
-		if (painted == null || painted.isEmpty()) return;
-
-		painted.forEach((pos, state) ->
-				staff.connection.send(new ClientboundBlockUpdatePacket(pos, state)));
-	}
-
-	/** Takes the paint down, from the world as it is now rather than a remembered "before". */
 	public static void unpaint(ServerPlayer staff) {
-		Map<BlockPos, BlockState> painted = PAINTED.remove(staff.getUUID());
-		if (painted == null || staff.connection == null) return;
-
-		ServerLevel level = staff.level() instanceof ServerLevel serverLevel ? serverLevel : null;
-		if (level == null) return;
-
-		for (BlockPos pos : painted.keySet()) {
-			// From the world, because a remembered state would be wrong for anything that
-			// changed while they were watching — and the point of taking this down is that
-			// their client stops disagreeing with the server.
-			staff.connection.send(new ClientboundBlockUpdatePacket(level, pos));
-		}
+		ServerLevel level = staff != null && staff.level() instanceof ServerLevel serverLevel
+				? serverLevel : null;
+		io.github.alphain24.staffcore.illusion.BlockIllusions.clear(staff, level,
+				io.github.alphain24.staffcore.illusion.BlockIllusions.Source.REPLAY);
 	}
 
 	/** How many blocks are currently drawn for this viewer. For tests and diagnostics. */
 	public static int paintedFor(UUID staff) {
-		Map<BlockPos, BlockState> painted = PAINTED.get(staff);
-		return painted == null ? 0 : painted.size();
+		return io.github.alphain24.staffcore.illusion.BlockIllusions.countFor(staff,
+				io.github.alphain24.staffcore.illusion.BlockIllusions.Source.REPLAY);
 	}
 
 	// -------------------------------------------------------------------- exit
@@ -242,7 +212,7 @@ public final class ReplayStage {
 	public static void restoreOnJoin(MinecraftServer server, ServerPlayer staff) {
 		if (!ReplaySession.isReplaying(staff.getUUID())) return;
 
-		PAINTED.remove(staff.getUUID());
+		io.github.alphain24.staffcore.illusion.BlockIllusions.forget(staff.getUUID());
 		exit(server, staff, "you reconnected");
 	}
 
@@ -261,14 +231,11 @@ public final class ReplayStage {
 			ServerPlayer staff = server.getPlayerList().getPlayer(entry.getKey());
 			if (staff == null) continue;
 
+			// No repainting here any more. Re-asserting is driven by the chunk-send hook, in
+			// the same call that erased the overlay, rather than by whichever slow timer
+			// happened to be walking this map.
 			if (!Mc.dimensionId(staff.level()).equals(entry.getValue())) {
 				exit(server, staff, "you left the dimension the replay was in");
-			} else {
-				// Free-riding on the timer that is already walking this map. The paint has to
-				// be re-asserted periodically or a chunk resend takes it away silently — the
-				// bug the canary system was found to have by somebody testing with an x-ray
-				// pack, in a feature built on the same packet.
-				repaint(staff);
 			}
 		}
 	}
@@ -287,7 +254,7 @@ public final class ReplayStage {
 	 */
 	public static void forget(UUID player) {
 		if (player == null) return;
-		PAINTED.remove(player);
+		io.github.alphain24.staffcore.illusion.BlockIllusions.forget(player);
 		WATCHING.remove(player);
 
 		Runnable teardown = TEARDOWN.remove(player);
@@ -302,7 +269,7 @@ public final class ReplayStage {
 
 	/** Only for tests and a deliberate reset. */
 	public static void forgetAll() {
-		PAINTED.clear();
+		io.github.alphain24.staffcore.illusion.BlockIllusions.forgetAll();
 		WATCHING.clear();
 		TEARDOWN.clear();
 	}

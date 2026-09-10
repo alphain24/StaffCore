@@ -285,7 +285,8 @@ Changing a default in the code alone would never reach a server that has already
   "canaryBlocks": true,               // decoy ores; forced off by a bulk anti-xray mod
   "canaryDensity": 6,                 // decoys per player at once; 0 disables
   "canaryMaxY": 16,                   // below the depth where people build
-  "canaryRadius": 48,                 // must be inside their render distance
+  "canaryRadius": 48,
+  "canaryForceWithBulkAntiXray": false, // NOT a supported mode - see the handbook before using                 // must be inside their render distance
   "canaryCaseThreshold": 3,           // hits in a session before a case opens
   "rootAliases": false,               // /ban, /vanish etc. at the root, if free
   "tpsAlertFloor": 17.0,

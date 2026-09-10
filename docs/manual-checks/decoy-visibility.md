@@ -49,6 +49,10 @@ measured zero in `docs/decisions.md` means "the retirement rule holds", not "dec
 when one is present, and this check will correctly tell you they are off rather than testing
 anything. Run `/staff status` — the anti-xray line should say "none installed".
 
+> There is a `canaryForceWithBulkAntiXray` override, and it is **not** for this check. It exists
+> to test whether the two mods' block updates fight each other, and it produces signals that are
+> not defensible in an appeal. Leave it alone here.
+
 ---
 
 ## Step 1 — Make decoys easy to find
@@ -108,8 +112,12 @@ judging by eye.
 > **If a decoy in the list is not visible**, that is a bug, not a real-ore mix-up. One has been
 > found and fixed already: a decoy used to be sent once and never again, so any chunk reload
 > removed it from the client while the server went on listing it. Symptom was decoys working
-> "hit or miss". Decoys are now re-sent every few seconds, so give it five seconds after moving
-> before concluding one is missing.
+> "hit or miss".
+>
+> A decoy is now re-asserted the instant its chunk is sent to you, so it should be visible
+> immediately and stay visible — including after flying out of range and back. There is no
+> settling period to wait through any more, and **if you see one flicker, that is a bug**: the
+> whole point of hooking the chunk send rather than polling is that the ore never blinks.
 
 ---
 

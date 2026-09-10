@@ -45,6 +45,23 @@ final class Harness {
 		return helper.makeMockServerPlayerInLevel();
 	}
 
+	/**
+	 * <b>Do not add {@code forgetAll()} calls to these tests.</b>
+	 * <p>
+	 * Gametests inside a batch run at the same time, in different parts of the world. Every
+	 * {@code forgetAll} in this mod clears state for <em>every</em> player at once, so one
+	 * test's tidy-up wipes another test's decoys part way through its assertions. That
+	 * produced a failure roughly one run in eight, in whichever test happened to be unlucky —
+	 * which reads as a flaky test rather than as what it is.
+	 * <p>
+	 * Isolation comes from identity instead, and it is already there for free: every mock
+	 * player has its own UUID, all the state here is keyed by it, and every assertion that
+	 * looks at shared collections filters by a position inside its own test area. Leftover
+	 * state for a player nobody will ask about again costs a few bytes in a server that is
+	 * about to exit.
+	 * <p>
+	 * If a test genuinely needs a clean global slate, it needs its own batch, not a reset.
+	 */
 	static MinecraftServer server(GameTestHelper helper) {
 		return helper.getLevel().getServer();
 	}

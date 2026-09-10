@@ -685,6 +685,89 @@ nobody is worried about.
 The cheapest form of a correct control is the probe: run the assertion with the feature
 disabled and require that it fails.
 
+### A sibling class: a comparison whose arms share a limit measures the limit
+
+**Date:** 2026-09-10
+
+Every instance above is the same shape — *verified by something that was not running*. This one
+ran, produced a number, and the number described the apparatus instead of the subject. It is
+worth separating because the countermeasure for the first class does not catch it.
+
+The Gate 4 measurement compared one player-hour of continuous movement against one player-hour
+of a player moving half the time, to show that the "no rows while standing still" rule pays for
+itself. It reported that stillness saved **nine percent**.
+
+The writer takes a bounded batch — 4,096 rows — and hands whatever is left back to the worker
+thread. In a test there is no worker thread. Both arms offered 7,200 samples and both wrote
+4,096, so the comparison was between two numbers that had been clipped to the same ceiling. The
+real answer, once it drained properly, was **half**.
+
+Nothing was un-run. The test executed, the database grew, the assertion evaluated, the control
+would have passed. What failed is that **the quantity being measured was capped above the range
+the comparison needed**, so the difference the test existed to detect had nowhere to appear.
+
+**The general form:** when two arms of a comparison share a limit, and both reach it, the
+comparison measures the limit. It is nastier than the other seven for one specific reason:
+
+> **Nine percent is a plausible answer.** Nobody interrogates a plausible number.
+
+Zero would have been investigated. A hundred percent would have been investigated. A modest,
+directionally-correct, unremarkable figure is the one that gets written into the documentation
+and quoted for a year. Every other failure in this taxonomy announced itself as an absence — no
+findings, no rows, an empty result. This one announced itself as a result.
+
+**The countermeasure is not "be suspicious of small numbers".** It is to make the apparatus
+visible in the output. The measurement now prints the row count of each arm alongside its size,
+and the assertion checks that a full player-hour actually reached the disk:
+
+```
+assertTrue(samples > 7000, "only " + samples + " samples were written for an hour of
+        continuous movement at 2 Hz, so this measured something other than a player-hour");
+```
+
+That assertion is what caught it. Not the comparison, which was happy — the sanity check on the
+input to the comparison. So the rule to carry forward is: **a measurement should assert the size
+of its own sample, not only the shape of its result.** The anti-vacuity rule says a check that
+can pass by finding nothing must assert it found something. This is the quantitative twin: a
+check that produces a number must assert the number came from as much data as it claims.
+
+### Two more of the same family, found the same week
+
+Both turned up while running the suite repeatedly rather than by reading it, which is itself the
+point: neither is visible in the source.
+
+**The measurement that measured the machine.** `XrayTimingTests` asserts that the on-thread ore
+census costs less than half a tick. It failed about twice in twelve runs, at 27ms and 41ms
+against a 25ms budget, while the honest figure is well under a millisecond. Nothing had got
+slower — the machine was compiling, running a second server, and occasionally collecting
+garbage. A single wall-clock sample measures the apparatus and the code together and cannot say
+which moved.
+
+Fixed by asserting against **the fastest of five runs**. The minimum is the right statistic for
+a budget question: it is the least contaminated by scheduling noise, and it still moves when the
+code gets slower, because nothing makes the fastest of five faster except the work being
+smaller. The tempting alternative — widen the budget until it stops flaking — is how a guard
+stops guarding.
+
+**The tidy-up that wiped somebody else's test.** Gametests inside a batch run at the same time,
+in different parts of the world, and seven test classes each began and ended with a global
+`forgetAll()` that cleared canary and illusion state for *every* player at once. So one test's
+cleanup could erase another test's decoys part way through its assertions. That produced a
+failure roughly one run in eight, in whichever test happened to be unlucky — which reads as
+flakiness rather than as a shared-state bug, and flakiness is the thing that teaches people to
+re-run a suite instead of reading it.
+
+The resets are gone rather than reordered. Isolation was already available and free: every mock
+player has its own UUID, all this state is keyed by it, and every assertion that reads a shared
+collection filters by a position inside its own test area. A test that genuinely needs a clean
+global slate needs its own batch, not a reset.
+
+**What the three have in common** is that the code under test was fine and the *instrument* was
+not — a cap, a busy machine, a neighbour. None of them would have been found by reading the
+test, and all three announced themselves as ordinary failures or ordinary numbers rather than as
+anything alarming. That is the standing hazard with a suite this size: **the apparatus is code
+too, and nothing tests it.**
+
 ### Why this belongs in a decision record
 
 Because the instinct it fights is a good one. Every one of these was written by somebody trying
@@ -1045,6 +1128,120 @@ and inspect mode. Everything else survives.
 
 ---
 
+<a id="packet-persistence"></a>
+
+## A block update is a delta, not a state
+
+**Date:** 2026-09-10
+
+The single most consequential thing anybody has got wrong on this project, and it was wrong in
+three features at once for months.
+
+### What the bug is
+
+StaffCore shows one player a block the world does not have in three places: canary decoys, the
+replay overlay, and the rollback preview. All three did it with
+`ClientboundBlockUpdatePacket`, and all three treated sending it as *establishing* something.
+
+It does not establish anything. It is **a delta against the chunk that client is currently
+holding**. It is not stored server-side, it is not re-applied, and nothing records that the
+client's copy now differs from the world. `PlayerChunkSender.sendChunk` builds
+`ClientboundLevelChunkWithLightPacket` straight from the honest `LevelChunk` — verified from the
+26.2 bytecode, not from memory — so the moment that chunk is sent again the client takes the
+real data and every delta for it is gone. The server has no idea.
+
+That happens constantly, for reasons nobody chose: leaving view distance and returning, a
+relog, a dimension change, any resend the server makes for its own purposes.
+
+### Why it was missed, twice
+
+**The first time** it was reasoned about correctly and the conclusion was still wrong. When the
+chunk-serialisation mixin was replaced with per-player block updates, the requirement that bulk
+anti-xray meets by rewriting the chunk palette was judged not to carry over. The reasoning was
+about **volume** — a per-block packet for every hidden ore across a world would be absurd, and
+StaffCore is showing a handful rather than hiding thousands. That part is right.
+
+But volume is only one of two reasons palette rewriting exists. The other is **persistence**:
+when the lie is in the chunk, the chunk carries it, and a resend carries it too. Accounting for
+one reason and not the other produced a correct-sounding argument for an approach that could not
+hold.
+
+**The second time** the symptom was found — a person testing with an x-ray pack reported decoys
+were "hit or miss" — and the fix was a five-second re-send of everything. That worked, and it
+was still the wrong shape. Which brings us to the part worth recording.
+
+### Why polling was the wrong answer even though it worked
+
+Four reasons, and only the first is about tidiness:
+
+1. It polls a problem that has an exact event.
+2. It costs packets proportional to blocks × players, forever, for a picture that has usually
+   not changed at all.
+3. It leaves a window — up to five seconds — in which the client is looking at the truth.
+4. **A flickering ore is a tell.** An x-ray user who notices that some ores blink and others do
+   not learns to distrust the ones that blink. That is not a cosmetic problem: it selectively
+   trains the observant users, who are exactly the ones worth catching. A decoy that is
+   occasionally wrong is worse than no decoy at all, because it teaches the lesson.
+
+Point 4 is the one that generalises. **A countermeasure with an observable signature trains the
+population it is aimed at.** Anything that fires on a timer against an adversary who can watch
+it has a period, and a period is a fingerprint.
+
+### The fix: one primitive, one event
+
+`BlockIllusions` now owns every block this server is lying to a client about — per viewer, per
+owning feature, indexed by chunk. `ChunkSendMixin` injects at the return of
+`PlayerChunkSender.sendChunk` and re-asserts whatever belonged in that chunk, for that player,
+in the same call.
+
+Three properties matter:
+
+- **At `RETURN`, not `HEAD`.** The re-asserted updates have to arrive *after* the chunk that
+  erased them. A connection delivers in order, so injecting after the chunk packet has been
+  handed to `send` is what guarantees it.
+- **Indexed by chunk.** This runs for every chunk sent to every player for the life of the
+  server. The common case is one map lookup returning null. Anything proportional to "how many
+  illusions this player has" rather than "how many are in this chunk" would be a per-chunk cost
+  on the busiest path there is.
+- **Sourced.** A staff member can hold live decoys while watching a replay. Clearing the replay
+  must not hand their client the truth about a decoy.
+
+Fixed once, at the primitive, rather than three times. The bug was never about decoys; it was
+about a protocol fact that three features had each reasoned about separately and got wrong the
+same way.
+
+### On the mixin, and why this one is not the one that was deleted
+
+The Fabric API has no per-player chunk-send event in this version. Checked against every
+`*Events` class in every `fabric-api` jar on the classpath rather than from memory:
+`ServerChunkEvents` is server-side chunk lifecycle (load, generate, unload, status change) and
+`EntityTrackingEvents` is about entities. Neither fires when a chunk goes to a player.
+
+A previous mixin on `ChunkMap$TrackedEntity` was removed for good reasons: it targeted a
+package-private inner class by string and cancelled a vanilla method at `HEAD`, taking over
+behaviour it then had to reimplement. `ChunkSendMixin` shares none of that.
+`PlayerChunkSender` is a public class, the injection is at `RETURN`, it cancels nothing, changes
+no argument, and touches no serialisation. **It fires a callback; it does not participate.**
+That is the distinction worth keeping — "avoid mixins" was never the rule, and reading it as one
+is how the persistence requirement got dropped in the first place.
+
+Tiered `IMPORTANT` rather than `OPTIONAL`. Losing it switches no feature off: decoys go on being
+placed, counted and reported as live while evaporating from every client that reloads a chunk.
+The true-positive rate goes to zero and the false-positive rate stays at zero, which reads as
+the feature working perfectly.
+
+`/staff status` reports how many illusions have been re-asserted since boot, because **zero is
+meaningful** — on a server with decoys out and players moving, zero means the hook is not
+firing, and nothing else would say so.
+
+### What is still unverified
+
+That a client behaves as the protocol says. The server demonstrably sends the honest chunk and
+now demonstrably re-asserts after it; whether the re-assertion lands visibly is the one part
+that needs a person watching a screen. See `docs/manual-checks/`.
+
+---
+
 <a id="position-history"></a>
 
 ## Position history: what an hour costs, and why the table is shaped like that
@@ -1346,6 +1543,16 @@ difference is in the target method's bytecode.
 
 Failures with no entry in the hook table are still reported, by mixin class name, so nothing
 fails silently just because nobody wrote it a friendly label.
+
+### 26.2 renames found while building the chunk-send hook
+
+- `ChunkPos.asLong(int, int)` is **`ChunkPos.pack`** in 26.2, and there is a
+  `pack(BlockPos)` overload worth using directly.
+- `ChunkPos.x` and `ChunkPos.z` are **private**. Use the instance method `pack()` when you want
+  a key, which is usually what the caller wanted anyway.
+- The chunk-send funnel is `net.minecraft.server.network.PlayerChunkSender#sendChunk`, private
+  static, taking `(ServerGamePacketListenerImpl, ServerLevel, LevelChunk)`. Note the package:
+  `server.network`, not `server.level` where the rest of the chunk machinery lives.
 
 ---
 

@@ -20,7 +20,9 @@
 			"io.github.alphain24.staffcore.gametest.ReplayViewTests",
 			"io.github.alphain24.staffcore.gametest.CanaryPacketTests",
 			"io.github.alphain24.staffcore.gametest.CanaryFalsePositiveTests",
-			"io.github.alphain24.staffcore.gametest.CanaryRefreshTests"
+			"io.github.alphain24.staffcore.gametest.CanaryRefreshTests",
+			"io.github.alphain24.staffcore.gametest.CanaryPersistenceTests",
+			"io.github.alphain24.staffcore.gametest.IllusionPersistenceTests"
 		]
 	},
 	"depends": {
