@@ -100,7 +100,12 @@ class TimeFormatTest {
 	@Test
 	@DisplayName("words() handles both directions, so an expiry reads as an expiry")
 	void futureTimesReadAsFuture() {
-		assertTrue(TimeFormat.words(System.currentTimeMillis() + 2 * 86_400_000L)
+		// Two days and a minute, not two days exactly. coarse() truncates, and the two
+		// System.currentTimeMillis() calls — the test's and the one inside words() — are not
+		// the same instant. Any millisecond between them turns exactly two days into
+		// "in 1 day", so the assertion held only when both reads landed in the same
+		// millisecond and failed under load.
+		assertTrue(TimeFormat.words(System.currentTimeMillis() + 2 * 86_400_000L + 60_000L)
 				.startsWith("in 2 days"));
 		assertTrue(TimeFormat.words(System.currentTimeMillis() - 2 * 86_400_000L)
 				.endsWith(" ago"));

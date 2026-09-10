@@ -744,6 +744,50 @@ public final class StaffConfig {
 	 */
 	public int rollbackPointRetentionDays = 7;
 
+	// ---- position history ----------------------------------------------------
+	/**
+	 * Record where players have been, so a session can be replayed afterwards.
+	 * <p>
+	 * <b>Off by default, and the default is a judgement rather than caution about the code.</b>
+	 * Everything else this mod stores is something a player did — a block they broke, a chest
+	 * they opened, a punishment somebody gave them. A position row exists because the player
+	 * existed. That is a different kind of record and it should be a decision somebody makes
+	 * deliberately for their server, not something that starts happening because they
+	 * installed a moderation tool.
+	 * <p>
+	 * It is also by a wide margin the largest thing the mod can write. See
+	 * {@code positionRetentionDays} for how long it is kept and {@code /staff status} for how
+	 * much of it is currently on disk.
+	 */
+	public boolean positionTracking = false;
+
+	/**
+	 * How many position samples to take per second, per moving player.
+	 * <p>
+	 * Two is enough to see where somebody went, which route they took and roughly how fast.
+	 * It is not enough to judge movement mechanics, and it is deliberately not meant to be —
+	 * this is a replay for a human to watch, not an anti-cheat input. Raising it multiplies
+	 * the storage cost by the same factor and buys detail that is thrown away again by the
+	 * playback, which interpolates between samples anyway.
+	 * <p>
+	 * Clamped to 1–10. Below 1 there is no replay; above 10 the sampler would be writing more
+	 * often than the tick loop can meaningfully distinguish.
+	 */
+	public int positionSampleHz = 2;
+
+	/**
+	 * How long position history is kept, in days. 0 keeps it forever.
+	 * <p>
+	 * Seven, against ninety for connection records, and the gap is the point. An address is
+	 * kept because alt detection needs to compare one against another months later; a replay
+	 * is watched in the days after an incident or not at all. Nobody has ever asked to
+	 * spectate a session from last spring.
+	 * <p>
+	 * Setting this to 0 is supported and is a decision worth making on purpose. It means
+	 * every route every player has walked stays on disk until somebody deletes the file.
+	 */
+	public int positionRetentionDays = 7;
+
 	public record Duration(String label, String spec) {}
 
 	/** The configured duty gamemode, or null when the value is unrecognised. */
@@ -807,6 +851,24 @@ public final class StaffConfig {
 			problems.add("displayTimezone is \"" + cfg.displayTimezone + "\", which is not a "
 					+ "timezone id. Times are being printed in UTC. Use a region id such as "
 					+ "Europe/London or America/New_York.");
+		}
+
+		if (cfg.positionSampleHz < 1 || cfg.positionSampleHz > 10) {
+			int was = cfg.positionSampleHz;
+			cfg.positionSampleHz = Math.max(1, Math.min(10, cfg.positionSampleHz));
+			problems.add("positionSampleHz is " + was + ", which is outside 1-10. Using "
+					+ cfg.positionSampleHz + ". Below 1 there is nothing to replay; above 10 "
+					+ "the sampler writes faster than the tick loop can distinguish.");
+		}
+
+		// Clamped rather than reported and ignored. A negative retention would make the
+		// purge delete rows with a cutoff in the future, which is every row there is - a
+		// typo would silently switch position history off while the config said it was on.
+		if (cfg.positionRetentionDays < 0) {
+			problems.add("positionRetentionDays is " + cfg.positionRetentionDays + ", which "
+					+ "would purge the whole table on every sweep. Treating it as 0 (keep "
+					+ "forever). Set a positive number of days, or 0 deliberately.");
+			cfg.positionRetentionDays = 0;
 		}
 
 		for (String problem : problems) {

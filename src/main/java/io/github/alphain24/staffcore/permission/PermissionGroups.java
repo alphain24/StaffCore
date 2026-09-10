@@ -71,7 +71,7 @@ public final class PermissionGroups {
 		out.put("admin", new ArrayList<>(List.of(
 				"@moderator", Nodes.UNPUNISH, Nodes.HISTORY_CLEAR, Nodes.INVSEE_EDIT,
 				Nodes.ROLLBACK, Nodes.GRIEF_PURGE, "control.*", Nodes.ANALYTICS,
-				Nodes.RELOAD, "security.*", Nodes.APPEALS, Nodes.PERMS_ADMIN)));
+				Nodes.RELOAD, "security.*", Nodes.APPEALS, Nodes.PERMS_ADMIN, Nodes.REPLAY)));
 		return out;
 	}
 

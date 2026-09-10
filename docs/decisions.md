@@ -1045,6 +1045,170 @@ and inspect mode. Everything else survives.
 
 ---
 
+<a id="position-history"></a>
+
+## Position history: what an hour costs, and why the table is shaped like that
+
+Phase 4 added the only table in this mod that records something other than an action somebody
+took. A `block_log` row exists because a player broke a block. A `position_log` row exists
+because a player existed. That difference decides almost everything below.
+
+### Measured, Gate 4
+
+`PositionGrowthTest` writes a known number of player-hours into a real SQLite file and asks
+SQLite how much bigger it got. Run on 2026-09-10, at the default `positionSampleHz` of 2:
+
+| Scenario | Rows | On disk |
+|---|---|---|
+| One player-hour, moving continuously | 7,197 | **160 KB** (22.8 bytes/row) |
+| One player-hour, moving about half the time | 3,163 | **80 KB** |
+
+Twenty players online four hours a day, moving half of it, is about **45 MB a week** — which
+the seven-day default retention then holds flat rather than growing.
+
+The second row is the one that says the storage rules work. Nothing is written while a player
+stands still, so half an hour of standing costs nothing at all; the gap between two timestamps
+already records it. The first version of this measurement said stillness saved nine percent,
+which was the measurement being wrong rather than the feature: `write()` takes a bounded batch
+and hands the rest back to the worker thread, and in a test there is no worker, so both
+scenarios were clipped to the same 4,096 rows and looked identical. A measurement that clips
+both arms equally cannot see the thing it is comparing.
+
+### Four decisions, and what each is worth
+
+- **The identity lives once per run, not once per sample.** A UUID is 36 bytes of text — on its
+  own more than the entire rest of a row. `position_run` carries it, the world, and the absolute
+  origin; `position_log` carries only measurements. This is most of the saving.
+- **Deltas in 1/32-block fixed point.** SQLite gives every `REAL` eight bytes whatever it holds
+  and stores a small `INTEGER` in one. A player walking covers about two blocks between samples,
+  which is a one-byte number. `PositionSchemaTest` asserts the columns are integers.
+- **`WITHOUT ROWID`.** The read is always "every sample of this run in time order", so the
+  primary key is the access path. An ordinary table would need a separate index over the same
+  two columns — on the largest table in the database, that is storing the key twice.
+- **No rows while standing still.** Half the cost of a realistic session, for a comparison
+  against the previous sample.
+
+Every one of those is invisible if it breaks. The feature keeps working perfectly and quietly
+costs twice as much, and nothing in the mod would notice — which is why `PositionSchemaTest`
+asks SQLite whether the table has a `rowid` rather than grepping the DDL it was handed, and why
+the ceiling in `PositionGrowthTest` is asserted rather than only printed.
+
+### `ended_at` is an upper bound until the run closes
+
+A run's row is written when the run starts, with `ended_at` set to the latest it could possibly
+finish, and narrowed to the truth when it closes.
+
+That way round because the other way fails silently. If the process is killed nothing calls
+`closeRun`, so whatever was written at the start is what stays. An `ended_at` equal to
+`started_at` would exclude that run from every window query that should have found it, and its
+samples would sit on disk with nothing able to read them and nothing able to delete them. Being
+too generous costs one extra empty run in a query result. `PositionGrowthTest` covers both: a
+clean restart, and a run nothing ever closed.
+
+### Retention deletes whole runs, and the guardrail says it should not delete at all
+
+The phase guardrail is that migrations are append-only and nothing deletes a historical row —
+reversal, expiry and staleness are states, never deletions. Position history is the exception,
+deliberately, and the same exception connection records already are: **the rule is about
+evidence, and this is not evidence.** A record of where somebody was, kept after it is useful,
+is not an audit trail with better retention. It is surveillance with worse hygiene.
+
+Deletion is by whole run, by start time, which takes up to a minute of data slightly *newer*
+than the window asked for. That is the right direction to be wrong in here, and it falls out of
+the design rather than being chosen: a delta chain can only be read from its beginning, so a
+half-deleted run reconstructs into a smooth plausible path through the wrong part of the world.
+
+### Exports name what they release
+
+`/staff export` withheld position rows from the moment they existed, but the flag that releases
+them was called `addresses`. It is now `personal`, with `addresses` kept working. A flag that
+releases more than its name says is the same mismatch this project keeps finding after the
+fact — and unlike the others, this one would have been found by somebody handing over a
+spreadsheet.
+
+Withheld by the row rather than the column, because there is no column of a position log that
+is not the point. The header line is still written so a withheld table can be told from a
+missing one.
+
+### One thing that cannot be off-thread, said rather than skipped
+
+The guardrail asks for replay sampling to stay off the server thread. Reading a player's
+position cannot: an entity's coordinates are mutated by the tick loop with no synchronisation,
+so reading them from a worker is a data race that would mostly work and occasionally record a
+position no player was ever at — which is the worst possible failure for this feature, because
+it is invisible and it is evidence.
+
+What stays on the tick thread is therefore: three doubles and two floats per online player, once
+every ten ticks, a comparison against the last sample, and a queue push. Everything else — the
+delta encoding, the decision to restart a chain, the transaction — runs on the grief log's
+writer thread, shared rather than new because this database's whole concurrency story is one
+connection and one writer.
+
+This is the same call as the on-thread census in item 3.3, recorded for the same reason: a
+guardrail worth having is worth saying out loud when it cannot be met.
+
+---
+
+<a id="replay-honesty"></a>
+
+## A replay can be wrong without looking wrong
+
+Everything in Phase 4 that could break loudly does. The parts worth writing down are the three
+that would have produced a smooth, plausible, completely false picture — shown to somebody
+deciding whether to punish a player.
+
+**Interpolating across a gap.** Position history records movement, so an hour of AFK is an hour
+between two samples. Interpolated, that is a staff member watching somebody glide four hundred
+blocks in a flight that never happened. Gaps are held for a moment, jumped, and announced in
+chat with their real length. Hiding time is necessary; hiding it silently is how a replay
+becomes misleading evidence.
+
+**Encoding a teleport as movement.** A 500-block jump between two samples is a `/tp`, a portal
+or a missed stretch. As a delta it draws somebody crossing the map in a straight line at
+impossible speed, which reads as evidence of cheating and is not. The chain restarts instead.
+
+**Replaying in the world as it is now.** Without the block overlay, every hole the player made
+is already open when they arrive at it, and a rollback since has erased the lot. Watching
+somebody tunnel through a tunnel that is already open looks exactly like watching them tunnel.
+The blocks they changed are painted back and released one at a time as the clock reaches each.
+
+The rule the overlay runs on is that a position shows the `before` of the **earliest change
+still to come**. The test written for the broken-replaced-broken case asserted the opposite and
+failed: half way between the first break and the placement the position must be painted *as
+air*, which is not the same as painting nothing. If somebody rolled that area back afterwards,
+the world has a block there now, and leaving it unpainted shows it standing at a moment when it
+was rubble. The code was right and the expectation was not — worth recording, because the
+project's usual finding is the other way round.
+
+**And what the replay is not.** Two samples a second says where somebody went. It says nothing
+reliable about *how* they moved between them: the smooth motion is this mod interpolating
+between two readings half a second apart. Anything read off it about movement mechanics is a
+property of the interpolation. `positionSampleHz` does not fix that — it multiplies the storage
+cost and buys detail the playback discards.
+
+---
+
+<a id="one-way-out"></a>
+
+## Two replays, one way out
+
+The x-ray viewer and the session replay show completely different things. Everything about
+*leaving* is identical: the gamemode to put back, the position to return to, the vanish flag not
+to disturb, the painted blocks to take down, the sidebar to remove.
+
+That runs from five places — the exit command, a disconnect, a death, a dimension change, and a
+restart — and four of them fire for every player on the server. A second copy would have five
+chances to drift out of step with the first, and the symptom of that drift is a staff member
+stuck in spectator at the bottom of a stranger's mine with no way back.
+
+So `ReplayStage` owns all of it and `XrayReplayView` kept its entry points and lost ninety
+lines. The way home stays on disk in `ReplaySession`, written before the player is touched; what
+is new is a per-viewer teardown hook, which is deliberately in memory only. It exists to stop a
+playback driver that is running right now, and a driver cannot survive a restart — so after one
+there is nothing to run and nothing that needed running.
+
+---
+
 ---
 
 <a id="testing-layers"></a>

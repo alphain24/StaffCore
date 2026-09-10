@@ -76,11 +76,20 @@ class FreshInstallTest {
 	private static final Pattern TABLE = Pattern.compile(
 			"\\b(?:FROM|INTO|UPDATE|JOIN)\\s+([a-z_][a-z0-9_]*)");
 
-	/** SQL keywords the pattern above will happily read as a table name. */
+	/**
+	 * SQL keywords the pattern above will happily read as a table name, and the tables SQLite
+	 * owns rather than this mod.
+	 * <p>
+	 * {@code dbstat} is the one that is not obvious. It is a virtual table SQLite exposes only
+	 * when it was compiled with {@code SQLITE_ENABLE_DBSTAT_VTAB}, so it is not something a
+	 * migration could create and its absence is not a fault — {@code PositionLog.size} reads it
+	 * for an exact figure and falls back to an estimate when the query fails. Adding it to
+	 * REQUIRED_TABLES, which is what this test's message advises, would be wrong.
+	 */
 	private static final Set<String> NOT_TABLES = Set.of(
 			"select", "where", "set", "values", "on", "as", "and", "or", "table", "index",
 			"if", "not", "exists", "pragma", "sqlite_master", "sqlite_sequence", "distinct",
-			"with");
+			"with", "dbstat");
 
 	@Test
 	@DisplayName("every table the code touches exists in a database created from scratch")

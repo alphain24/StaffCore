@@ -243,6 +243,24 @@ public class StaffCore implements ModInitializer {
 			}
 		});
 
+		// The playback driver. One map-emptiness check per tick when nobody is watching
+		// anything, which is nearly always.
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(
+				io.github.alphain24.staffcore.modules.replay.SessionReplay::tick);
+
+		// Where players have been, if the server owner has asked for it. Off by default,
+		// and when it is off this costs one boolean read per interval and nothing else — the
+		// player list is not walked at all. See PositionSampler for which half of this runs
+		// on which thread and why one of them has to be here.
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(mc -> {
+			if (!io.github.alphain24.staffcore.modules.replay.PositionSampler.enabled()) return;
+			if (mc.getTickCount() % io.github.alphain24.staffcore.modules.replay.PositionSampler
+					.intervalTicks() != 0) {
+				return;
+			}
+			io.github.alphain24.staffcore.modules.replay.PositionSampler.sample(mc);
+		});
+
 		ServerLifecycleEvents.SERVER_STOPPING.register(mc -> {
 			MODULES.disableAll();
 			STORAGE.close();
@@ -320,6 +338,10 @@ public class StaffCore implements ModInitializer {
 			// mid-replay is restored when they come back, and the way home has to outlive the
 			// session to make that possible.
 			io.github.alphain24.staffcore.modules.security.XrayReplayView.forget(player.getUUID());
+			// Closes their position run so its recorded end is the truth rather than the
+			// upper bound it was opened with. Harmless when tracking is off.
+			io.github.alphain24.staffcore.modules.replay.PositionSampler.onLeave(
+					player.getUUID());
 			ChatRouter.onPlayerLeft(player);
 		});
 

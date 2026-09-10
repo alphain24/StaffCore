@@ -4,13 +4,11 @@ import io.github.alphain24.staffcore.StaffCore;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.gui.Icon;
 import io.github.alphain24.staffcore.gui.Theme;
-import io.github.alphain24.staffcore.module.Mods;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -19,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Standing inside somebody else's excavation and looking at what they did.
@@ -40,15 +37,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * Five ways out and all of them restore: the exit command, disconnecting, dying, changing
  * dimension, and the server restarting. The way home is on disk before anything about the
  * player changes — see {@link ReplaySession}.
+ *
+ * <h2>What is here and what is not</h2>
+ * Everything about <em>being</em> somewhere you did not walk to — the gamemode, the vanish
+ * flag, the painted blocks, the sidebar, and all five ways of leaving — lives in
+ * {@link ReplayStage} and is shared with the session replay. This class is only the part that
+ * is about x-ray: choosing which stretch of digging to stand in, where its entrance is, and
+ * what colour each block should be.
+ * <p>
+ * They were one class until there were two replays. Exit is the reason they were separated
+ * rather than copied: it runs from five places, four of which fire for every player on the
+ * server, so a second copy would have five chances to drift out of step with the first — and
+ * the symptom of that drift is somebody stuck in spectator at the bottom of a stranger's mine.
  */
 public final class XrayReplayView {
 	private XrayReplayView() {}
-
-	/** What is currently painted for one viewer, so it can be taken down exactly. */
-	private static final Map<UUID, Map<BlockPos, BlockState>> PAINTED = new ConcurrentHashMap<>();
-
-	/** The dimension each viewer is replaying in, to notice when they leave it. */
-	private static final Map<UUID, String> WATCHING = new ConcurrentHashMap<>();
 
 	/** How many blocks of path to draw. Beyond this the picture is noise, not information. */
 	private static final int MAX_PAINTED = 3000;
@@ -110,14 +113,10 @@ public final class XrayReplayView {
 		}
 
 		BlockPos entrance = entranceOf(segment);
-		staff.setGameMode(GameType.SPECTATOR);
-		// Through the module's own toggle rather than its internals. Conditional because
-		// somebody already hidden must not be un-hidden by being sent to look at a mine.
-		if (!Mods.vanish().isVanished(staff)) Mods.vanish().toggle(staff);
-		staff.teleportTo(level, entrance.getX() + 0.5, entrance.getY() + 0.5,
-				entrance.getZ() + 0.5, java.util.Set.of(), staff.getYRot(), staff.getXRot(), false);
+		io.github.alphain24.staffcore.modules.replay.ReplayStage.begin(staff, level,
+				entrance.getX() + 0.5, entrance.getY() + 0.5, entrance.getZ() + 0.5,
+				staff.getYRot(), staff.getXRot(), null);
 
-		WATCHING.put(staff.getUUID(), segment.world());
 		paint(staff, level, segment);
 		describe(staff, subject, segment, level);
 
@@ -175,25 +174,7 @@ public final class XrayReplayView {
 					: Blocks.TINTED_GLASS.defaultBlockState());
 		}
 
-		PAINTED.put(staff.getUUID(), painted);
-		painted.forEach((pos, state) ->
-				staff.connection.send(new ClientboundBlockUpdatePacket(pos, state)));
-	}
-
-	/** Takes the paint down, from the world rather than from memory of what was under it. */
-	private static void unpaint(MinecraftServer server, ServerPlayer staff) {
-		Map<BlockPos, BlockState> painted = PAINTED.remove(staff.getUUID());
-		if (painted == null || staff.connection == null) return;
-
-		ServerLevel level = staff.level() instanceof ServerLevel serverLevel ? serverLevel : null;
-		for (BlockPos pos : painted.keySet()) {
-			// Sent from the world as it is now. A remembered "before" state would be wrong for
-			// anything that changed while they were watching, and the point of taking this
-			// down is that their client stops disagreeing with the server.
-			if (level != null) {
-				staff.connection.send(new ClientboundBlockUpdatePacket(level, pos));
-			}
-		}
+		io.github.alphain24.staffcore.modules.replay.ReplayStage.paint(staff, level, painted);
 	}
 
 	/** The numbers, in chat, once. */
@@ -220,87 +201,24 @@ public final class XrayReplayView {
 	/**
 	 * Puts a staff member back, whichever way they are leaving.
 	 * <p>
-	 * Idempotent and safe to call on somebody who is not replaying, because four of the five
-	 * callers cannot know whether they are — a disconnect handler, a death, a dimension change
-	 * and a join all fire for everybody.
+	 * Kept as an entry point on this class because five call sites name it, and delegating is
+	 * cheaper than changing five call sites in files that have nothing to do with x-ray.
+	 * {@link ReplayStage#exit} is the implementation and is shared with the session replay.
 	 *
 	 * @return true when somebody was actually brought back
 	 */
 	public static boolean exit(MinecraftServer server, ServerPlayer staff, String why) {
-		if (server == null || staff == null) return false;
-
-		ReplaySession.Prior prior = ReplaySession.of(staff.getUUID());
-		if (prior == null) return false;
-
-		unpaint(server, staff);
-		// Taken down before anything else can fail. A sidebar left behind is a panel of
-		// numbers about somebody else's mine following a staff member around their own game.
-		ReplaySidebar.hide(staff);
-		WATCHING.remove(staff.getUUID());
-
-		ServerLevel home = levelOf(server, prior.world());
-		if (home == null) {
-			// The dimension they came from has gone. Better to leave them where they are, in
-			// their own gamemode, than to delete the record and strand them in spectator.
-			staff.setGameMode(prior.gameMode());
-			staff.sendSystemMessage(Theme.bad("The world you came from (" + prior.world()
-					+ ") no longer exists, so you have been left here in "
-					+ prior.gameMode().getName() + "."));
-			ReplaySession.clear(staff.getUUID());
-			return true;
-		}
-
-		staff.teleportTo(home, prior.x(), prior.y(), prior.z(), java.util.Set.of(),
-				prior.yaw(), prior.pitch(), false);
-		staff.setGameMode(prior.gameMode());
-
-		// Restored to what it was, not switched off. Somebody who was already hidden before
-		// they started watching should not reappear because they looked at a mine — that is
-		// the tool undoing a decision it was never asked about.
-		if (!prior.vanished() && Mods.vanish().isVanished(staff)) Mods.vanish().toggle(staff);
-
-		// Cleared last, and only now. Everything above is done.
-		ReplaySession.clear(staff.getUUID());
-
-		staff.sendSystemMessage(Theme.good("Back where you were" + (why == null ? "." : " — " + why)));
-		StaffCore.LOGGER.info("[Replay] {} left a replay of {} ({})", Mc.name(staff),
-				prior.subject(), why == null ? "command" : why);
-		return true;
+		return io.github.alphain24.staffcore.modules.replay.ReplayStage.exit(server, staff, why);
 	}
 
-	/**
-	 * Puts somebody back who reconnected mid-replay.
-	 * <p>
-	 * The paint is gone by itself — a fresh client was sent the honest chunks — so this is
-	 * only the gamemode, the position and the vanish flag. Called from the join handler for
-	 * every player, and does nothing for anybody who was not replaying.
-	 */
+	/** Puts somebody back who reconnected mid-replay. See {@link ReplayStage}. */
 	public static void restoreOnJoin(MinecraftServer server, ServerPlayer staff) {
-		if (!ReplaySession.isReplaying(staff.getUUID())) return;
-
-		PAINTED.remove(staff.getUUID());
-		exit(server, staff, "you reconnected");
+		io.github.alphain24.staffcore.modules.replay.ReplayStage.restoreOnJoin(server, staff);
 	}
 
-	/**
-	 * Ends a replay for somebody who has left the dimension they were watching.
-	 * <p>
-	 * Spectators can fly through a portal, and a staff member who does is looking at a
-	 * different world with a tunnel drawn over it. Called on a slow timer rather than hooked
-	 * to a dimension-change event: this is a cheap map lookup per replaying player, and there
-	 * is usually nobody replaying at all.
-	 */
+	/** Ends a replay for anybody who has left the dimension they were watching. */
 	public static void checkDimensions(MinecraftServer server) {
-		if (WATCHING.isEmpty()) return;
-
-		for (Map.Entry<UUID, String> entry : Map.copyOf(WATCHING).entrySet()) {
-			ServerPlayer staff = server.getPlayerList().getPlayer(entry.getKey());
-			if (staff == null) continue;
-
-			if (!Mc.dimensionId(staff.level()).equals(entry.getValue())) {
-				exit(server, staff, "you left the dimension the dig was in");
-			}
-		}
+		io.github.alphain24.staffcore.modules.replay.ReplayStage.checkDimensions(server);
 	}
 
 	/** Brings back anybody the server went down on. Called once, after start. */
@@ -312,29 +230,17 @@ public final class XrayReplayView {
 				+ "they will be restored as those staff members rejoin.", open.size());
 	}
 
-	private static ServerLevel levelOf(MinecraftServer server, String world) {
-		for (ServerLevel level : server.getAllLevels()) {
-			if (Mc.dimensionId(level).equals(world)) return level;
-		}
-		return null;
-	}
-
-	/**
-	 * Drops what is drawn for one player, without touching their way home.
-	 * <p>
-	 * For a disconnect. The paint is a client-side lie and a reconnecting client is sent the
-	 * honest chunks anyway; the row saying where they were standing has to survive, because
-	 * putting them back is what happens when they return.
-	 */
+	/** Drops what is drawn for one player, without touching their way home. */
 	public static void forget(UUID player) {
-		if (player == null) return;
-		PAINTED.remove(player);
-		WATCHING.remove(player);
+		io.github.alphain24.staffcore.modules.replay.ReplayStage.forget(player);
 	}
 
 	/** Only for tests and a deliberate reset. */
 	public static void forgetAll() {
-		PAINTED.clear();
-		WATCHING.clear();
+		io.github.alphain24.staffcore.modules.replay.ReplayStage.forgetAll();
+	}
+
+	private static ServerLevel levelOf(MinecraftServer server, String world) {
+		return io.github.alphain24.staffcore.modules.replay.ReplayStage.levelOf(server, world);
 	}
 }

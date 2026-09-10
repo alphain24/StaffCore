@@ -1125,10 +1125,78 @@
           </p>
         </div>
 
+        <h3 id="replay">Session replay</h3>
+        <p class="lede">
+          Watching where somebody went, from inside their own path. Off by default, and the
+          most invasive thing in this mod.
+        </p>
+        <p>
+          <code>/staff replay &lt;player&gt; [timespan]</code> reconstructs a window from the
+          position history and puts you in spectator at the start of it, moving along the route
+          the player took. <code>pause</code>, <code>resume</code>,
+          <code>speed 0.25</code>&ndash;<code>16</code>, <code>restart</code> and
+          <code>exit</code> do what they say. A sidebar carries the time, the coordinates, the
+          speed and how far through you are.
+        </p>
+        <p>
+          It only shows what was recorded. <strong>Switching
+          <code>positionTracking</code> on does not fill in the past</strong> &mdash; a replay
+          of last week on a server that started recording yesterday is empty, and says so
+          rather than showing an incomplete path as though it were the whole one.
+        </p>
+        <div class="note">
+          <p>
+            <span class="pill">The world is put back too</span>
+            A replay of the world as it is <em>now</em> is quietly the wrong world: every hole
+            the player made is already open when they arrive at it, and a rollback somebody ran
+            since has erased the lot. So the blocks that player broke or placed in the window
+            are painted back to how they were and released one at a time as the clock reaches
+            each one &mdash; a wall stands until they break it, a tower is absent until they
+            build it. Only the positions that changed are touched; everything else is the real
+            world, because everything else did not change. Nothing is written: these are block
+            packets sent to your client alone.
+          </p>
+          <p>
+            After a change has happened you see the world as the server actually has it. So a
+            block that was broken and later restored by a rollback is drawn coming down and
+            then standing again &mdash; which is the truth about both events rather than a
+            guess about one.
+          </p>
+        </div>
+        <div class="note">
+          <p>
+            <span class="pill">Gaps are skipped, and announced</span>
+            Nothing is recorded while a player stands still, so a session with an hour of AFK
+            in it has an hour between two samples. Played at real speed that is an hour of
+            watching nothing; cut silently it is a teleport that reads as suspicious movement.
+            So a gap is held for a moment, then jumped, with a chat line naming how long it
+            was. What is being hidden is time, and hiding time without saying so is how a
+            replay becomes misleading evidence.
+          </p>
+        </div>
+        <div class="note">
+          <p>
+            <span class="pill">Not an anti-cheat</span>
+            Two samples a second says where somebody went. It says nothing reliable about
+            <em>how</em> they moved between them &mdash; the smooth motion you watch is this
+            mod interpolating between two readings half a second apart. Anything you think you
+            see about movement mechanics is a property of the interpolation, not of the player.
+            Raising <code>positionSampleHz</code> does not change that; it multiplies the
+            storage cost and buys detail the playback throws away again.
+          </p>
+        </div>
+        <p>
+          <code>staff.replay</code> is its own permission node and is in the
+          <code>admin</code> group by default, not <code>moderator</code>. Everything else here
+          shows what somebody did; this shows where they were, continuously, whether or not
+          they did anything. A server that wants its moderators to have it can grant it &mdash;
+          the default should not be the permissive one for this.
+        </p>
+
         <h3>What is stored about a person, and for how long</h3>
         <p class="lede">
-          One category here is personal data rather than a record of conduct. It is worth
-          being exact about.
+          Two categories here are personal data rather than a record of conduct. They are
+          worth being exact about.
         </p>
         <table>
           <thead>
@@ -1146,6 +1214,17 @@
               <td><code>connectionRetentionDays</code>, default <strong>90 days</strong></td>
             </tr>
             <tr>
+              <td>
+                Where a player was, twice a second while they were moving &mdash; position,
+                facing and world, to about three centimetres
+              </td>
+              <td class="mono">position_run, position_log</td>
+              <td>
+                <code>positionRetentionDays</code>, default <strong>7 days</strong>.
+                <strong>Off unless you switch it on.</strong>
+              </td>
+            </tr>
+            <tr>
               <td>Username and UUID</td>
               <td>throughout</td>
               <td>For as long as the record they belong to</td>
@@ -1158,6 +1237,48 @@
           way somebody's home address does not, and it follows the retention setting for its
           own feature.
         </p>
+        <div class="note">
+          <p>
+            <span class="pill">Position history is off by default</span>
+            <code>positionTracking</code> is <code>false</code> on a new install, and that is a
+            judgement rather than caution about the code. Every other row in this database
+            exists because a player <em>did</em> something. A position row exists because the
+            player existed. Turning it on is a decision to keep a record of where the people on
+            your server go, and it should be a decision somebody makes rather than something
+            that starts happening because they installed a moderation tool.
+          </p>
+          <p>
+            It is also, by a wide margin, the largest thing this mod can write &mdash; see
+            <a href="#replay">Session replay</a> for what it buys.
+            <code>/staff status</code> reports how much of it is on disk, whether tracking is
+            currently on or off.
+          </p>
+          <p>
+            <strong>Measured cost, at the default 2&nbsp;Hz:</strong> about
+            <strong>160&nbsp;KB per player-hour</strong> of continuous movement, and about
+            <strong>80&nbsp;KB</strong> for an hour in which the player is actually moving half
+            the time &mdash; nothing is written while somebody stands still. Twenty players
+            online for four hours a day, moving half of it, is roughly
+            <strong>45&nbsp;MB a week</strong>, which the seven-day retention window then keeps
+            flat. Raising <code>positionSampleHz</code> multiplies all of these by the same
+            factor.
+          </p>
+          <p>
+            Nothing about it is nudged towards being on. There is no alert telling you the
+            replay would have helped, and no prompt when a case is opened. If you do not need
+            it, leaving it alone is the supported configuration.
+          </p>
+        </div>
+        <div class="note">
+          <p>
+            <span class="pill">Exports withhold both</span>
+            <code>/staff export</code> redacts address columns and writes no position rows at
+            all &mdash; the file and its header line are still there, so a withheld table can be
+            told from a missing one. <code>/staff export personal confirm</code> includes both,
+            and says how many samples that is before it does. <code>addresses</code> still works
+            as the old name for the same flag.
+          </p>
+        </div>
         <div class="note">
           <p>
             <span class="pill">Addresses are hashed by default</span>
@@ -2357,6 +2478,8 @@
               <tr><td class="mono">/staff seccheck &lt;player&gt;</td><td class="mono">security.check</td><td class="wrap">Run the checks</td></tr>
               <tr><td class="mono">/staff scan</td><td class="mono">security.itemscanner</td><td class="wrap">Sweep everyone online</td></tr>
               <tr><td class="mono">/staff xray &lt;player&gt; [hours]</td><td class="mono">security.check</td><td class="wrap">Score one player on demand, offline included</td></tr>
+              <tr><td class="mono">/staff replay &lt;player&gt; [timespan]</td><td class="mono">staff.replay</td><td class="wrap">Watch their session back from inside it. Needs <code>positionTracking</code> on, and only covers what was recorded after you switched it on</td></tr>
+              <tr><td class="mono">/staff replay pause &middot; resume &middot; speed &lt;0.25–16&gt; &middot; restart &middot; exit</td><td class="mono">staff.replay</td><td class="wrap">Playback controls</td></tr>
               <tr><td class="mono">/staff rollback &lt;player&gt; &lt;radius&gt; [minutes]</td><td class="mono">grief.rollback</td><td class="wrap">Undo their block changes</td></tr>
               <tr><td class="mono">/staff spy</td><td class="mono">control.spy</td><td class="wrap">Toggle command spy</td></tr>
               <tr><td class="mono">/staff clearchat</td><td class="mono">control.chat</td><td class="wrap">Push chat history off screen</td></tr>
@@ -2622,7 +2745,7 @@
   "maxSnapshotsPerPlayer": 10,        // 0 keeps every one
   "snapshotRetentionDays": 30,
   "altSubnetMatching": true,          // also link accounts sharing an address range
-  "connectionRetentionDays": 90,      // the only personal data here; 0 keeps forever
+  "connectionRetentionDays": 90,      // personal data; 0 keeps forever
   "hashConnectionAddresses": true,    // matching still works; the plaintext goes
   "altMinConfidence": 40,             // below this, a link is not worth an alert
   "vanishLoadsChunks": true,          // false = vanish leaves no trace, and you fly into void

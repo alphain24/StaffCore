@@ -132,11 +132,16 @@ public class GriefModule implements Module {
 			});
 		}
 		pickups.attach(worker);
+		// Position sampling shares this thread rather than starting one of its own. The whole
+		// concurrency story of this database is a single connection and a single writer, so a
+		// second pool would be a second thread contending for the same lock to no benefit.
+		io.github.alphain24.staffcore.modules.replay.PositionSampler.attach(worker);
 
 		if (listenerRegistered) return;
 		listenerRegistered = true;
 
 		purgeOldEntries();
+		purgePositionHistory();
 		StaffCore.pending().expireOldDebts(StaffConfig.get().debtExpiryDays);
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
 			preview.tick(server);
@@ -153,6 +158,7 @@ public class GriefModule implements Module {
 			if (++purgeTick >= 20 * 60 * 60 * 24) {
 				purgeTick = 0;
 				purgeOldEntries();
+				purgePositionHistory();
 				if (worker != null) worker.execute(points::purge);
 				if (worker != null) worker.execute(pickups::purge);
 				// Debts are anti-duplication, not sentences — see debtExpiryDays.
@@ -286,9 +292,33 @@ public class GriefModule implements Module {
 		}));
 	}
 
+	/**
+	 * Drops position history past its retention window.
+	 * <p>
+	 * Kept apart from {@link #purgeOldEntries} because the two answer different questions.
+	 * Block history is retired to stop a table growing without bound; position history is
+	 * retired because it is a record of where people have been, and keeping that for longer
+	 * than it is useful is a choice nobody should make by leaving a default alone. Its window
+	 * is days rather than weeks for the same reason.
+	 */
+	private void purgePositionHistory() {
+		int days = StaffConfig.get().positionRetentionDays;
+		if (days <= 0 || !StaffCore.storage().isReady() || worker == null) return;
+
+		long cutoff = System.currentTimeMillis() - days * 86_400_000L;
+		worker.execute(() ->
+				io.github.alphain24.staffcore.modules.replay.PositionLog.purge(cutoff));
+	}
+
 	@Override
 	public void onDisable() {
 		if (worker != null) {
+			// Queued before the shutdown so it runs behind the batches already accepted
+			// rather than racing them. Anything still in the sampler's queue at this point
+			// is the last few seconds of movement, which is the stretch somebody reaches for
+			// after a server goes down — the same reason the block log waits below.
+			worker.execute(io.github.alphain24.staffcore.modules.replay.PositionSampler::flush);
+
 			// Wait for the queue to drain. Block logging is asynchronous so a busy chunk of
 			// griefing does not stall the tick loop, which means at shutdown there are
 			// usually rows still queued — and shutdown() only stops new work, it does not
