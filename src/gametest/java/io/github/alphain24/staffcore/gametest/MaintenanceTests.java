@@ -47,12 +47,31 @@ public class MaintenanceTests {
 				&& answer.getString().equals(ControlModule.maintenanceScreen().getString());
 	}
 
+	/**
+	 * Runs {@code body} with maintenance mode on, and puts it back.
+	 *
+	 * <h2>It sets the flag; it does not clear the server</h2>
+	 * This was the one genuinely destructive thing in the suite, and it was destroying things.
+	 * {@code toggleMaintenance} disconnects every non-staff player in the player list, and
+	 * gametests inside a batch run <b>at the same time</b> — so every time this ran it kicked
+	 * whatever mock players other tests were part way through using. Five and seven of them,
+	 * measured. The tests that lost their player failed with "Failed to invoke test method",
+	 * which reads as an unrelated internal error.
+	 * <p>
+	 * It was believed safe because {@code Harness} said mock players are not in the player
+	 * list. They are: {@code makeMockServerPlayerInLevel} calls
+	 * {@code PlayerList.placeNewPlayer}, confirmed from the 26.2 bytecode.
+	 * <p>
+	 * So this sets the flag without the kick. Nothing is lost: what these tests assert is that
+	 * {@code canPlayerLogin} refuses the right people, which reads the flag. Emptying the
+	 * server is a separate behaviour and would need a test that owns its own player.
+	 */
 	private void withMaintenance(GameTestHelper helper, Runnable body) {
 		ControlModule control = Mods.control();
 		MinecraftServer server = Harness.server(helper);
 
 		boolean wasOn = control.isMaintenance();
-		if (!wasOn) control.toggleMaintenance(server);
+		if (!wasOn) control.setMaintenance(server, true, false);
 		try {
 			Harness.check(helper, control.isMaintenance(), "maintenance did not switch on");
 			body.run();

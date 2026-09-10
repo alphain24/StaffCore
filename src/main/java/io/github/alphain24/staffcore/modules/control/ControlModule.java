@@ -117,8 +117,36 @@ public class ControlModule implements Module {
 	}
 
 	public boolean toggleMaintenance(MinecraftServer server) {
-		maintenance = !maintenance;
+		return setMaintenance(server, !maintenance, true);
+	}
+
+	/**
+	 * Sets maintenance mode, and optionally clears the server of everybody who is not staff.
+	 *
+	 * <h2>Why the two halves are separable</h2>
+	 * Closing the door and emptying the room are different decisions. Turning maintenance on
+	 * always stops new logins — that is what the flag means, and the login gate reads it — but
+	 * disconnecting the people already here is a choice about them rather than about the door.
+	 * An admin who wants to stop new arrivals while finishing a conversation with whoever is
+	 * online wants the first without the second.
+	 * <p>
+	 * {@link #toggleMaintenance} is the command path and does both, which is the behaviour the
+	 * server has always had.
+	 *
+	 * @param disconnectPlayers whether to remove non-staff who are already connected
+	 * @return the new state
+	 */
+	public boolean setMaintenance(MinecraftServer server, boolean on,
+			boolean disconnectPlayers) {
+
+		maintenance = on;
 		applyMotd(server);
+
+		if (maintenance && !disconnectPlayers) {
+			StaffCore.LOGGER.info("[StaffCore] Maintenance mode on; existing players left "
+					+ "connected");
+			return true;
+		}
 
 		if (maintenance) {
 			// Announce before kicking, so anyone who stays (staff) sees why the server
