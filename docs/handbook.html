@@ -1125,6 +1125,55 @@
           </p>
         </div>
 
+        <h3 id="replay">Session replay</h3>
+        <p class="lede">
+          Watching where somebody went, from inside their own path. Off by default, and the
+          most invasive thing in this mod.
+        </p>
+        <p>
+          <code>/staff replay &lt;player&gt; [timespan]</code> reconstructs a window from the
+          position history and puts you in spectator at the start of it, moving along the route
+          the player took. <code>pause</code>, <code>resume</code>,
+          <code>speed 0.25</code>&ndash;<code>16</code>, <code>restart</code> and
+          <code>exit</code> do what they say. A sidebar carries the time, the coordinates, the
+          speed and how far through you are.
+        </p>
+        <p>
+          It only shows what was recorded. <strong>Switching
+          <code>positionTracking</code> on does not fill in the past</strong> &mdash; a replay
+          of last week on a server that started recording yesterday is empty, and says so
+          rather than showing an incomplete path as though it were the whole one.
+        </p>
+        <div class="note">
+          <p>
+            <span class="pill">Gaps are skipped, and announced</span>
+            Nothing is recorded while a player stands still, so a session with an hour of AFK
+            in it has an hour between two samples. Played at real speed that is an hour of
+            watching nothing; cut silently it is a teleport that reads as suspicious movement.
+            So a gap is held for a moment, then jumped, with a chat line naming how long it
+            was. What is being hidden is time, and hiding time without saying so is how a
+            replay becomes misleading evidence.
+          </p>
+        </div>
+        <div class="note">
+          <p>
+            <span class="pill">Not an anti-cheat</span>
+            Two samples a second says where somebody went. It says nothing reliable about
+            <em>how</em> they moved between them &mdash; the smooth motion you watch is this
+            mod interpolating between two readings half a second apart. Anything you think you
+            see about movement mechanics is a property of the interpolation, not of the player.
+            Raising <code>positionSampleHz</code> does not change that; it multiplies the
+            storage cost and buys detail the playback throws away again.
+          </p>
+        </div>
+        <p>
+          <code>staff.replay</code> is its own permission node and is in the
+          <code>admin</code> group by default, not <code>moderator</code>. Everything else here
+          shows what somebody did; this shows where they were, continuously, whether or not
+          they did anything. A server that wants its moderators to have it can grant it &mdash;
+          the default should not be the permissive one for this.
+        </p>
+
         <h3>What is stored about a person, and for how long</h3>
         <p class="lede">
           Two categories here are personal data rather than a record of conduct. They are
@@ -1180,7 +1229,8 @@
             that starts happening because they installed a moderation tool.
           </p>
           <p>
-            It is also, by a wide margin, the largest thing this mod can write.
+            It is also, by a wide margin, the largest thing this mod can write &mdash; see
+            <a href="#replay">Session replay</a> for what it buys.
             <code>/staff status</code> reports how much of it is on disk, whether tracking is
             currently on or off.
           </p>
@@ -2399,6 +2449,8 @@
               <tr><td class="mono">/staff seccheck &lt;player&gt;</td><td class="mono">security.check</td><td class="wrap">Run the checks</td></tr>
               <tr><td class="mono">/staff scan</td><td class="mono">security.itemscanner</td><td class="wrap">Sweep everyone online</td></tr>
               <tr><td class="mono">/staff xray &lt;player&gt; [hours]</td><td class="mono">security.check</td><td class="wrap">Score one player on demand, offline included</td></tr>
+              <tr><td class="mono">/staff replay &lt;player&gt; [timespan]</td><td class="mono">staff.replay</td><td class="wrap">Watch their session back from inside it. Needs <code>positionTracking</code> on, and only covers what was recorded after you switched it on</td></tr>
+              <tr><td class="mono">/staff replay pause &middot; resume &middot; speed &lt;0.25–16&gt; &middot; restart &middot; exit</td><td class="mono">staff.replay</td><td class="wrap">Playback controls</td></tr>
               <tr><td class="mono">/staff rollback &lt;player&gt; &lt;radius&gt; [minutes]</td><td class="mono">grief.rollback</td><td class="wrap">Undo their block changes</td></tr>
               <tr><td class="mono">/staff spy</td><td class="mono">control.spy</td><td class="wrap">Toggle command spy</td></tr>
               <tr><td class="mono">/staff clearchat</td><td class="mono">control.chat</td><td class="wrap">Push chat history off screen</td></tr>

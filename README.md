@@ -177,6 +177,8 @@ has already logged off.
 | `/staff lookup <player>` | `staff.gui` | Same as `/staff <player>` |
 | `/staff seccheck <player>` · `/staff scan` | `security.check`, `security.itemscanner` | Checks, sweep |
 | `/staff xray <player> [hours]` | `security.check` | Score one player on demand, offline included |
+| `/staff replay <player> [timespan]` | `staff.replay` | Watch their session back — needs `positionTracking` on |
+| `/staff replay pause · resume · speed · restart · exit` | `staff.replay` | Playback controls |
 | `/staff preview [area] …` | `grief.rollback` | What a rollback would change, writing nothing |
 | `/staff rollback <player> <radius> [minutes]` | `grief.rollback` | Undo block changes |
 | `/staff rollback undo [id \| list]` | `grief.rollback` | Undo a rollback — restore points kept 7 days |

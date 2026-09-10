@@ -87,4 +87,18 @@ public final class Nodes {
 	public static final String RATE_LIMIT_EXEMPT = "staff.ratelimit.exempt";
 	/** Confirm somebody else's staged mass rollback, IP ban or inventory edit. */
 	public static final String APPROVE         = "staff.approve";
+
+	// replay
+	/**
+	 * Watch back where a player went.
+	 * <p>
+	 * Its own node, and in the admin group by default, because it is the most invasive read
+	 * this mod offers. Everything else shows what somebody did — a block they broke, a chest
+	 * they opened. This shows where they were, continuously, for as long as the history is
+	 * kept, whether or not they did anything at all.
+	 * <p>
+	 * A server that wants its moderators to have it can grant it; the default should not be
+	 * the permissive one for this.
+	 */
+	public static final String REPLAY          = "staff.replay";
 }

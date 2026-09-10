@@ -823,6 +823,8 @@ public final class StaffCommands {
 		// irreversible thing in the mod — it overwrites whatever is standing there now — and
 		// the GUI has always shown a confirmation screen first. The commands did not, which
 		// meant the fastest way to run one was also the only way to run one blind.
+		registerReplay(staff);
+
 		staff.then(Commands.literal("preview")
 				.requires(src -> Permissions.check(src, Nodes.ROLLBACK))
 				.then(Commands.literal("area")
@@ -1685,6 +1687,104 @@ public final class StaffCommands {
 			}
 		}
 		return "";
+	}
+
+	// ----------------------------------------------------------------------- replay
+
+	/**
+	 * Watching a player's session back.
+	 * <p>
+	 * The controls are literals and come before the player argument, for the same reason
+	 * {@code /staff xray exit} does: a staff member trying to get out of a replay and instead
+	 * being told there is no player called "exit" is the worst possible moment for a parsing
+	 * surprise. Nobody is called pause, resume, restart, speed or exit either, and if they
+	 * were, the control is the thing they meant.
+	 */
+	private static void registerReplay(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		staff.then(Commands.literal("replay")
+				.requires(src -> Permissions.check(src, Nodes.REPLAY))
+				.then(Commands.literal("exit").executes(StaffCommands::replayExit))
+				.then(Commands.literal("pause")
+						.executes(ctx -> replayControl(ctx, io.github.alphain24.staffcore.modules
+								.replay.SessionReplay.pause(playerId(ctx), true))))
+				.then(Commands.literal("resume")
+						.executes(ctx -> replayControl(ctx, io.github.alphain24.staffcore.modules
+								.replay.SessionReplay.pause(playerId(ctx), false))))
+				.then(Commands.literal("restart")
+						.executes(ctx -> replayControl(ctx, io.github.alphain24.staffcore.modules
+								.replay.SessionReplay.restart(playerId(ctx)))))
+				.then(Commands.literal("speed")
+						.then(Commands.argument("rate", com.mojang.brigadier.arguments.DoubleArgumentType
+								.doubleArg(0.25, 16))
+								.executes(ctx -> replayControl(ctx, io.github.alphain24.staffcore
+										.modules.replay.SessionReplay.speed(playerId(ctx),
+												com.mojang.brigadier.arguments.DoubleArgumentType.getDouble(ctx, "rate"))))))
+				.then(Commands.argument("player", StringArgumentType.word())
+						.suggests(KNOWN_PLAYERS)
+						.executes(ctx -> replay(ctx, "10m"))
+						.then(Commands.argument("timespan", StringArgumentType.word())
+								.suggests((ctx, builder) -> {
+									for (String each : new String[] {"5m", "10m", "30m", "1h", "6h"}) {
+										builder.suggest(each);
+									}
+									return builder.buildFuture();
+								})
+								.executes(ctx -> replay(ctx,
+										StringArgumentType.getString(ctx, "timespan"))))));
+	}
+
+	private static java.util.UUID playerId(CommandContext<CommandSourceStack> ctx) {
+		ServerPlayer player = ctx.getSource().getPlayer();
+		return player == null ? null : player.getUUID();
+	}
+
+	/**
+	 * Starts a replay of somebody's session.
+	 * <p>
+	 * Audited before it runs rather than after it succeeds. Watching where a person went is the
+	 * kind of thing that should leave a record whether or not it found anything, and an audit
+	 * line written only on success is a search that can be repeated until it comes back empty.
+	 */
+	private static int replay(CommandContext<CommandSourceStack> ctx, String timespan)
+			throws CommandSyntaxException {
+
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		String name = StringArgumentType.getString(ctx, "player");
+
+		var parsed = io.github.alphain24.staffcore.util.DurationParser.of(timespan);
+		if (!parsed.valid() || parsed.millis() == null) {
+			return fail(ctx, parsed.problem() != null ? parsed.problem()
+					: "A replay needs a length \u2014 try 10m, 1h or 6h. \"forever\" is not one.");
+		}
+
+		var profile = io.github.alphain24.staffcore.util.PlayerLookup.profile(
+				ctx.getSource().getServer(), name);
+		if (profile.isEmpty()) {
+			return fail(ctx, "No player called \"" + name + "\" has been seen on this server.");
+		}
+
+		audit(ctx, "/staff replay " + profile.get().name() + " " + timespan);
+
+		var entry = io.github.alphain24.staffcore.modules.replay.SessionReplay.enter(
+				ctx.getSource().getServer(), self, profile.get().id(), profile.get().name(),
+				null, parsed.millis());
+
+		return entry.started() ? 1 : fail(ctx, entry.refusal());
+	}
+
+	private static int replayControl(CommandContext<CommandSourceStack> ctx, String message) {
+		if (message == null) return fail(ctx, "You are not watching a replay.");
+		return ok(ctx, message);
+	}
+
+	private static int replayExit(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		boolean left = io.github.alphain24.staffcore.modules.replay.ReplayStage.exit(
+				ctx.getSource().getServer(), self, null);
+
+		return left ? 1 : fail(ctx, "You are not in a replay.");
 	}
 
 	// ----------------------------------------------------------------------- status

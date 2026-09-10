@@ -45,6 +45,23 @@ public final class ReplaySidebar {
 	 * panel that is right in every particular and upside down.
 	 */
 	public static void show(ServerPlayer staff, XraySweep.Finding finding, int canaryHits) {
+		show(staff, lines(finding, canaryHits));
+	}
+
+	/**
+	 * Puts an arbitrary set of rows up for one viewer.
+	 * <p>
+	 * The x-ray replay shows four numbers about a dig and the session replay shows four about
+	 * a clock; the packet work is identical and the rows are not. Splitting it here means the
+	 * awkward parts — that scores sort descending so the reading order has to be inverted,
+	 * and that the entry name rather than the text is the key — are solved once.
+	 * <p>
+	 * <b>Rows are added, never removed.</b> Redrawing with fewer lines than last time leaves
+	 * the extra ones on screen, because nothing tells the client to drop a row. Every caller
+	 * here sends a fixed number, and one that did not would need to send blanks rather than a
+	 * shorter list.
+	 */
+	public static void show(ServerPlayer staff, List<String> lines) {
 		if (staff == null || staff.connection == null) return;
 
 		Objective objective = new Objective(new Scoreboard(), OBJECTIVE, ObjectiveCriteria.DUMMY,
@@ -57,7 +74,6 @@ public final class ReplaySidebar {
 		staff.connection.send(new ClientboundSetDisplayObjectivePacket(DisplaySlot.SIDEBAR,
 				objective));
 
-		List<String> lines = lines(finding, canaryHits);
 		for (int i = 0; i < lines.size(); i++) {
 			// The entry name is what a vanilla sidebar keys on and must be unique per row; the
 			// display component is what is actually drawn. Using the text as the key would

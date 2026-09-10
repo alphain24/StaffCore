@@ -243,6 +243,11 @@ public class StaffCore implements ModInitializer {
 			}
 		});
 
+		// The playback driver. One map-emptiness check per tick when nobody is watching
+		// anything, which is nearly always.
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(
+				io.github.alphain24.staffcore.modules.replay.SessionReplay::tick);
+
 		// Where players have been, if the server owner has asked for it. Off by default,
 		// and when it is off this costs one boolean read per interval and nothing else — the
 		// player list is not walked at all. See PositionSampler for which half of this runs

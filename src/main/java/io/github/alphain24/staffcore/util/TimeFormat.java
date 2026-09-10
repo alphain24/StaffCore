@@ -61,6 +61,18 @@ public final class TimeFormat {
 		return STAMP.withZone(zone).format(at) + " " + abbreviation(zone, at);
 	}
 
+	/**
+	 * {@code 14:22:07} in the configured zone.
+	 * <p>
+	 * For places where a full stamp would wrap and the date is already established — a
+	 * scoreboard row, a progress line. Never for a log entry or a chat line somebody might
+	 * read tomorrow, where a time with no date is a time that could be any day.
+	 */
+	public static String clock(long epochMillis) {
+		return java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")
+				.withZone(zone()).format(Instant.ofEpochMilli(epochMillis));
+	}
+
 	/** As {@link #stamp}, forced to UTC. For log lines, which are read from anywhere. */
 	public static String utcStamp(long epochMillis) {
 		return STAMP.withZone(ZoneId.of("UTC")).format(Instant.ofEpochMilli(epochMillis)) + " UTC";
