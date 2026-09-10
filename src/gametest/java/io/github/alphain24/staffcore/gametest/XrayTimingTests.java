@@ -42,17 +42,36 @@ public class XrayTimingTests {
 		// Synchronous, so the timing is of the work rather than of the scheduler. The
 		// production path runs the read half on a worker; what is measured here is the same
 		// code doing the same amount of it.
-		XraySweep.forPlayer(Harness.server(helper), "timing-0", 6L * 3_600_000L);
-		XraySweep.Timing timing = XraySweep.lastTiming();
+		//
+		// Five runs, and the assertion is against the fastest, not the last one. A single
+		// wall-clock sample on a machine that is also compiling, running a second server, or
+		// deciding to garbage-collect measures the machine as much as the code — this test
+		// failed about twice in twelve runs for exactly that reason, at 27ms and 41ms against
+		// a budget of 25ms, while the honest figure is well under a millisecond.
+		//
+		// The minimum is the right statistic for a budget question. It is the least
+		// contaminated by scheduling noise, and it still moves when the code gets slower:
+		// nothing makes the fastest of five runs faster except the work being smaller. A mean
+		// or a last-sample would have to be given slack to stop flaking, and slack is how a
+		// guard stops guarding.
+		XraySweep.Timing timing = null;
+		for (int run = 0; run < 5; run++) {
+			XraySweep.forPlayer(Harness.server(helper), "timing-0", 6L * 3_600_000L);
+			XraySweep.Timing sample = XraySweep.lastTiming();
+			if (timing == null || sample.censusMicros() < timing.censusMicros()) timing = sample;
+		}
 
-		StaffCore.LOGGER.info("[XrayTiming] {} players x {} breaks: read {}us, census {}us "
-						+ "({} block states), arithmetic {}us, total {}us",
+		StaffCore.LOGGER.info("[XrayTiming] {} players x {} breaks (best of 5): read {}us, "
+						+ "census {}us ({} block states), arithmetic {}us, total {}us",
 				PLAYERS, BREAKS_EACH, timing.readMicros(), timing.censusMicros(),
 				timing.blocksRead(), timing.mathMicros(), timing.totalMicros());
 
 		// A tick is 50 milliseconds. The census is the only part that lands on one, and it
 		// has to be a rounding error against that rather than merely smaller — this runs
 		// every few minutes on a server that is also doing everything else.
+		//
+		// Against the best of five, so a failure here means the work got bigger rather than
+		// that the machine was busy.
 		Harness.check(helper, timing.censusMicros() < 25_000,
 				"the census took " + timing.censusMicros() + "us on the server thread, which is "
 						+ "more than half a tick. It is the one part that cannot move off, so "

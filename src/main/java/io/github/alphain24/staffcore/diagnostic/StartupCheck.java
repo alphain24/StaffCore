@@ -124,6 +124,21 @@ public final class StartupCheck {
 					"com.mojang.brigadier.ParseResults", "java.lang.String"),
 			new Target(Tier.IMPORTANT, "Staff tools cannot be dropped", "net.minecraft.world.entity.player.Inventory",
 					"dropAll", "staffcore$keepToolsOutOfTheWorld", MIXIN_PKG + "InventoryDropMixin"),
+			// Every block StaffCore shows one client and the world does not have — decoys,
+			// the replay overlay, the rollback preview — is a delta against the chunk that
+			// client holds. Sending the chunk again erases the lot, and nothing on the server
+			// notices. This puts them back in the same call.
+			//
+			// IMPORTANT rather than OPTIONAL because losing it switches no feature off. Decoys
+			// go on being placed, counted and reported as live while evaporating from every
+			// client that reloads a chunk — so the true-positive rate goes to zero and the
+			// false-positive rate stays at zero, which reads as the feature working perfectly.
+			new Target(Tier.IMPORTANT, "Client-side block illusions survive a chunk resend",
+					"net.minecraft.server.network.PlayerChunkSender",
+					"sendChunk", "staffcore$reassertIllusions", MIXIN_PKG + "ChunkSendMixin",
+					"net.minecraft.server.network.ServerGamePacketListenerImpl",
+					"net.minecraft.server.level.ServerLevel",
+					"net.minecraft.world.level.chunk.LevelChunk"),
 			// Without this, creeper and TNT damage never reaches the log at all, and the area
 			// reads as though nothing happened there.
 			new Target(Tier.IMPORTANT, "Explosion damage log", "net.minecraft.world.level.ServerExplosion",

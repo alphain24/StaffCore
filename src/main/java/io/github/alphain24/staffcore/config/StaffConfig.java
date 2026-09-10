@@ -454,6 +454,27 @@ public final class StaffConfig {
 	 */
 	public int canaryCaseThreshold = 3;
 
+	/**
+	 * Place decoys even when a bulk anti-xray mod is installed.
+	 * <p>
+	 * <b>This is not a supported mode and the name is deliberately awkward so it cannot be
+	 * mistaken for one.</b> It exists for compatibility testing, and signals produced with it
+	 * on are not defensible in an appeal.
+	 * <p>
+	 * The reason is not a technical conflict, it is what the player sees. A bulk anti-xray in
+	 * engine mode 2 fills the world with fabricated ore, so an x-ray user is already looking at
+	 * a screen full of ore that is not there. They learn within an hour that what the pack shows
+	 * them is meaningless and stop acting on any of it. That does not merely make a canary hit
+	 * harder to interpret — <em>it removes the true positives</em>. Nobody walks to a decoy
+	 * because nobody walks to anything.
+	 * <p>
+	 * What it is genuinely for: finding out whether the two mods' block updates fight. Both
+	 * write to the same positions — StaffCore asserts a decoy, the anti-xray deobfuscates
+	 * around a moving player — and ordering there decides who wins. That question needs
+	 * answering, and it cannot be answered with the feature switched off.
+	 */
+	public boolean canaryForceWithBulkAntiXray = false;
+
 	// ---- display -------------------------------------------------------------
 
 	/**

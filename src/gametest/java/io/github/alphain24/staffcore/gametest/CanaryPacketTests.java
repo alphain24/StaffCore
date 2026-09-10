@@ -46,7 +46,6 @@ public class CanaryPacketTests {
 	public void theDecoyMatchesTheRockAroundIt(GameTestHelper helper) {
 		// A diamond ore in a netherrack wall announces itself as fake to exactly the players
 		// this is aimed at, which costs the decoy its whole purpose.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
 
@@ -55,19 +54,16 @@ public class CanaryPacketTests {
 		Harness.check(helper, shownAt(stone) == Blocks.DIAMOND_ORE,
 				"stone got " + shownAt(stone) + " rather than diamond ore");
 
-		Canaries.forgetAll();
 		BlockPos deepslate = encased(helper, 1, 2, 1, Blocks.DEEPSLATE);
 		Canaries.placeAt(player, level, deepslate);
 		Harness.check(helper, shownAt(deepslate) == Blocks.DEEPSLATE_DIAMOND_ORE,
 				"deepslate got " + shownAt(deepslate) + ", which is the wrong ore for the rock");
 
-		Canaries.forgetAll();
 		BlockPos netherrack = encased(helper, 1, 2, 1, Blocks.NETHERRACK);
 		Canaries.placeAt(player, level, netherrack);
 		Harness.check(helper, shownAt(netherrack) == Blocks.ANCIENT_DEBRIS,
 				"netherrack got " + shownAt(netherrack) + " instead of ancient debris");
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 
@@ -75,7 +71,6 @@ public class CanaryPacketTests {
 	public void thePacketCarriesTheDecoyAtTheDecoyPosition(GameTestHelper helper) {
 		// One step short of watching a screen: the packet that would go out carries the state
 		// we chose, at the position we chose. What it cannot show is the client drawing it.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
 		BlockPos pos = encased(helper, 1, 2, 1, Blocks.STONE);
@@ -94,7 +89,6 @@ public class CanaryPacketTests {
 				"the packet carries what is really there, so it tells the client nothing and "
 						+ "no x-ray user would ever see a decoy");
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 
@@ -102,7 +96,6 @@ public class CanaryPacketTests {
 	public void theResyncCarriesTheRealBlock(GameTestHelper helper) {
 		// The other half. A resync that carried the decoy again would leave a ghost block in
 		// the world for that player forever, and they would eventually mine at it.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		BlockPos pos = encased(helper, 1, 2, 1, Blocks.STONE);
 
@@ -112,7 +105,6 @@ public class CanaryPacketTests {
 		Harness.check(helper, packet.getBlockState().is(Blocks.STONE),
 				"the resync carries " + packet.getBlockState() + " where the world has stone");
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 

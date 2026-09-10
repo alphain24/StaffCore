@@ -51,7 +51,6 @@ public class ReplayViewTests {
 
 	private static void clean(ServerPlayer staff) {
 		ReplaySession.clear(staff.getUUID());
-		XrayReplayView.forgetAll();
 	}
 
 	@GameTest

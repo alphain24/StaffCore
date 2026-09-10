@@ -136,6 +136,19 @@ public final class AntiXrayCompanion {
 	public static void log() {
 		StaffCore.LOGGER.info("[StaffCore] {}", startupLine());
 
+		// Loud, every boot, and it names the consequence rather than the setting. A server
+		// that leaves this on by accident produces canary signals that read exactly like
+		// ordinary ones and mean something entirely different.
+		if (Canaries.inUnsupportedMode()) {
+			StaffCore.LOGGER.warn("[StaffCore] canaryForceWithBulkAntiXray is ON and a bulk "
+					+ "anti-xray is installed. Decoys are being placed anyway. This is a "
+					+ "compatibility-testing mode, not a supported one: with fabricated ore "
+					+ "everywhere an x-ray user stops trusting any of it, so decoys lose their "
+					+ "true positives rather than just their interpretation. CANARY SIGNALS "
+					+ "PRODUCED IN THIS MODE ARE NOT DEFENSIBLE IN AN APPEAL. Set it back to "
+					+ "false unless you are deliberately testing the interaction.");
+		}
+
 		String off = whyCanariesAreOff();
 		if (off != null) StaffCore.LOGGER.info("[StaffCore] {}", off);
 	}

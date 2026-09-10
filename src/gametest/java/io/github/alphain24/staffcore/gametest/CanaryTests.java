@@ -46,7 +46,6 @@ public class CanaryTests {
 
 	@GameTest
 	public void breakingTheDecoyItselfIsAHit(GameTestHelper helper) {
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
 		BlockPos centre = encasedStone(helper, 1, 2, 1);
@@ -61,7 +60,6 @@ public class CanaryTests {
 						+ "as a hit — that is the one case there is no honest route to");
 		Harness.checkEquals(helper, 1, Canaries.hitsFor(player.getUUID()), "the hit was not counted");
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 
@@ -69,7 +67,6 @@ public class CanaryTests {
 	public void breakingANeighbourRetiresItInstead(GameTestHelper helper) {
 		// The false positive this exists to prevent. An ordinary miner exposes the decoy on
 		// their way past; without this rule the next swing is logged as x-ray.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
 		BlockPos centre = encasedStone(helper, 1, 2, 1);
@@ -84,7 +81,6 @@ public class CanaryTests {
 		Harness.checkEquals(helper, 0, Canaries.hitsFor(player.getUUID()),
 				"exposing a decoy counted as a hit, which is the false positive itself");
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 
@@ -92,7 +88,6 @@ public class CanaryTests {
 	public void aDecoyExposedThenMinedIsNotAHit(GameTestHelper helper) {
 		// The full sequence, in order, because the two rules above are only worth anything
 		// together: expose, then mine. This is what an honest tunnel actually looks like.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
 		BlockPos centre = encasedStone(helper, 1, 2, 1);
@@ -106,7 +101,6 @@ public class CanaryTests {
 						+ "That is an ordinary miner being reported for x-ray.");
 		Harness.checkEquals(helper, 0, Canaries.hitsFor(player.getUUID()), "and it was counted");
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 
@@ -114,7 +108,6 @@ public class CanaryTests {
 	public void somebodyElseBreakingItIsNotEvidenceAgainstThem(GameTestHelper helper) {
 		// Only the owner was told the block was there. Another player reaching it is a
 		// coincidence, and recording that as evidence would be the worst thing here.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer owner = Harness.mockPlayer(helper);
 		ServerPlayer stranger = Harness.mockPlayer(helper);
@@ -130,7 +123,6 @@ public class CanaryTests {
 		Harness.checkEquals(helper, 0, Canaries.liveFor(owner.getUUID()),
 				"the decoy should still be gone — the block it described no longer exists");
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 
@@ -138,7 +130,6 @@ public class CanaryTests {
 	public void anExplosionRetiresWhatItUncovers(GameTestHelper helper) {
 		// Explosions destroy blocks with no break event at all. Missing this leaves a decoy
 		// standing in a crater, visible to anybody walking past.
-		Canaries.forgetAll();
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
 		BlockPos centre = encasedStone(helper, 1, 2, 1);
@@ -151,7 +142,6 @@ public class CanaryTests {
 		Harness.checkEquals(helper, 0, Canaries.hitsFor(player.getUUID()),
 				"an explosion was recorded as somebody finding the decoy");
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 
@@ -159,7 +149,6 @@ public class CanaryTests {
 	public void placementRefusesRockThatIsNotSealed(GameTestHelper helper) {
 		// A decoy in a wall somebody can see is not a question, it is bait — and the answer it
 		// produces is meaningless because the honest explanation is "I looked at it".
-		Canaries.forgetAll();
 		ServerPlayer player = Harness.mockPlayer(helper);
 
 		BlockPos exposed = encasedStone(helper, 1, 2, 1);
@@ -173,7 +162,6 @@ public class CanaryTests {
 				"sealing it back up did not make it acceptable, so the check is refusing "
 						+ "everything and would place nothing at all");
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 
@@ -182,7 +170,6 @@ public class CanaryTests {
 		// Overwriting a real ore would hide it; overwriting anything with a block entity
 		// would show the client a chest that is not there. The whitelist is the safe
 		// direction, so an unknown modded block is skipped rather than lied about.
-		Canaries.forgetAll();
 		BlockPos centre = encasedStone(helper, 1, 2, 1);
 
 		for (var block : List.of(Blocks.DIAMOND_ORE, Blocks.CHEST, Blocks.OAK_PLANKS)) {
@@ -191,7 +178,6 @@ public class CanaryTests {
 					"a decoy would have been placed over " + block.getName().getString());
 		}
 
-		Canaries.forgetAll();
 		helper.succeed();
 	}
 }

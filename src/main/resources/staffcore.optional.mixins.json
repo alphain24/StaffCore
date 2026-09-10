@@ -10,6 +10,7 @@
   "package": "io.github.alphain24.staffcore.mixin",
   "mixins": [
     "BlockItemMixin",
+    "ChunkSendMixin",
     "CommandsMixin",
     "ContainerCloseMixin",
     "ExplosionMixin",

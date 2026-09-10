@@ -1,4 +1,4 @@
-# One session, seven claims
+# One session, seven claims — and one that needs its own
 
 **Status:** NOT YET RUN
 **Run by:** _______________
@@ -17,6 +17,12 @@ looking at a screen. They are written up in three scripts:
 - [`vanish.md`](vanish.md) — three claims about vanish
 - [`replay.md`](replay.md) — two claims about session replay
 
+There is a fourth script, [`antixray-compat.md`](antixray-compat.md), and it is deliberately
+**not** part of this session. It needs a bulk anti-xray mod installed, which switches decoys off
+and would invalidate the decoy half of everything below. Run it separately, on its own, when you
+have twenty minutes — it answers a question nothing else can: whether a bulk anti-xray's block
+updates and StaffCore's overwrite each other, and in which direction.
+
 This file sequences them so the setup happens **once**. Run in this order and nothing has to be
 installed, configured or restarted twice. About **thirty-five minutes** end to end.
 
@@ -34,7 +40,7 @@ installed, configured or restarted twice. About **thirty-five minutes** end to e
 | A **test server** running StaffCore | The config changes below are not for production |
 | **Two accounts** that can be online together | Vanish check 3 needs a second pair of eyes |
 | An **x-ray resource pack** for this Minecraft version | Decoy checks 1 and 2. A resource pack, not a cheat client — search "xray resource pack" |
-| **No anti-xray mod** | StaffCore turns decoys off entirely when one is present, and will correctly tell you so instead of testing anything |
+| **No anti-xray mod** | StaffCore turns decoys off entirely when one is present, and will correctly tell you so instead of testing anything. If you want to test the interaction, that is [`antixray-compat.md`](antixray-compat.md), on its own |
 
 Confirm the last one before anything else: run `/staff status` and check the anti-xray line
 says **"none installed"**. If it names a mod, remove it and restart, or the decoy half of this
