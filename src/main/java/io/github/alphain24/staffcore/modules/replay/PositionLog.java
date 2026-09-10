@@ -366,10 +366,13 @@ public final class PositionLog {
 	/**
 	 * The average bytes a sample occupies on disk, including its share of the run row.
 	 * <p>
-	 * Measured, not guessed — see {@code PositionGrowthTest}, which writes a known number of
-	 * player-hours and reads the file size. Used only when SQLite cannot be asked directly.
+	 * Measured, not guessed — {@code PositionGrowthTest} writes a known number of
+	 * player-hours and asks SQLite how much bigger the file got: 163,840 bytes for 7,197
+	 * samples, or 22.8 each including the page the last few sit in. Used only when SQLite
+	 * cannot be asked directly, and that test fails if this drifts from the truth, because
+	 * {@code /staff status} shows it to server owners as a size.
 	 */
-	public static final int BYTES_PER_SAMPLE = 21;
+	public static final int BYTES_PER_SAMPLE = 22;
 
 	public static Size size() {
 		if (!StaffCore.storage().isReady()) return new Size(0, 0, 0, true);

@@ -1254,6 +1254,16 @@
             currently on or off.
           </p>
           <p>
+            <strong>Measured cost, at the default 2&nbsp;Hz:</strong> about
+            <strong>160&nbsp;KB per player-hour</strong> of continuous movement, and about
+            <strong>80&nbsp;KB</strong> for an hour in which the player is actually moving half
+            the time &mdash; nothing is written while somebody stands still. Twenty players
+            online for four hours a day, moving half of it, is roughly
+            <strong>45&nbsp;MB a week</strong>, which the seven-day retention window then keeps
+            flat. Raising <code>positionSampleHz</code> multiplies all of these by the same
+            factor.
+          </p>
+          <p>
             Nothing about it is nudged towards being on. There is no alert telling you the
             replay would have helped, and no prompt when a case is opened. If you do not need
             it, leaving it alone is the supported configuration.
