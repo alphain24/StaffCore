@@ -783,6 +783,20 @@ public final class StaffConfig {
 	public boolean positionTracking = false;
 
 	/**
+	 * Watch a replay through a camera entity rather than by moving the viewer.
+	 * <p>
+	 * A position packet aimed at the receiving player is authoritative, so the client snaps to
+	 * it with no smoothing. Twenty a second is therefore twenty discrete camera positions a
+	 * second however fast the machine draws — it looks like a very low frame rate. Every other
+	 * entity is interpolated across frames, so spectating one that moves is smooth for free.
+	 * <p>
+	 * On by default because it is strictly better to look at. Turn it off if a replay misbehaves
+	 * in a way the old approach did not: it costs one invisible marker armour stand per viewer,
+	 * and moving the player directly is the simpler path with fewer moving parts.
+	 */
+	public boolean replaySmoothCamera = true;
+
+	/**
 	 * How many position samples to take per second, per moving player.
 	 * <p>
 	 * Two is enough to see where somebody went, which route they took and roughly how fast.

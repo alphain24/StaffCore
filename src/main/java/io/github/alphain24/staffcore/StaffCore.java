@@ -216,6 +216,12 @@ public class StaffCore implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(
 				io.github.alphain24.staffcore.modules.security.XrayReplayView::restoreAfterRestart);
 
+		// A server that stopped mid-replay leaves its camera entity behind. Invisible, no
+		// hitbox, does nothing — and invisible harmless entities accumulating in a world is
+		// how somebody ends up debugging an entity count months later.
+		ServerLifecycleEvents.SERVER_STARTED.register(
+				io.github.alphain24.staffcore.modules.replay.ReplayCamera::sweep);
+
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(mc -> {
 			// A minute of lateness on a ban that has already lasted a week is nothing, and a
 			// query per tick to find that out would be absurd. Enforcement does not depend on

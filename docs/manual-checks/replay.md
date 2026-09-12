@@ -112,6 +112,16 @@ Pick whichever describes it:
 - **Nothing moves.** The playback driver is not ticking.
 - **It jumps between points rather than moving between them.** Interpolation is not happening —
   the replay is showing sample positions only, which at 2 Hz is a slideshow.
+- **It moves continuously but judders, like a low frame rate.** The camera is not gliding. The
+  replay is driven at twenty updates a second, which is the server's ceiling, so smoothness has
+  to come from the client interpolating between them — and that only happens because the view
+  is a camera entity rather than your own player.
+
+  **A/B it:** set `replaySmoothCamera` to `false`, restart, and watch the same window again.
+  That is the old behaviour, where your own player was teleported twenty times a second. If the
+  two look identical, the camera is not doing its job and the interpolation duration is the
+  thing to check. If `false` is visibly worse, it is working and the remaining judder is the
+  2 Hz sampling showing through.
 - **The thirty seconds of standing still plays out in real time with no chat line.** Gap
   detection is not firing, and a replay of a long session will be mostly waiting.
 - **It skips without saying so.** Worse than the above: time is being removed from the

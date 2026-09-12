@@ -82,6 +82,14 @@ public final class SessionReplay {
 		/** Blocks this player changed in the window, oldest first. Never null; often empty. */
 		final List<PathEvents.Change> changes;
 
+		/**
+		 * The entity the viewer is looking through, or null when moving them directly.
+		 * <p>
+		 * Null is a supported state, not a failure: the config can ask for the direct path, and
+		 * a camera that could not be created falls back to it rather than refusing to replay.
+		 */
+		net.minecraft.world.entity.Entity camera;
+
 		/** How many were painted last redraw, so the overlay is only resent when it moves. */
 		int paintedThrough = -1;
 
@@ -181,7 +189,17 @@ public final class SessionReplay {
 		LIVE.put(staff.getUUID(), playback);
 
 		ReplayStage.begin(staff, level, start.x(), start.y(), start.z(),
-				start.yaw(), start.pitch(), () -> LIVE.remove(staff.getUUID()));
+				start.yaw(), start.pitch(), () -> {
+					Playback ending = LIVE.remove(staff.getUUID());
+					if (ending != null) ReplayCamera.close(staff, ending.camera);
+				});
+
+		// After begin, because setCamera teleports the viewer to the camera and begin has just
+		// finished deciding where they should be.
+		if (io.github.alphain24.staffcore.config.StaffConfig.get().replaySmoothCamera) {
+			playback.camera = ReplayCamera.open(staff, level, start.x(), start.y(), start.z(),
+					start.yaw(), start.pitch());
+		}
 
 		describe(staff, playback);
 		drawOverlay(staff, playback);
@@ -321,7 +339,13 @@ public final class SessionReplay {
 		switch (step(playback)) {
 			case Step.End ignored -> finish(staff, playback);
 			case Step.Move move -> {
-				if (staff.level() instanceof ServerLevel level) {
+				if (playback.camera != null && !playback.camera.isRemoved()) {
+					// The camera carries the motion and the client interpolates it. The viewer
+					// is only dragged along when they drift far enough to risk the camera
+					// leaving their tracking range.
+					ReplayCamera.moveTo(staff, playback.camera, move.x(), move.y(), move.z(),
+							move.yaw(), move.pitch());
+				} else if (staff.level() instanceof ServerLevel level) {
 					staff.teleportTo(level, move.x(), move.y(), move.z(), Set.of(),
 							move.yaw(), move.pitch(), false);
 				}
@@ -356,8 +380,21 @@ public final class SessionReplay {
 			finish(staff, playback);
 			return;
 		}
+		// The camera cannot cross worlds, so the old one goes and a new one opens in the new
+		// level. Closing first also puts the viewer's own eyes back before they are moved.
+		ReplayCamera.close(staff, playback.camera);
+		playback.camera = null;
+
 		ReplayStage.begin(staff, next, skip.x(), skip.y(), skip.z(), skip.yaw(), skip.pitch(),
-				() -> LIVE.remove(staff.getUUID()));
+				() -> {
+					Playback ending = LIVE.remove(staff.getUUID());
+					if (ending != null) ReplayCamera.close(staff, ending.camera);
+				});
+
+		if (io.github.alphain24.staffcore.config.StaffConfig.get().replaySmoothCamera) {
+			playback.camera = ReplayCamera.open(staff, next, skip.x(), skip.y(), skip.z(),
+					skip.yaw(), skip.pitch());
+		}
 	}
 
 	private static void finish(ServerPlayer staff, Playback playback) {
