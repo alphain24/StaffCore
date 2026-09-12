@@ -790,11 +790,16 @@ public final class StaffConfig {
 	 * second however fast the machine draws — it looks like a very low frame rate. Every other
 	 * entity is interpolated across frames, so spectating one that moves is smooth for free.
 	 * <p>
-	 * On by default because it is strictly better to look at. Turn it off if a replay misbehaves
-	 * in a way the old approach did not: it costs one invisible marker armour stand per viewer,
-	 * and moving the player directly is the simpler path with fewer moving parts.
+	 * <b>Off by default, and that is a retreat rather than a preference.</b> It shipped on,
+	 * described as strictly better to look at, and the first person to try it reported the
+	 * replay was buggier than before. The claim had never been watched working — the whole
+	 * point of the flag was that it could not be verified from this side — so defaulting to
+	 * the unverified path was the wrong way round.
+	 * <p>
+	 * Turn it on to try it. The old path moves the viewer's own player, which is simpler, has
+	 * fewer moving parts, and is known to work.
 	 */
-	public boolean replaySmoothCamera = true;
+	public boolean replaySmoothCamera = false;
 
 	/**
 	 * How many position samples to take per second, per moving player.

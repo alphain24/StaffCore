@@ -137,8 +137,14 @@ public final class ReplayCamera {
 
 		// Only when they have drifted. Doing this every tick would put back exactly the
 		// per-tick player teleport this class exists to remove.
-		if (staff.distanceToSqr(camera) > LEASH * LEASH) {
-			staff.teleportTo(x, y, z);
+		//
+		// The full form, not teleportTo(x, y, z): that one builds its move with yaw and pitch
+		// of zero, so every leash pull silently span the viewer's own body to face north. It
+		// is invisible while they are looking through the camera and very visible the moment
+		// they are not.
+		if (staff.distanceToSqr(camera) > LEASH * LEASH
+				&& staff.level() instanceof ServerLevel level) {
+			staff.teleportTo(level, x, y, z, java.util.Set.of(), yaw, pitch, false);
 		}
 	}
 
