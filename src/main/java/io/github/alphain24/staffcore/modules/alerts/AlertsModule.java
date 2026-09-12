@@ -54,22 +54,20 @@ public class AlertsModule implements Module {
 	}
 
 	// ------------------------------------------------------------------ producers
+	//
+	// Deliberately short. Reports and x-ray used to have channels of their own here, and both
+	// are now signals that announce through the case model instead — onSuspiciousMining had
+	// no caller at all, and onReport's only caller sent the same report a second time. A
+	// channel nothing uses still reads as a live alert to whoever audits this list, which is
+	// precisely how "most alerts do not seem to work" becomes impossible to answer.
 
 	public void onPunishment(MinecraftServer server, String staff, String target,
 			PunishmentType type, String reason) {
 		discordOnly("punish", "%s %s %s — %s".formatted(staff, type.pastTense(), target, reason));
 	}
 
-	public void onReport(MinecraftServer server, String reporter, String target, String reason) {
-		broadcast(server, "Report", "%s reported %s — %s".formatted(reporter, target, reason), Theme.WARN);
-	}
-
 	public void onSecurityFlag(MinecraftServer server, String player, String detail) {
 		broadcast(server, "Security", "%s — %s".formatted(player, detail), Theme.BAD);
-	}
-
-	public void onSuspiciousMining(MinecraftServer server, String player, String detail) {
-		broadcast(server, "X-ray", "%s — %s".formatted(player, detail), Theme.BAD);
 	}
 
 	public void onPerformance(MinecraftServer server, String detail) {

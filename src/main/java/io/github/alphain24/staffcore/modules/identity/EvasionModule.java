@@ -67,7 +67,12 @@ public class EvasionModule implements Module {
 		// silent — and one arriving about a player who is already under investigation should
 		// join that case, because "the account they logged in beside is banned" is the
 		// context an investigator wants and the alert channel could never provide.
-		Mods.cases().emit(server, io.github.alphain24.staffcore.modules.cases.Signal.Type.ALT_MATCH,
+		// Recorded, not emitted. notifyStaff below says more than a signal can — every linked
+		// account, the reasons for the match, and where to look — so letting the signal
+		// announce as well put two messages in front of staff for one join. The signal still
+		// lands, because it is what joins an open case and what a lookup shows later.
+		Mods.cases().record(server,
+				io.github.alphain24.staffcore.modules.cases.Signal.Type.ALT_MATCH,
 				joiner.getUUID(), Mc.name(joiner), strongest.confidence(), detail, "evasion");
 
 		notifyStaff(server, joiner, names, strongest);
@@ -112,6 +117,10 @@ public class EvasionModule implements Module {
 
 		for (ServerPlayer staff : server.getPlayerList().getPlayers()) {
 			if (!Permissions.check(staff, Nodes.ALTS)) continue;
+			// This used to send straight to anybody with staff.alts, ignoring /alerts. Somebody
+			// who had silenced alerts still got this one, which is the kind of exception that
+			// teaches people the toggle does not work.
+			if (!Mods.alerts().isSubscribed(staff)) continue;
 			staff.sendSystemMessage(line);
 			staff.sendSystemMessage(confidence);
 			staff.sendSystemMessage(hint);

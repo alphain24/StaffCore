@@ -616,8 +616,10 @@ public final class StaffCommands {
 
 		switch (result) {
 			case OK -> {
-				Mods.alerts().onReport(ctx.getSource().getServer(),
-						Mc.name(reporter), Mc.name(target), reason);
+				// No direct alert here any more. Filing a report emits a REPORT signal, and the
+				// signal announces itself — at the default confidence it opens a case, so staff
+				// are told loudly and given the case id. This line used to send its own alert
+				// as well, which put the same report in front of staff twice.
 				Sfx.success(reporter);
 				return ok(ctx, "Report submitted. Staff have been told.");
 			}

@@ -90,6 +90,46 @@ public class CaseModule implements Module {
 	 * @return where the signal landed, for a caller that wants to say more about it
 	 */
 	public CaseStore.Landing emit(MinecraftServer server, Signal signal) {
+		CaseStore.Landing landing = land(server, signal);
+		announce(server, landing);
+		return landing;
+	}
+
+	/**
+	 * Records a signal without announcing it.
+	 *
+	 * <h2>Why this exists</h2>
+	 * For a producer that already tells staff something richer than a signal can carry. Ban
+	 * evasion is the case: it names every linked account, the reasons for the match and where
+	 * to look next, and it did so directly. When announcing became unconditional, that producer
+	 * started alerting twice — its own message and then the signal's — and a channel that says
+	 * everything twice trains people to read neither.
+	 * <p>
+	 * The signal still has to land. It is what joins an open case, what a lookup shows later,
+	 * and what the training corpus is built from; dropping it to avoid the duplicate would have
+	 * traded a noisy alert for a silent gap in the evidence.
+	 */
+	public CaseStore.Landing record(MinecraftServer server, Signal signal) {
+		return land(server, signal);
+	}
+
+	/** Convenience for {@link #record(MinecraftServer, Signal)} in the common shape. */
+	public CaseStore.Landing record(MinecraftServer server, Signal.Type type, UUID subject,
+			String subjectName, int confidence, String detail, String sourceModule) {
+
+		return record(server, Signal.of(type, subject, subjectName, confidence, detail,
+				sourceModule));
+	}
+
+	/**
+	 * Stores a signal and returns where it went.
+	 * <p>
+	 * A storage failure used to return straight out of {@link #emit}, skipping the
+	 * announcement — so a database that was briefly unavailable silenced every detector at
+	 * once, and silently. The signal is lost either way; the alert does not have to be. It now
+	 * comes back as an unattached landing, which the announcer still speaks.
+	 */
+	private CaseStore.Landing land(MinecraftServer server, Signal signal) {
 		CaseStore.Landing landing;
 		try {
 			landing = store.ingest(signal);
@@ -105,8 +145,6 @@ public class CaseModule implements Module {
 		io.github.alphain24.staffcore.modules.accountability.Witnesses.record(server,
 				io.github.alphain24.staffcore.modules.accountability.Witnesses.Kind.SIGNAL,
 				String.valueOf(landing.signal().id()), landing.signal().subjectName());
-
-		announce(server, landing);
 		return landing;
 	}
 
