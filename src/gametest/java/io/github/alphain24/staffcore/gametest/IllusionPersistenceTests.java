@@ -63,7 +63,7 @@ public class IllusionPersistenceTests {
 				BlockIllusions.countFor(player.getUUID(), BlockIllusions.Source.CANARY),
 				"placing a decoy did not register an illusion, so nothing can put it back");
 
-		int sent = BlockIllusions.onChunkSent(player, chunkX(pos), chunkZ(pos));
+		int sent = BlockIllusions.onChunkSent(player, level, chunkX(pos), chunkZ(pos));
 
 		Harness.checkEquals(helper, 1, sent,
 				"a chunk holding one live decoy was sent to its owner and nothing was "
@@ -84,14 +84,14 @@ public class IllusionPersistenceTests {
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
 
-		Harness.checkEquals(helper, 0, BlockIllusions.onChunkSent(player, 1000, 1000),
+		Harness.checkEquals(helper, 0, BlockIllusions.onChunkSent(player, level, 1000, 1000),
 				"a chunk with nothing in it re-asserted something");
 
 		BlockPos pos = encased(helper, 1, 2, 1);
 		Canaries.placeAt(player, level, pos);
 
 		Harness.checkEquals(helper, 0,
-				BlockIllusions.onChunkSent(player, chunkX(pos) + 8, chunkZ(pos)),
+				BlockIllusions.onChunkSent(player, level, chunkX(pos) + 8, chunkZ(pos)),
 				"an illusion in one chunk was re-sent when a different chunk went out. The "
 						+ "store is meant to be indexed by chunk, so this hook does work "
 						+ "proportional to what is in the chunk that moved rather than to "
@@ -122,7 +122,7 @@ public class IllusionPersistenceTests {
 						+ "draw it again on the next resend — putting a fake ore back on the "
 						+ "screen of somebody the retirement rule has already cleared");
 		Harness.checkEquals(helper, 0,
-				BlockIllusions.onChunkSent(player, chunkX(pos), chunkZ(pos)),
+				BlockIllusions.onChunkSent(player, level, chunkX(pos), chunkZ(pos)),
 				"a retired decoy was re-asserted when its chunk was sent");
 
 		helper.succeed();
@@ -139,7 +139,7 @@ public class IllusionPersistenceTests {
 		BlockPos overlay = encased(helper, 5, 2, 5);
 
 		Canaries.placeAt(player, level, decoy);
-		BlockIllusions.show(player, BlockIllusions.Source.REPLAY, overlay,
+		BlockIllusions.show(player, level, BlockIllusions.Source.REPLAY, overlay,
 				Blocks.TINTED_GLASS.defaultBlockState());
 
 		Harness.checkEquals(helper, 1,
@@ -162,6 +162,45 @@ public class IllusionPersistenceTests {
 	}
 
 	@GameTest
+	public void anIllusionDoesNotFollowTheChunkIntoAnotherWorld(GameTestHelper helper) {
+		// The defect: a chunk key is x and z, and a block update packet carries no dimension
+		// at all — it applies wherever the client happens to be. So an illusion registered in
+		// the Overworld at chunk (4, -9) was re-asserted the instant its owner loaded chunk
+		// (4, -9) in the Nether, and drawn there.
+		//
+		// It hit all three features at once, and it is invisible in the store because the
+		// defect is in what the key was missing rather than in anything it held.
+		ServerLevel here = helper.getLevel();
+		ServerPlayer player = Harness.mockPlayer(helper);
+		BlockPos pos = encased(helper, 1, 2, 1);
+
+		Canaries.placeAt(player, here, pos);
+		Harness.checkEquals(helper, 1,
+				BlockIllusions.onChunkSent(player, here, chunkX(pos), chunkZ(pos)),
+				"the decoy was not re-asserted in its own world, so this test cannot show "
+						+ "that it is withheld from another one");
+
+		ServerLevel elsewhere = null;
+		for (ServerLevel level : Harness.server(helper).getAllLevels()) {
+			if (level != here) {
+				elsewhere = level;
+				break;
+			}
+		}
+		Harness.check(helper, elsewhere != null,
+				"this server has only one world, so the cross-world case cannot be exercised");
+
+		Harness.checkEquals(helper, 0,
+				BlockIllusions.onChunkSent(player, elsewhere, chunkX(pos), chunkZ(pos)),
+				"an illusion from one world was re-asserted when the same chunk coordinates "
+						+ "were sent in another. A block update has no dimension, so it would "
+						+ "be drawn there: a fake ore in netherrack at coordinates nobody "
+						+ "chose, put back every time that chunk arrives.");
+
+		helper.succeed();
+	}
+
+	@GameTest
 	public void aDisconnectDropsEverythingWithoutSending(GameTestHelper helper) {
 		// A reconnecting client is sent honest chunks from scratch, so there is nothing to
 		// correct. What matters is that nothing stays registered — otherwise the chunk-send
@@ -176,7 +215,7 @@ public class IllusionPersistenceTests {
 		Harness.checkEquals(helper, 0, BlockIllusions.chunksFor(player.getUUID()),
 				"a disconnect left illusions registered for a player who is gone");
 		Harness.checkEquals(helper, 0,
-				BlockIllusions.onChunkSent(player, chunkX(pos), chunkZ(pos)),
+				BlockIllusions.onChunkSent(player, level, chunkX(pos), chunkZ(pos)),
 				"illusions were re-asserted for a player who had disconnected");
 
 		helper.succeed();

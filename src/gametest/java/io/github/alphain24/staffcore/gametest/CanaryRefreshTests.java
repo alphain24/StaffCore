@@ -117,7 +117,7 @@ public class CanaryRefreshTests {
 				"a retired decoy came back on the next maintenance pass, which undoes the "
 						+ "rule that protects honest miners after it has already fired");
 		Harness.checkEquals(helper, 0,
-				BlockIllusions.onChunkSent(player, pos.getX() >> 4, pos.getZ() >> 4),
+				BlockIllusions.onChunkSent(player, level, pos.getX() >> 4, pos.getZ() >> 4),
 				"a retired decoy was re-asserted when its chunk was sent");
 
 		helper.succeed();

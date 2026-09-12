@@ -86,8 +86,25 @@ public final class BlockIllusions {
 
 	private record Held(Source source, BlockState shown) {}
 
-	/** viewer -> chunk key -> position -> what they are being shown. */
-	private static final Map<UUID, Map<Long, Map<BlockPos, Held>>> SHOWN =
+	/**
+	 * Which chunk, in which world.
+	 *
+	 * <h2>The world is not decoration</h2>
+	 * A chunk key is x and z. A {@link ClientboundBlockUpdatePacket} carries a position and a
+	 * state and <b>no dimension at all</b> — it applies wherever the client happens to be.
+	 * <p>
+	 * So keying by chunk alone meant a decoy in the Overworld at chunk (4, -9) was re-asserted
+	 * the moment its owner loaded chunk (4, -9) in the Nether, and drawn there: a fake ore in
+	 * netherrack, at coordinates nobody chose, put back by the hook every time that chunk
+	 * arrived. All three features at once, exactly as the first bug in this class was.
+	 * <p>
+	 * The defect was in what the key was <em>missing</em> rather than in anything it contained,
+	 * which is why reading the store did not show it.
+	 */
+	private record Where(String world, long chunk) {}
+
+	/** viewer -> where -> position -> what they are being shown. */
+	private static final Map<UUID, Map<Where, Map<BlockPos, Held>>> SHOWN =
 			new ConcurrentHashMap<>();
 
 	/**
@@ -96,8 +113,9 @@ public final class BlockIllusions {
 	 * {@code ChunkPos.pack} — this is {@code asLong} in most versions and was renamed in 26.2.
 	 * See the version-sensitive list in decisions.md.
 	 */
-	private static long key(BlockPos pos) {
-		return ChunkPos.pack(pos);
+	private static Where key(ServerLevel level, BlockPos pos) {
+		return new Where(io.github.alphain24.staffcore.compat.Mc.dimensionId(level),
+				ChunkPos.pack(pos));
 	}
 
 	// ---------------------------------------------------------------- showing
@@ -107,11 +125,16 @@ public final class BlockIllusions {
 	 * <p>
 	 * Remembering is the whole point. Sending the packet was never the hard part.
 	 */
-	public static void show(ServerPlayer viewer, Source source, BlockPos pos, BlockState shown) {
-		if (viewer == null || viewer.connection == null || pos == null || shown == null) return;
+	public static void show(ServerPlayer viewer, ServerLevel level, Source source, BlockPos pos,
+			BlockState shown) {
+
+		if (viewer == null || viewer.connection == null || level == null || pos == null
+				|| shown == null) {
+			return;
+		}
 
 		SHOWN.computeIfAbsent(viewer.getUUID(), k -> new ConcurrentHashMap<>())
-				.computeIfAbsent(key(pos), k -> new LinkedHashMap<>())
+				.computeIfAbsent(key(level, pos), k -> new LinkedHashMap<>())
 				.put(pos.immutable(), new Held(source, shown));
 
 		viewer.connection.send(new ClientboundBlockUpdatePacket(pos, shown));
@@ -132,7 +155,7 @@ public final class BlockIllusions {
 		for (BlockPos gone : mine(viewer.getUUID(), source).keySet()) {
 			if (!blocks.containsKey(gone)) hide(viewer, level, source, gone);
 		}
-		blocks.forEach((pos, state) -> show(viewer, source, pos, state));
+		blocks.forEach((pos, state) -> show(viewer, level, source, pos, state));
 	}
 
 	/**
@@ -146,28 +169,58 @@ public final class BlockIllusions {
 	public static void hide(ServerPlayer viewer, ServerLevel level, Source source, BlockPos pos) {
 		if (viewer == null || pos == null) return;
 
-		Map<Long, Map<BlockPos, Held>> chunks = SHOWN.get(viewer.getUUID());
-		if (chunks == null) return;
+		Map<Where, Map<BlockPos, Held>> chunks = SHOWN.get(viewer.getUUID());
+		if (chunks == null || level == null) return;
 
-		Map<BlockPos, Held> here = chunks.get(key(pos));
+		Where where = key(level, pos);
+		Map<BlockPos, Held> here = chunks.get(where);
 		if (here == null) return;
 
 		Held held = here.get(pos);
 		if (held == null || held.source() != source) return;
 
 		here.remove(pos);
-		if (here.isEmpty()) chunks.remove(key(pos));
+		if (here.isEmpty()) chunks.remove(where);
 
 		if (viewer.connection != null && level != null) {
 			viewer.connection.send(new ClientboundBlockUpdatePacket(level, pos));
 		}
 	}
 
-	/** Takes down everything one source is showing this viewer, leaving the others up. */
+	/**
+	 * Takes down everything one source is showing this viewer, in every world, leaving the
+	 * other sources up.
+	 * <p>
+	 * Every world, not only the one they are standing in. A replay that followed somebody
+	 * through a portal has illusions on both sides of it, and leaving the far side registered
+	 * would have the chunk-send hook draw them again the next time that player went back.
+	 * <p>
+	 * The correcting packet goes only to the world they are actually in. There is nothing to
+	 * correct anywhere else: the client is not there, and it is sent the honest chunk when it
+	 * arrives.
+	 */
 	public static void clear(ServerPlayer viewer, ServerLevel level, Source source) {
 		if (viewer == null) return;
-		for (BlockPos pos : Map.copyOf(mine(viewer.getUUID(), source)).keySet()) {
-			hide(viewer, level, source, pos);
+
+		Map<Where, Map<BlockPos, Held>> chunks = SHOWN.get(viewer.getUUID());
+		if (chunks == null) return;
+
+		String here = level == null ? null
+				: io.github.alphain24.staffcore.compat.Mc.dimensionId(level);
+
+		for (Map.Entry<Where, Map<BlockPos, Held>> entry : Map.copyOf(chunks).entrySet()) {
+			boolean sameWorld = entry.getKey().world().equals(here);
+
+			for (Map.Entry<BlockPos, Held> shown : Map.copyOf(entry.getValue()).entrySet()) {
+				if (shown.getValue().source() != source) continue;
+
+				entry.getValue().remove(shown.getKey());
+				if (sameWorld && viewer.connection != null) {
+					viewer.connection.send(
+							new ClientboundBlockUpdatePacket(level, shown.getKey()));
+				}
+			}
+			if (entry.getValue().isEmpty()) chunks.remove(entry.getKey());
 		}
 	}
 
@@ -186,8 +239,9 @@ public final class BlockIllusions {
 	 *
 	 * @return how many illusions were re-asserted, for tests and diagnostics
 	 */
-	public static int onChunkSent(ServerPlayer viewer, int chunkX, int chunkZ) {
-		return onChunkSent(viewer, ChunkPos.pack(chunkX, chunkZ));
+	public static int onChunkSent(ServerPlayer viewer, ServerLevel level, int chunkX,
+			int chunkZ) {
+		return onChunkSent(viewer, level, ChunkPos.pack(chunkX, chunkZ));
 	}
 
 	/**
@@ -197,13 +251,16 @@ public final class BlockIllusions {
 	 * The hook has a {@code ChunkPos} in hand and its {@code x} and {@code z} fields are
 	 * private in 26.2, so this spares it unpacking a key only to have it packed again.
 	 */
-	public static int onChunkSent(ServerPlayer viewer, long chunkKey) {
-		if (SHOWN.isEmpty() || viewer == null || viewer.connection == null) return 0;
+	public static int onChunkSent(ServerPlayer viewer, ServerLevel level, long chunkKey) {
+		if (SHOWN.isEmpty() || viewer == null || viewer.connection == null || level == null) {
+			return 0;
+		}
 
-		Map<Long, Map<BlockPos, Held>> chunks = SHOWN.get(viewer.getUUID());
+		Map<Where, Map<BlockPos, Held>> chunks = SHOWN.get(viewer.getUUID());
 		if (chunks == null || chunks.isEmpty()) return 0;
 
-		Map<BlockPos, Held> here = chunks.get(chunkKey);
+		Map<BlockPos, Held> here = chunks.get(new Where(
+				io.github.alphain24.staffcore.compat.Mc.dimensionId(level), chunkKey));
 		if (here == null || here.isEmpty()) return 0;
 
 		int sent = 0;
@@ -246,7 +303,7 @@ public final class BlockIllusions {
 	/** What one source is currently showing one viewer. Never null. */
 	public static Map<BlockPos, BlockState> mine(UUID viewer, Source source) {
 		Map<BlockPos, BlockState> out = new LinkedHashMap<>();
-		Map<Long, Map<BlockPos, Held>> chunks = SHOWN.get(viewer);
+		Map<Where, Map<BlockPos, Held>> chunks = SHOWN.get(viewer);
 		if (chunks == null) return out;
 
 		for (Map<BlockPos, Held> here : chunks.values()) {
@@ -263,7 +320,7 @@ public final class BlockIllusions {
 
 	/** How many chunks hold something for this viewer. For the per-chunk cost assertion. */
 	public static int chunksFor(UUID viewer) {
-		Map<Long, Map<BlockPos, Held>> chunks = SHOWN.get(viewer);
+		Map<Where, Map<BlockPos, Held>> chunks = SHOWN.get(viewer);
 		return chunks == null ? 0 : chunks.size();
 	}
 

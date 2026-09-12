@@ -61,6 +61,6 @@ public class ChunkSendMixin {
 			ServerLevel level, LevelChunk chunk, CallbackInfo ci) {
 
 		if (connection.player == null) return;
-		BlockIllusions.onChunkSent(connection.player, chunk.getPos().pack());
+		BlockIllusions.onChunkSent(connection.player, level, chunk.getPos().pack());
 	}
 }

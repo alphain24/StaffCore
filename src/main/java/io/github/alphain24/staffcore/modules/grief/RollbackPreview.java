@@ -68,7 +68,7 @@ public final class RollbackPreview {
 			// Remembered so the preview can be taken down exactly, rather than by guessing
 			// or by asking the client to reload a chunk.
 			real.put(pos.immutable(), level.getBlockState(pos));
-			io.github.alphain24.staffcore.illusion.BlockIllusions.show(viewer,
+			io.github.alphain24.staffcore.illusion.BlockIllusions.show(viewer, level,
 					io.github.alphain24.staffcore.illusion.BlockIllusions.Source.PREVIEW,
 					pos, entry.getValue());
 			drawn++;

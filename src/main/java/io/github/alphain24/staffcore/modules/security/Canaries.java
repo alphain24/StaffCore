@@ -203,7 +203,8 @@ public final class Canaries {
 		// Through BlockIllusions rather than straight down the connection. The packet is the
 		// easy part; what matters is that something now remembers this client is being lied
 		// to, so the chunk-send hook can put it back when a resend wipes it.
-		io.github.alphain24.staffcore.illusion.BlockIllusions.show(player, io.github.alphain24.staffcore.illusion.BlockIllusions.Source.CANARY, fixed, shown);
+		io.github.alphain24.staffcore.illusion.BlockIllusions.show(player, level,
+				io.github.alphain24.staffcore.illusion.BlockIllusions.Source.CANARY, fixed, shown);
 		return true;
 	}
 
