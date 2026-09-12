@@ -216,6 +216,11 @@ public class DiagnosticsMenu extends PagedGui<StartupCheck.Finding> {
 
 	@Override
 	protected Runnable backTarget() {
-		return () -> StaffPanelMenu.open(viewer);
+		return () -> StaffSections.server(viewer);
+	}
+
+	@Override
+	protected String backLabel() {
+		return "Server";
 	}
 }

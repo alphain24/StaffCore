@@ -345,6 +345,11 @@ public class VaultMenu extends PagedGui<ContrabandVault.Entry> {
 
 	@Override
 	protected Runnable backTarget() {
-		return () -> StaffPanelMenu.open(viewer);
+		return () -> StaffSections.security(viewer);
+	}
+
+	@Override
+	protected String backLabel() {
+		return "Security";
 	}
 }

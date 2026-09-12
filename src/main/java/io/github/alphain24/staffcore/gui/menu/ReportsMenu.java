@@ -184,6 +184,11 @@ public class ReportsMenu extends PagedGui<ReportModule.Report> {
 
 	@Override
 	protected Runnable backTarget() {
-		return () -> StaffPanelMenu.reopen(viewer);
+		return () -> StaffSections.punishments(viewer);
+	}
+
+	@Override
+	protected String backLabel() {
+		return "Punishments";
 	}
 }

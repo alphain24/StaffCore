@@ -182,10 +182,7 @@ public class ContrabandMenu extends Gui {
 					.build(), click -> VaultMenu.open(viewer));
 		}
 
-		button(SLOT_BACK, Icon.of(Items.ARROW)
-				.name("Back", Theme.MUTED)
-				.action("Click", "return to the staff panel")
-				.build(), click -> StaffPanelMenu.open(viewer));
+		backButton(SLOT_BACK, "Security", () -> StaffSections.security(viewer));
 
 		button(SLOT_CLOSE, Icon.of(Items.BARRIER)
 				.name("Close", Theme.MUTED)

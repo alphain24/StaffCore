@@ -144,7 +144,12 @@ public class AnalyticsMenu extends PagedGui<AnalyticsModule.StaffStat> {
 
 	@Override
 	protected Runnable backTarget() {
-		return () -> StaffPanelMenu.reopen(viewer);
+		return () -> StaffSections.server(viewer);
+	}
+
+	@Override
+	protected String backLabel() {
+		return "Server";
 	}
 
 	@Override

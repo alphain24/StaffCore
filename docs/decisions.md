@@ -1650,6 +1650,38 @@ there is nothing to run and nothing that needed running.
 
 ---
 
+## Back follows the path you took
+
+Every back arrow used to name its own destination, and most named the staff panel. That was
+right when the panel was one flat page. Once the panel was split into sections, it was wrong
+almost everywhere: the player list is reached from Players, X-ray and Session replay, so a fixed
+destination can be right for one of them at most, and "back" from two screens deep meant
+starting over.
+
+So `Guis` keeps a short history per viewer (`NavigationHistory`), and every arrow is drawn by
+`Gui.backButton`. Click goes back one screen along the path actually taken; shift-click goes to
+the panel. The arrow names the screen it goes back to, read from that screen's title, so it
+does not repeat its author's guess.
+
+- **Screens are compared by class.** Steve's file and Alex's file count as the same screen.
+  Opening the screen already on top replaces it (a filter change is not a new level). An
+  explicit return (`goBack`) drops everything above the screen it returns to, so a finished
+  punishment is not one click behind the file.
+- **A confirmation is never stepped back into.** Rebuilding one would put "Do it." back in front
+  of somebody who already did it, with a fresh open time that passes the staleness check.
+  `ConfirmMenu` is replaced by whatever it opens next instead of staying underneath it.
+- **A screen whose opener does real work re-enters through that opener.** Invsee ends its edit
+  session on close, so rebuilding it from the old factory would bring back a session that no
+  longer exists. It and the ender chest go back through `open`, which re-runs their checks.
+- **The history is dropped when the menus close for real**, and on disconnect. A path through
+  screens that are no longer open would send the next command-opened screen back to wherever
+  staff were an hour ago. Without a history, each arrow falls back to its old fixed destination,
+  now the screen's section rather than the panel.
+- **Shift-click checks `staff.gui`.** Some sub-screens can be opened without it, so reaching one
+  does not prove the viewer is allowed the panel.
+
+---
+
 ---
 
 <a id="testing-layers"></a>
@@ -1859,6 +1891,8 @@ public class ExampleModule implements Module {
 ```
 
 Register it in `StaffCore.registerModules()`, add a typed accessor to `Mods`, add any nodes
-to `Nodes`, and hang a button off `StaffPanelMenu`. Menus extend `Gui` (fixed layout) or
+to `Nodes`, and add an entry to the section it belongs in, in `StaffSections`
+(`SectionCoverageTest` fails on a screen nothing opens). Menus extend `Gui` (fixed layout) or
 `PagedGui<T>` (28-entry list with page controls) — describe the screen in `build()` and
-call `render()` at the end of your constructor.
+call `render()` at the end of your constructor. Draw the back arrow with `backButton`, never
+by hand: it follows the viewer's path and takes a fallback for when there is none.

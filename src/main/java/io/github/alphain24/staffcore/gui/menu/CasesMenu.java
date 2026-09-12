@@ -153,4 +153,14 @@ public class CasesMenu extends PagedGui<Case> {
 		int next = current.ordinal() + 1;
 		return next >= all.length ? null : all[next];
 	}
+
+	@Override
+	protected Runnable backTarget() {
+		return () -> StaffSections.security(viewer);
+	}
+
+	@Override
+	protected String backLabel() {
+		return "Security";
+	}
 }

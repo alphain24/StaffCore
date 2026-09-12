@@ -66,8 +66,7 @@ public class ManualPunishMenu extends Gui {
 
 		set(RECORD, recordCard());
 
-		button(BACK, Theme.backButton(target.name() + "'s file"), click ->
-				PlayerActionsMenu.reopen(viewer, target));
+		backButton(BACK, target.name() + "'s file", () -> PlayerActionsMenu.reopen(viewer, target));
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());
 	}

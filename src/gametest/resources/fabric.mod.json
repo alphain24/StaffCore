@@ -24,6 +24,7 @@
 			"io.github.alphain24.staffcore.gametest.CanaryPersistenceTests",
 			"io.github.alphain24.staffcore.gametest.IllusionPersistenceTests",
 			"io.github.alphain24.staffcore.gametest.SidebarLifecycleTests",
+			"io.github.alphain24.staffcore.gametest.NavigationTests",
 			"io.github.alphain24.staffcore.gametest.ReplayCameraTests"
 		]
 	},

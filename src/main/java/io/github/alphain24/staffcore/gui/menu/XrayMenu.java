@@ -103,10 +103,8 @@ public final class XrayMenu extends Gui {
 			}
 		});
 
-		button(BACK, Icon.of(Items.ARROW)
-				.name("Back", Theme.MUTED)
-				.lore("Pick a different player.")
-				.build(), click -> PlayerListMenu.open(viewer, PlayerListMenu.Purpose.XRAY));
+		backButton(BACK, "the player list",
+				() -> PlayerListMenu.open(viewer, PlayerListMenu.Purpose.XRAY));
 
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());

@@ -208,12 +208,12 @@ public class AppealsMenu extends PagedGui<AppealModule.Appeal> {
 	@Override
 	protected Runnable backTarget() {
 		return only == null
-				? () -> StaffPanelMenu.reopen(viewer)
+				? () -> StaffSections.punishments(viewer)
 				: () -> PlayerActionsMenu.reopen(viewer, only);
 	}
 
 	@Override
 	protected String backLabel() {
-		return only == null ? "the staff panel" : only.name() + "'s file";
+		return only == null ? "Punishments" : only.name() + "'s file";
 	}
 }

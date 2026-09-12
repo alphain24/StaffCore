@@ -88,8 +88,8 @@ public class ReasonMenu extends Gui {
 									+ "add a reason and send it."));
 				});
 
-		button(BACK, Theme.backButton(draft.base().supportsDuration() ? "the duration list" : "the punish menu"),
-				click -> {
+		backButton(BACK, draft.base().supportsDuration() ? "the duration list" : "the punish menu",
+				() -> {
 					if (draft.base().supportsDuration()) DurationMenu.open(viewer, draft);
 					else ManualPunishMenu.reopen(viewer, draft.target());
 				});

@@ -95,10 +95,7 @@ public final class SectionMenu extends Gui {
 			place(SLOTS[i], entries.get(i));
 		}
 
-		button(BACK, Icon.of(Items.ARROW)
-				.name("Back", Theme.MUTED)
-				.lore("Return to the staff panel.")
-				.build(), click -> StaffPanelMenu.reopen(viewer));
+		backButton(BACK, "the staff panel", () -> StaffPanelMenu.reopen(viewer));
 
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());

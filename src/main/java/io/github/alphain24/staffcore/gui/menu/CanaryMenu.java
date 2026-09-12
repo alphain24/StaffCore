@@ -74,10 +74,7 @@ public final class CanaryMenu extends Gui {
 
 		if (on) placePositions();
 
-		button(BACK, Icon.of(Items.ARROW)
-				.name("Back", Theme.MUTED)
-				.lore("Return to X-ray & cheats.")
-				.build(), click -> StaffSections.antiCheat(viewer));
+		backButton(BACK, "X-ray & cheats", () -> StaffSections.antiCheat(viewer));
 
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());

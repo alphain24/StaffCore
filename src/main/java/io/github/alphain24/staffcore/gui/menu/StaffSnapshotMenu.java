@@ -135,7 +135,7 @@ public final class StaffSnapshotMenu extends Gui {
 		}
 
 		if (back != null) {
-			button(SLOT_BACK, Theme.backButton("the leaderboard"), click -> back.run());
+			backButton(SLOT_BACK, "the leaderboard", back);
 		}
 		button(SLOT_CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 

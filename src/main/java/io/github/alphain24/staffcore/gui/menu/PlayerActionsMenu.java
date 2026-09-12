@@ -181,8 +181,7 @@ public class PlayerActionsMenu extends Gui {
 		buildIdentityBand(live);
 		buildStatusCards(ban, mute);
 
-		button(BACK, Theme.backButton("the player list"), click ->
-				PlayerListMenu.openForInspection(viewer));
+		backButton(BACK, "the player list", () -> PlayerListMenu.openForInspection(viewer));
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());
 	}

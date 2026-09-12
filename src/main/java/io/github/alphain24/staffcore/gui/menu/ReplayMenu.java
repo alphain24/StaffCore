@@ -141,10 +141,8 @@ public final class ReplayMenu extends Gui {
 	}
 
 	private void navigation() {
-		button(BACK, Icon.of(Items.ARROW)
-				.name("Back", Theme.MUTED)
-				.lore("Pick a different player.")
-				.build(), click -> PlayerListMenu.open(viewer, PlayerListMenu.Purpose.REPLAY));
+		backButton(BACK, "the player list",
+				() -> PlayerListMenu.open(viewer, PlayerListMenu.Purpose.REPLAY));
 
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());

@@ -58,8 +58,7 @@ public class DurationMenu extends Gui {
 			place(SLOTS[i], presets.get(i));
 		}
 
-		button(BACK, Theme.backButton("the punish menu"), click ->
-				ManualPunishMenu.reopen(viewer, draft.target()));
+		backButton(BACK, "the punish menu", () -> ManualPunishMenu.reopen(viewer, draft.target()));
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());
 	}

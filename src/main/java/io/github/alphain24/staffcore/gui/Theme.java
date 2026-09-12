@@ -63,6 +63,8 @@ public final class Theme {
 		return Icon.of(Items.ARROW)
 				.name("Back", ACCENT)
 				.lore("Return to " + to + ".")
+				.gap()
+				.lore("Shift-click: staff panel", MUTED)
 				.build();
 	}
 

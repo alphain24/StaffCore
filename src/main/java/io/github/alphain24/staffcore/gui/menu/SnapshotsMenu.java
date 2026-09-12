@@ -278,7 +278,7 @@ public class SnapshotsMenu extends PagedGui<InventoryModule.Snapshot> {
 					.lore("Read-only. This is a copy.")
 					.build());
 
-			button(45, Theme.backButton("the snapshot list"), click -> reopen(viewer, target));
+			backButton(45, "the snapshot list", () -> reopen(viewer, target));
 			button(53, Theme.closeButton(), click -> viewer.closeContainer());
 
 			for (int i = 41; i < size; i++) {

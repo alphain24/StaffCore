@@ -239,8 +239,7 @@ public class BlockHistoryMenu extends Gui {
 					});
 		}
 
-		button(SLOT_BACK, Theme.backButton("the staff panel"),
-				click -> StaffPanelMenu.reopen(viewer));
+		backButton(SLOT_BACK, "the staff panel", () -> StaffPanelMenu.reopen(viewer));
 
 		button(SLOT_CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 	}

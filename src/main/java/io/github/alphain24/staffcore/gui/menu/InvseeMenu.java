@@ -131,6 +131,17 @@ public class InvseeMenu extends Gui {
 	 * {@code Gui.removed} guarantees it — so there is no way to make a change and avoid the
 	 * record by leaving abruptly.
 	 */
+	/**
+	 * Back into an inventory goes through {@link #open} again. This screen's edit session ends
+	 * when it closes — including when staff step into an item's details — so the old factory
+	 * would rebuild it around a session that no longer exists, and around a live-or-stored
+	 * choice that may have changed since.
+	 */
+	@Override
+	protected Runnable reentry() {
+		return () -> open(viewer, target);
+	}
+
 	@Override
 	protected void onClosed() {
 		// The closer's permissions are resolved here rather than carried from when the
@@ -174,8 +185,8 @@ public class InvseeMenu extends Gui {
 
 		set(SLOT_HEAD, headerIcon(editing, live));
 
-		button(SLOT_BACK, Theme.backButton(target.name() + "'s file"), click ->
-				PlayerActionsMenu.reopen(viewer, target));
+		backButton(SLOT_BACK, target.name() + "'s file",
+				() -> PlayerActionsMenu.reopen(viewer, target));
 
 		buildEnderChestButton(live);
 		buildSnapshotButton(live);

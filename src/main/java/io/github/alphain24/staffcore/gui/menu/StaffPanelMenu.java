@@ -64,6 +64,11 @@ public class StaffPanelMenu extends Gui {
 		Guis.goBack(viewer, Theme.title(), StaffPanelMenu::new);
 	}
 
+	/** Shift-click on any back arrow: the panel, with the path behind it forgotten. */
+	public static void home(ServerPlayer viewer) {
+		Guis.home(viewer, Theme.title(), StaffPanelMenu::new);
+	}
+
 	private StaffPanelMenu(int containerId, Inventory playerInventory, ServerPlayer viewer) {
 		super(containerId, playerInventory, viewer, 6);
 		render();

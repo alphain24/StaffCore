@@ -90,8 +90,7 @@ public class PunishMenu extends Gui {
 			ManualPunishMenu.open(viewer, target);
 		});
 
-		button(BACK, Theme.backButton(target.name() + "'s file"), click ->
-				PlayerActionsMenu.reopen(viewer, target));
+		backButton(BACK, target.name() + "'s file", () -> PlayerActionsMenu.reopen(viewer, target));
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());
 	}

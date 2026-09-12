@@ -66,7 +66,10 @@ public abstract class PagedGui<T> extends Gui {
 	/** The item shown in the middle of the top row. */
 	protected abstract ItemStack header();
 
-	/** Where the back arrow goes, or {@code null} for a root screen. */
+	/**
+	 * Where the back arrow goes when there is no path to follow — the screen was opened by a
+	 * command — or {@code null} for a screen with no arrow. With a path, back follows it.
+	 */
 	protected Runnable backTarget() {
 		return null;
 	}
@@ -166,7 +169,7 @@ public abstract class PagedGui<T> extends Gui {
 
 		Runnable back = backTarget();
 		if (back != null) {
-			button(SLOT_BACK, Theme.backButton(backLabel()), click -> back.run());
+			backButton(SLOT_BACK, backLabel(), back);
 		}
 		button(SLOT_CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 

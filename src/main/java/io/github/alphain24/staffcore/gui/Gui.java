@@ -51,6 +51,13 @@ public abstract class Gui extends ChestMenu {
 	private final Action[] buttons;
 	private boolean navigating;
 
+	/** The slot {@link #backButton} painted, or -1 for a screen without one. */
+	private int backSlot = -1;
+	private String backFallbackLabel;
+	private Runnable backFallback;
+	/** Where the history says back leads; wins over the fallback label once known. */
+	private String backLabel;
+
 	protected Gui(int containerId, Inventory playerInventory, ServerPlayer viewer, int rows, Container backing) {
 		super(typeForRows(rows), containerId, playerInventory, backing, rows);
 		this.viewer = viewer;
@@ -271,6 +278,80 @@ public abstract class Gui extends ChestMenu {
 		sendAllDataToRemote();
 	}
 
+	// ------------------------------------------------------------------ going back
+
+	/**
+	 * The back arrow. Click for one level back along the path actually taken; shift-click for
+	 * the staff panel.
+	 * <p>
+	 * One helper rather than a button per menu, because the per-menu version is what went
+	 * wrong: every screen named its own destination, most of them named the panel, and the
+	 * sections made each of those guesses wrong at once.
+	 *
+	 * @param fallbackLabel what to call {@code fallback} when there is no path to follow
+	 * @param fallback      where back goes when the screen was opened by a command, or the
+	 *                      path was lost when the menus closed; {@code null} closes it
+	 */
+	protected void backButton(int slot, String fallbackLabel, Runnable fallback) {
+		this.backSlot = slot;
+		this.backFallbackLabel = fallbackLabel;
+		this.backFallback = fallback;
+		button(slot, Theme.backButton(backLabel != null ? backLabel : fallbackLabel), click -> {
+			if (click.isShift()) {
+				home();
+			} else {
+				Guis.back(viewer, backFallback);
+			}
+		});
+	}
+
+	/**
+	 * Shift-click on back. The panel is gated on {@code staff.gui} at the command and at the
+	 * toolset item, and a sub-screen can be opened without it — so the gate is checked here
+	 * too rather than assumed from having got this far.
+	 */
+	private void home() {
+		if (!io.github.alphain24.staffcore.permission.Permissions.check(viewer,
+				io.github.alphain24.staffcore.permission.Nodes.STAFF_GUI)) {
+			viewer.sendSystemMessage(Theme.bad("You do not have "
+					+ io.github.alphain24.staffcore.permission.Nodes.STAFF_GUI + "."));
+			Sfx.deny(viewer);
+			return;
+		}
+		io.github.alphain24.staffcore.gui.menu.StaffPanelMenu.home(viewer);
+	}
+
+	/**
+	 * Told by {@link Guis} once this screen is in the history, so the arrow can name the
+	 * screen it really returns to instead of the one its author assumed.
+	 */
+	void arrivedFrom(String label) {
+		this.backLabel = label;
+		if (backSlot < 0 || buttons[backSlot] == null) return;
+		backing.setItem(backSlot, Theme.backButton(label));
+		broadcastChanges();
+	}
+
+	/**
+	 * False for a screen that must never be rebuilt from history. A confirmation is the case:
+	 * its button runs the action, so stepping back into one offers to do it again.
+	 */
+	protected boolean returnable() {
+		return true;
+	}
+
+	/**
+	 * How back re-enters this screen, or {@code null} — the default — to rebuild it from the
+	 * factory that first made it.
+	 * <p>
+	 * A screen whose opener does real work should return that opener: one that starts an edit
+	 * session, or reads a live-or-stored source, or checks something that could have changed
+	 * while staff were a level deeper.
+	 */
+	protected Runnable reentry() {
+		return null;
+	}
+
 	// -------------------------------------------------------------------- lifecycle
 
 	/** Marks that the next close is a hop to another menu, not the player leaving. */
@@ -295,6 +376,9 @@ public abstract class Gui extends ChestMenu {
 		super.removed(player);
 		if (!navigating) {
 			Sfx.close(viewer);
+			// Closed for real. A path back through screens that are no longer open would
+			// return the next command-opened screen to wherever staff were an hour ago.
+			Guis.forget(viewer.getUUID());
 		}
 		onClosed();
 	}

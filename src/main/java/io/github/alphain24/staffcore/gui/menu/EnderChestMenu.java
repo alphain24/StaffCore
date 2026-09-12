@@ -92,6 +92,12 @@ public class EnderChestMenu extends Gui {
 		return editable;
 	}
 
+	/** Through {@link #open} again, for the same reason as the main inventory screen. */
+	@Override
+	protected Runnable reentry() {
+		return () -> open(viewer, target);
+	}
+
 	@Override
 	protected void build() {
 		set(SLOT_HEAD, Icon.head(target)
@@ -101,8 +107,8 @@ public class EnderChestMenu extends Gui {
 				.state(!editable, "Read-only", "Edit mode — changes are real")
 				.build());
 
-		button(SLOT_BACK, Theme.backButton(target.name() + "'s file"), click ->
-				PlayerActionsMenu.reopen(viewer, target));
+		backButton(SLOT_BACK, target.name() + "'s file",
+				() -> PlayerActionsMenu.reopen(viewer, target));
 
 		button(SLOT_INVENTORY, Icon.of(Items.CHEST)
 				.name("Main inventory", Theme.TEXT)

@@ -68,7 +68,7 @@ public class ControlMenu extends Gui {
 		buildServerControls(server);
 		buildShortcuts();
 
-		button(BACK, Theme.backButton("the staff panel"), click -> StaffPanelMenu.reopen(viewer));
+		backButton(BACK, "Server", () -> StaffSections.server(viewer));
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());
 	}

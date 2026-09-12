@@ -398,7 +398,7 @@ public class GriefMenu extends Gui {
 					.build(), click -> RestorePointsMenu.open(viewer));
 		}
 
-		button(SLOT_BACK, Theme.backButton("the staff panel"), click -> StaffPanelMenu.reopen(viewer));
+		backButton(SLOT_BACK, "World", () -> StaffSections.world(viewer));
 
 		button(SLOT_WINDOW, Icon.of(Items.CLOCK)
 				.name("Time window", Theme.TEXT)

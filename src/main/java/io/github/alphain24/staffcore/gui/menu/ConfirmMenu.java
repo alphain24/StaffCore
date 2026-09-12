@@ -77,6 +77,16 @@ public class ConfirmMenu extends Gui {
 		fillEmpty(Theme.filler());
 	}
 
+	/**
+	 * Never stepped back into. Rebuilding this screen from history would present "Do it." for
+	 * an action that already ran — and with a fresh opening time, so the staleness check above
+	 * would pass it. Whatever the action opens next takes this screen's place instead.
+	 */
+	@Override
+	protected boolean returnable() {
+		return false;
+	}
+
 	/** Backing out with Escape counts as cancelling, not as confirming. */
 	@Override
 	protected void onClosed() {
