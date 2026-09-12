@@ -27,10 +27,20 @@ import java.util.UUID;
  *   <li>A signal opens a case — staff are told, with the id.</li>
  *   <li>A signal joins an open case — a quieter line, because somebody is already on it and
  *       the useful information is that it just got worse.</li>
- *   <li>A signal attaches to nothing — <b>silence</b>. It is stored against the player and
- *       shows up when somebody looks them up. This is the case that keeps the channel worth
- *       reading.</li>
+ *   <li>A signal attaches to nothing — a quiet line saying what was found and that it was
+ *       below the threshold, plus a row against the player for whoever looks them up later.</li>
  * </ul>
+ *
+ * <h2>The third one used to be silence, and that was a bug</h2>
+ * Attaching to nothing is correct for the case model: one banned item is not an investigation.
+ * It was also taken to mean nobody should be told, and those are different questions. The
+ * result was contraband detection that worked perfectly and was invisible — a player carrying
+ * bedrock produced a database row and nothing else, while {@code watchContraband} is documented
+ * as alerting "the moment a player is seen holding one".
+ * <p>
+ * The channel is still worth reading, which was the real concern: the quiet path goes to the
+ * staff-action channel rather than the security one, and it says why it opened no case so
+ * nobody has to ask.
  */
 public class CaseModule implements Module {
 
@@ -108,30 +118,83 @@ public class CaseModule implements Module {
 	}
 
 	/**
-	 * Tells staff, or deliberately does not.
+	 * How loudly a landed signal should be said, and what it should say.
+	 *
+	 * <h2>Why "no case" stopped meaning "say nothing"</h2>
+	 * A signal below {@code caseAutoOpenSeverity} for a player with no open case attaches to
+	 * nothing. That is the right thing to do with the <em>case model</em> — one banned item is
+	 * not an investigation — and it used to mean nobody was told at all.
 	 * <p>
-	 * The silence is load-bearing. Announcing every signal would restore exactly the channel
-	 * this replaced, and the stored-but-quiet signal is what lets somebody looking a player up
-	 * see the four weak things nobody was interrupted about.
+	 * So contraband detection was working perfectly and was invisible. A player picked up with
+	 * bedrock produced a row in {@code signals} and silence, while
+	 * {@code watchContraband} is documented as alerting "the moment a player is seen holding
+	 * one". The code was keeping the letter of the design and breaking a promise the config
+	 * made in plain English.
+	 * <p>
+	 * Two decisions got conflated: <b>whether to open a case</b> and <b>whether to tell
+	 * anybody</b>. They are not the same question. A finding can be worth a staff member's
+	 * glance without being worth an investigation, and that is most of them.
 	 */
-	private void announce(MinecraftServer server, CaseStore.Landing landing) {
-		if (server == null || landing.isUnattached()) return;
+	public record Announcement(boolean loud, String message) {}
 
+	/**
+	 * What to say about a landing, as a plain function so it can be checked without a server.
+	 * <p>
+	 * Never returns null. That is the property worth having: every signal that reaches here
+	 * produces something somebody could read, and the only choice left is how loudly.
+	 */
+	public static Announcement decide(CaseStore.Landing landing) {
 		Signal signal = landing.signal();
 		String subject = signal.subjectName() == null
 				? signal.subjectId().toString() : signal.subjectName();
 
+		// The headline is the type and the confidence — "contraband (45%)". That is the right
+		// label for a case list, where the detail is one click away, and it is not enough for
+		// an alert: "contraband" could be a stack of bedrock or a command block, and which one
+		// decides whether anybody needs to move. So the detail is carried through, and the
+		// headline is reduced to the confidence it adds.
+		String what = signal.evidenceJson() == null || signal.evidenceJson().isBlank()
+				? signal.headline()
+				: signal.evidenceJson() + " (" + signal.confidence() + "%)";
+
 		if (landing.openedCase()) {
-			Mods.alerts().onSecurityFlag(server, subject,
-					signal.headline() + " — case " + landing.caseId() + " opened");
-			return;
+			return new Announcement(true, what + " — case " + landing.caseId() + " opened");
 		}
 
-		// Joined an existing case. Worth saying, because it means an investigation somebody
-		// already has open just got more serious — but said quietly, since nobody needs to be
-		// interrupted twice about the same player.
-		Mods.alerts().onStaffAction(server, "%s — %s added to case %s".formatted(
-				subject, signal.headline(), landing.caseId()));
+		if (!landing.isUnattached()) {
+			// Joined an existing case. Worth saying, because an investigation somebody already
+			// has open just got more serious — but quietly, since nobody needs interrupting
+			// twice about the same player.
+			return new Announcement(false, "%s — %s added to case %s".formatted(
+					subject, what, landing.caseId()));
+		}
+
+		// Attached to nothing. Said quietly and said anyway, with the reason it opened no case
+		// — otherwise the next question is always "why is there no case for this".
+		// The brackets matter. Without them .formatted binds to the last literal in the
+		// concatenation rather than to the whole string, so the placeholders survive into the
+		// message and staff are told "%s — %s (noted, below the %d threshold". The test that
+		// asserts the message names what was found is what caught it.
+		return new Announcement(false,
+				("%s — %s (noted, below the %d threshold for opening a case)")
+						.formatted(subject, what,
+								io.github.alphain24.staffcore.config.StaffConfig.get()
+										.caseAutoOpenSeverity));
+	}
+
+	private void announce(MinecraftServer server, CaseStore.Landing landing) {
+		if (server == null) return;
+
+		Announcement said = decide(landing);
+		Signal signal = landing.signal();
+		String subject = signal.subjectName() == null
+				? signal.subjectId().toString() : signal.subjectName();
+
+		if (said.loud()) {
+			Mods.alerts().onSecurityFlag(server, subject, said.message());
+		} else {
+			Mods.alerts().onStaffAction(server, said.message());
+		}
 	}
 
 	/**
