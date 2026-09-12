@@ -1145,6 +1145,70 @@ and inspect mode. Everything else survives.
 
 ---
 
+<a id="config-reconciliation"></a>
+
+## The config file had the same bug as the database schema
+
+**Date:** 2026-09-12
+
+Reported by somebody upgrading the mod: new settings never appeared in `staffcore.json`. The
+only way to get them was to delete the file and let it regenerate.
+
+### Why it happened
+
+Gson fills the fields a file mentions and leaves the rest at their Java defaults. So a new
+setting always *worked* — the server ran with the right value — it simply never appeared on
+disk. The file was rewritten only when `migrate()` returned true, which happens only when
+`configVersion` moves, and most releases add a setting without needing a migration.
+
+This is the **schema bug in a second place**, and it is worth stating in those terms because the
+database already had the fix: `REQUIRED_COLUMNS` and `REQUIRED_TABLES` exist because a version
+counter is *a claim about history, not a description of what is actually there*. Nobody thought
+to apply the same reasoning to the config, because the config fails in the gentler direction.
+The database version lost data loudly; this one only lost visibility.
+
+### Why "only visibility" was still serious
+
+A server owner cannot configure what they cannot see, and the workaround they find on their own
+is deleting the file — **which resets every choice they have ever made**. The bug quietly
+pushed people towards the most destructive possible response to it.
+
+Measured against a real config from this repo's own test server, at `configVersion` 3:
+
+- **26 settings missing**, not the four I first guessed — the whole canary group, the approval
+  and rate-limit group, the case thresholds, the signal confidences, and position history.
+- **3 settings present that no longer exist**: `xrayRatioThreshold`, `xraySampleFloor` and
+  `xrayDirectnessFloor`, left over from the scorer Phase 3 deleted. That is its own trap —
+  somebody could have spent an evening tuning `xraySampleFloor` and wondering why the detector
+  never changed its mind.
+
+### The fix
+
+`loadFrom` now reconciles the file against the declared fields on every boot, and writes back
+when the shape differs, when a migration ran, or when `validate()` had to clamp something. That
+last one mattered more than it looks: clamping happened *after* the decision to save, so a file
+could go on saying `positionSampleHz: 999` while the server used 10 — a config that disagrees
+with the running server is worse than one that is merely out of date.
+
+Added and removed keys are **named in the log**, not counted. "Your config changed" is not
+something anybody can act on; "positionTracking was added" is, and "xraySampleFloor is not
+recognised and is being removed" is the only warning somebody gets before a setting they were
+relying on disappears.
+
+A file that already has every setting is left byte-for-byte alone. Rewriting on every boot
+would also have fixed the bug, and would have churned the file forever and hidden real changes
+among the no-ops.
+
+### What the test is actually protecting
+
+Not "the key appears" — that is the easy half, and a fix that regenerated the file would pass
+it. The half that matters is that **reconciling touches nothing the owner set**: a
+deliberately-disabled `requireTwoPersonApproval` must stay disabled, or the cure does exactly
+what the disease was pushing people to do. Verified end to end against the real stale config:
+68 keys became 91, 65 shared, **zero changed values**.
+
+---
+
 <a id="shared-state"></a>
 
 ## The suite is a concurrent program, and nobody was treating it as one

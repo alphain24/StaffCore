@@ -1193,6 +1193,20 @@
           the default should not be the permissive one for this.
         </p>
 
+        <div class="note">
+          <p>
+            <span class="pill">The config updates itself</span>
+            New settings are added to <code>config/staffcore.json</code> on the first boot after
+            an upgrade, with their defaults, and the server log names each one. Anything you
+            have set is left exactly as it is &mdash; there is never a reason to delete the file
+            to pick up new options, and deleting it would reset every choice you have made.
+          </p>
+          <p>
+            Settings this build no longer recognises are removed, and that is logged as a
+            warning naming them. If you are downgrading, keep a copy first.
+          </p>
+        </div>
+
         <h3>What is stored about a person, and for how long</h3>
         <p class="lede">
           Two categories here are personal data rather than a record of conduct. They are

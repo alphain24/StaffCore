@@ -834,23 +834,90 @@ public final class StaffConfig {
 	}
 
 	public static void load() {
-		Path file = path();
+		loadFrom(path());
+	}
+
+	/**
+	 * Reads the config, brings the file up to date with the code, and writes it back if it
+	 * changed.
+	 *
+	 * <h2>The bug this closes</h2>
+	 * Gson fills the fields a file mentions and leaves the rest at their Java defaults, so a
+	 * new setting has always <em>worked</em> on an existing server — it just never appeared in
+	 * {@code staffcore.json}. The file was only rewritten when {@link #migrate} returned true,
+	 * which happens only when {@code configVersion} moves, and most releases add a setting
+	 * without needing a migration.
+	 * <p>
+	 * The result was a server owner who could not configure what they could not see. The
+	 * workaround people found was deleting the file so it regenerated, which silently reset
+	 * every choice they had ever made. Four settings were invisible this way by the time
+	 * somebody noticed: the three position-history keys and the canary override.
+	 * <p>
+	 * This is the same reconciliation {@code Schema.reconcile} does for the database, for the
+	 * same reason and against the same kind of failure: the version counter is a claim about
+	 * history, not a description of what is actually there.
+	 *
+	 * @param file the config to read, so this is testable without a Fabric config directory
+	 */
+	static void loadFrom(Path file) {
 		if (!Files.exists(file)) {
 			instance = new StaffConfig();
 			instance.configVersion = CURRENT_VERSION;
-			save();
+			saveTo(file);
 			StaffCore.LOGGER.info("[StaffCore] Wrote default config to {}", file);
 			return;
 		}
-		try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-			StaffConfig loaded = GSON.fromJson(r, StaffConfig.class);
+		try {
+			String raw = Files.readString(file, StandardCharsets.UTF_8);
+			StaffConfig loaded = GSON.fromJson(raw, StaffConfig.class);
 			instance = loaded != null ? loaded : new StaffConfig();
-			if (migrate(instance)) save();
-			validate();
+
+			boolean migrated = migrate(instance);
+			// Clamping happens in validate, and a clamped value that is never written back
+			// means the file goes on saying something the server is not doing.
+			boolean corrected = !validate().isEmpty();
+			boolean reshaped = reconcile(raw);
+
+			if (migrated || corrected || reshaped) saveTo(file);
 		} catch (IOException | RuntimeException e) {
 			StaffCore.LOGGER.error("[StaffCore] Config is unreadable - falling back to defaults", e);
 			instance = new StaffConfig();
 		}
+	}
+
+	/**
+	 * Says whether the file's shape differs from the code's, and names the difference.
+	 * <p>
+	 * Named rather than counted, because "your config changed" is not something a server owner
+	 * can act on and "positionTracking was added" is. Settings that have gone are named too:
+	 * a key this build no longer knows about is about to be dropped from the file, and finding
+	 * that out from the log beats finding it out from a diff.
+	 *
+	 * @return true when the file should be rewritten
+	 */
+	private static boolean reconcile(String raw) {
+		com.google.gson.JsonObject onDisk = GSON.fromJson(raw, com.google.gson.JsonObject.class);
+		if (onDisk == null) return true;
+
+		com.google.gson.JsonObject complete = GSON.toJsonTree(instance).getAsJsonObject();
+
+		List<String> added = new ArrayList<>(complete.keySet());
+		added.removeAll(onDisk.keySet());
+
+		List<String> gone = new ArrayList<>(onDisk.keySet());
+		gone.removeAll(complete.keySet());
+
+		if (!added.isEmpty()) {
+			StaffCore.LOGGER.info("[StaffCore] Config: added {} new setting(s) with their "
+					+ "defaults - {}. Nothing you had set was changed.", added.size(),
+					String.join(", ", added));
+		}
+		if (!gone.isEmpty()) {
+			StaffCore.LOGGER.warn("[StaffCore] Config: {} setting(s) in your file are not "
+					+ "recognised by this build and are being removed - {}. If you are "
+					+ "downgrading, keep a copy first.", gone.size(), String.join(", ", gone));
+		}
+		return !added.isEmpty() || !gone.isEmpty();
 	}
 
 	/**
@@ -993,7 +1060,16 @@ public final class StaffConfig {
 	}
 
 	public static void save() {
-		Path file = path();
+		saveTo(path());
+	}
+
+	/** Puts the in-memory config back to defaults. For tests and a deliberate reset. */
+	static void reset() {
+		instance = new StaffConfig();
+	}
+
+	/** As {@link #save}, to a named file, so the load path can be exercised in a test. */
+	static void saveTo(Path file) {
 		try {
 			Files.createDirectories(file.getParent());
 			try (Writer w = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
