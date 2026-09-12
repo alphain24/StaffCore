@@ -94,7 +94,18 @@ public final class StaffSections {
 						.name("Freeze", Theme.ACCENT)
 						.lore("Stop somebody moving while you talk to them.")
 						.build(),
-						v -> PlayerListMenu.open(v, PlayerListMenu.Purpose.FREEZE))));
+						v -> PlayerListMenu.open(v, PlayerListMenu.Purpose.FREEZE)),
+
+				// Under Players rather than Security, because it answers "what was this
+				// person doing" rather than "is this person cheating". The x-ray replay is
+				// the other one, and it lives under X-ray because it is about a dig.
+				SectionMenu.Entry.of(Nodes.REPLAY, Icon.of(Items.RECOVERY_COMPASS)
+						.name("Session replay", Theme.ACCENT)
+						.lore("Watch where somebody went, from inside their path.")
+						.lore("Needs positionTracking on; it does not fill in", Theme.MUTED)
+						.lore("the past.", Theme.MUTED)
+						.build(),
+						v -> PlayerListMenu.open(v, PlayerListMenu.Purpose.REPLAY))));
 	}
 
 	// --------------------------------------------------------------- punishments
@@ -183,6 +194,7 @@ public final class StaffSections {
 	public static void antiCheat(ServerPlayer viewer) {
 		boolean preventing = io.github.alphain24.staffcore.modules.security.AntiXrayCompanion
 				.present();
+		boolean decoys = io.github.alphain24.staffcore.modules.security.Canaries.enabled();
 
 		SectionMenu.open(viewer, "X-ray & cheats",
 				"Detection after the fact, and what prevents it.", List.of(
@@ -191,12 +203,13 @@ public final class StaffSections {
 						.name("Prevention", preventing ? Theme.GOOD : Theme.WARN)
 						.lore(preventing
 								? "An anti-xray mod is installed and hiding real ore."
-								: "No anti-xray installed. StaffCore detects x-ray")
-						.lore(preventing ? "" : "after the fact and does not prevent it.",
+								: "No anti-xray installed.")
+						.lore(preventing ? "" : "StaffCore detects x-ray after the fact and",
 								Theme.MUTED)
+						.lore(preventing ? "" : "does not prevent it.", Theme.MUTED)
 						.gap()
-						.field("Decoys", io.github.alphain24.staffcore.modules.security.Canaries
-								.enabled() ? "on" : "off")
+						.lore("Decoys and bulk anti-xray do not run together;", Theme.MUTED)
+						.lore("see the decoy screen for why.", Theme.MUTED)
 						.build(),
 						v -> v.sendSystemMessage(Theme.info(
 								io.github.alphain24.staffcore.modules.security
@@ -205,27 +218,31 @@ public final class StaffSections {
 				SectionMenu.Entry.of(Nodes.SECURITY_CHECK, Icon.of(Items.DIAMOND_ORE)
 						.name("X-ray report", Theme.ACCENT)
 						.lore("Score one player's mining against chance.")
-						.lore("/staff xray <player> [hours]", Theme.MUTED)
+						.lore("A p-value, not a hunch \u2014 and offline players", Theme.MUTED)
+						.lore("can be scored too.", Theme.MUTED)
 						.build(),
-						v -> v.sendSystemMessage(Theme.info(
-								"Use /staff xray <player> to score somebody, or "
-										+ "/staff xray <player> replay to stand in their dig."))),
+						v -> PlayerListMenu.open(v, PlayerListMenu.Purpose.XRAY)),
 
-				SectionMenu.Entry.of(Nodes.SECURITY_CHECK, Icon.of(Items.SCULK_SENSOR)
-						.name("Decoy blocks", Theme.ACCENT)
+				SectionMenu.Entry.of(Nodes.SECURITY_CHECK, Icon.of(decoys
+								? Items.SCULK_SENSOR : Items.SCULK)
+						.name("Decoy blocks", decoys ? Theme.ACCENT : Theme.MUTED)
 						.lore("Fake ore only an x-ray client can see.")
-						.lore("/staff canary lists your own.", Theme.MUTED)
+						.gap()
+						.state(decoys, "Running", "Off")
 						.build(),
-						v -> v.sendSystemMessage(Theme.info(
-								"Use /staff canary to list the decoys out for you."))),
+						CanaryMenu::open),
 
 				SectionMenu.Entry.of(Nodes.ANALYTICS, Icon.of(Items.WRITTEN_BOOK)
 						.name("Threshold evidence", Theme.ACCENT)
 						.lore("What the detection thresholds are justified against.")
-						.lore("/staff corpus", Theme.MUTED)
+						.lore("Cleared cases, and why each was cleared.", Theme.MUTED)
 						.build(),
-						v -> v.sendSystemMessage(Theme.info(
-								"Use /staff corpus for the labelled-case composition.")))));
+						v -> {
+							v.sendSystemMessage(Theme.info(
+									io.github.alphain24.staffcore.modules.cases.TrainingCorpus
+											.composition().describe()));
+							v.closeContainer();
+						})));
 	}
 
 	// ----------------------------------------------------------------------- world

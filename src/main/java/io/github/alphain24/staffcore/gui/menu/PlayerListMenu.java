@@ -36,7 +36,9 @@ public class PlayerListMenu extends PagedGui<ServerPlayer> {
 		HISTORY("History", "read their punishment history", Nodes.HISTORY),
 		SECURITY("Security", "run a security check", Nodes.SECURITY_CHECK),
 		TELEPORT("Teleport", "teleport to them", Nodes.TP),
-		FREEZE("Freeze", "freeze or unfreeze them", Nodes.FREEZE);
+		FREEZE("Freeze", "freeze or unfreeze them", Nodes.FREEZE),
+		REPLAY("Replay", "watch their session back", Nodes.REPLAY),
+		XRAY("X-ray", "score their mining against chance", Nodes.SECURITY_CHECK);
 
 		final String crumb;
 		final String verb;
@@ -139,6 +141,8 @@ public class PlayerListMenu extends PagedGui<ServerPlayer> {
 				viewer.sendSystemMessage(Theme.info("Teleported to " + Mc.name(target) + "."));
 				viewer.closeContainer();
 			}
+			case REPLAY -> ReplayMenu.open(viewer, Mc.profile(target));
+			case XRAY -> XrayMenu.open(viewer, Mc.profile(target));
 			case FREEZE -> {
 				boolean frozen = Mods.freeze().toggle(target);
 				viewer.sendSystemMessage(frozen
