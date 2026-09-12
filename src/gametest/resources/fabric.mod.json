@@ -22,7 +22,8 @@
 			"io.github.alphain24.staffcore.gametest.CanaryFalsePositiveTests",
 			"io.github.alphain24.staffcore.gametest.CanaryRefreshTests",
 			"io.github.alphain24.staffcore.gametest.CanaryPersistenceTests",
-			"io.github.alphain24.staffcore.gametest.IllusionPersistenceTests"
+			"io.github.alphain24.staffcore.gametest.IllusionPersistenceTests",
+			"io.github.alphain24.staffcore.gametest.SidebarLifecycleTests"
 		]
 	},
 	"depends": {

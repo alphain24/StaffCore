@@ -254,6 +254,9 @@ public final class ReplayStage {
 	 */
 	public static void forget(UUID player) {
 		if (player == null) return;
+		// The sidebar too. Their client has lost the objective with the rest of the session,
+		// so leaving it recorded as up would have the next replay skip creating it.
+		ReplaySidebar.forget(player);
 		io.github.alphain24.staffcore.illusion.BlockIllusions.forget(player);
 		WATCHING.remove(player);
 

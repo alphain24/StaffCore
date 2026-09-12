@@ -1145,6 +1145,62 @@ and inspect mode. Everything else survives.
 
 ---
 
+<a id="idempotent-packets"></a>
+
+## A packet that is correct once and fatal twice
+
+**Date:** 2026-09-12
+
+Reported: a session replay opens, works for about a second, then disconnects the viewer with a
+network protocol error.
+
+### What it was
+
+The replay sidebar is a scoreboard objective sent to one connection. `ReplaySidebar.show` sent
+`ClientboundSetObjectivePacket` with `METHOD_ADD` **every time it was called**.
+`Scoreboard.addObjective` throws `IllegalArgumentException` on a name the client already holds —
+it checks the map and throws before doing anything else, confirmed in the 26.2 bytecode — and an
+exception raised inside the netty pipeline drops the connection.
+
+The x-ray replay drew the sidebar once, at entry, and never again. It was correct for a year.
+The session replay redraws every twenty ticks to advance its clock, so the **second** draw killed
+the client. "About a second" was not vague: it was `SIDEBAR_EVERY = 20`.
+
+### The part worth keeping
+
+This was introduced by generalising `show` from "display a finding" to "display these rows", so
+a second caller could reuse it. The generalisation was right and the reuse was right. What was
+missed is that **the new caller used it differently in a way the old one could not**: once
+versus repeatedly.
+
+So the rule is not "be careful when generalising". It is narrower and checkable:
+
+> When a second caller starts using a packet-sending helper **repeatedly** where the first used
+> it **once**, every packet it sends must be idempotent — and scoreboard, boss bar, team and
+> objective packets are the ones that are not.
+
+Minecraft's protocol has an add/change/remove shape in several places, and `add` is usually the
+one that throws. A helper that only ever ran once has never been asked whether it is safe to run
+twice, and nothing about reading it says which.
+
+### Why no test caught it
+
+Everything here is packets to a client, so the server-side tests said the right bytes were sent
+— which was true, and the bytes were fatal. This is the "truth lives on the other side of the
+wire" class again, with a new wrinkle: it was not that the server sent *nothing* useful, it was
+that sending the same correct thing twice was the defect.
+
+What is testable on this side is the property that decides it, so `show` now returns whether it
+created the objective, and `SidebarLifecycleTests` asserts the first draw creates and the next
+forty do not. Probed by making it always re-create: the test failed with "redraw 1 tried to
+create the objective again".
+
+The record of which clients hold the objective is dropped on disconnect as well as on hide — the
+opposite error would be a viewer whose second replay skips creating an objective their client no
+longer has, leaving them watching an empty panel.
+
+---
+
 <a id="config-reconciliation"></a>
 
 ## The config file had the same bug as the database schema
