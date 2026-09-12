@@ -29,24 +29,45 @@ import java.util.Optional;
  * A canary is a fake block at a known position, sent to one player, that nothing but an x-ray
  * client would go straight to. A bulk anti-xray fills the same chunks with fake blocks by the
  * thousand and handles the resync itself.
+ *
+ * <h2>Two reasons were originally given, and both were wrong</h2>
+ * Recorded here because the wrong reasons are more instructive than the right one, and because
+ * this is the second time a confident explanation on this feature turned out to be a story.
  * <p>
- * Two problems, and the second is the one that matters. Both mods rewrite the same outbound
- * chunk data, so there is no guarantee a canary survives to the client at all — whichever runs
- * second wins, and neither knows about the other. And a player breaking into a fake block
- * cannot be attributed: theirs and ours produce the same event, and the overwhelming majority
- * of fakes are theirs. A signal that cannot say whose block it was is a signal that reads as
- * evidence and is not.
+ * <b>"Both mods rewrite the same outbound chunk data."</b> False. StaffCore does not touch
+ * chunk serialisation at all — a canary is a {@code ClientboundBlockUpdatePacket} sent
+ * <em>after</em> the chunk arrives, so it lands on top of whatever that chunk contained,
+ * obfuscated or not. Since the chunk-send hook it is re-asserted after every resend as well,
+ * which if anything makes the two <em>more</em> likely to coexist rather than less.
  * <p>
- * So canaries switch off when one is detected, and the startup report says why. That is a
- * worse outcome than making them work together and a much better one than emitting signals
- * nobody can interpret — the failure it avoids is a case opened on a player who walked into
- * somebody else's decoy.
+ * <b>"A player breaking a fake block cannot be attributed."</b> Weak. We know our own canary
+ * positions exactly and never need to identify anybody else's.
+ *
+ * <h2>The reason that actually holds</h2>
+ * It is not about packets, it is about the player. A bulk anti-xray in engine mode 2 fills the
+ * world with fabricated ore, so somebody using an x-ray pack is already looking at a screen
+ * full of ore that is not there. Within an hour they learn that nothing the pack shows them is
+ * real and stop digging to any of it.
+ * <p>
+ * That does not make a canary hit harder to interpret. <b>It removes the true positives.</b>
+ * Nobody walks to a decoy because nobody walks to anything. The feature would report a clean
+ * zero and the zero would mean nothing — which is the same shape as the false-positive rate
+ * that was measured before anybody had confirmed decoys reach a client at all.
+ * <p>
+ * So canaries switch off when one is detected, and the startup report says why. The rest of the
+ * x-ray detection works from the block log after the fact and is unaffected.
+ *
+ * <h2>What is still unmeasured</h2>
+ * Whether the two mods' block updates fight when they write the same position — ours
+ * asserting a decoy, theirs deobfuscating around an approaching player. Ordering there decides
+ * who wins and cannot be answered from this side. {@code canaryForceWithBulkAntiXray} exists to
+ * answer it; {@code docs/manual-checks/antixray-compat.md} is the script.
  */
 public final class AntiXrayCompanion {
 	private AntiXrayCompanion() {}
 
 	/**
-	 * Anti-xray mods known to rewrite outbound chunk data, by mod id.
+	 * Anti-xray mods known to obfuscate chunk data before it is sent, by mod id.
 	 * <p>
 	 * By id rather than by behaviour, because there is no way to ask a mod whether it
 	 * obfuscates chunks. That makes this list something somebody has to maintain, and an
@@ -99,10 +120,12 @@ public final class AntiXrayCompanion {
 		if (found.isEmpty()) return null;
 
 		String names = String.join(" and ", found.stream().map(Found::modId).toList());
-		return "Canaries are off because " + names + " is installed. Both rewrite the same "
-				+ "outbound chunk data, so a canary is not guaranteed to reach the client — and "
-				+ "a player breaking a fake block cannot be told apart from one breaking theirs. "
-				+ "A signal nobody can attribute reads as evidence and is not.";
+		return "Canaries are off because " + names + " is installed. That mod already fills the "
+				+ "world with ore that is not there, so an x-ray user learns within an hour that "
+				+ "nothing their pack shows them is real and stops digging to any of it — which "
+				+ "costs the decoys their true positives, not just the reading of them. Set "
+				+ "canaryForceWithBulkAntiXray if you are testing how the two interact; signals "
+				+ "produced that way are not defensible in an appeal.";
 	}
 
 	/** The line the startup report prints, whichever way it went. */

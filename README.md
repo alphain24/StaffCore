@@ -396,12 +396,17 @@ it. Install one of these alongside:
 Whichever is installed is named at startup and in `/staff status`. With neither, that line says
 so — silence there would read as "prevention is handled", which is the one thing it must not.
 
-**Installing one turns StaffCore's canary blocks off**, and the startup report says why. Both
-mods rewrite the same outbound chunk data, so a canary is not guaranteed to reach the client;
-and a player breaking a fake block cannot be told apart from one breaking the other mod's. A
-signal nobody can attribute reads as evidence and is not. The rest of the x-ray detection —
-which works from the block log, after the fact — is unaffected and is the more useful half
-anyway.
+**Installing one turns StaffCore's canary blocks off**, and the startup report says why. The
+reason is about the player, not the packets: a bulk anti-xray already fills the world with ore
+that is not there, so somebody using an x-ray pack learns within an hour that nothing it shows
+them is real and stops digging to any of it. That does not make a decoy hit harder to read — it
+removes the true positives, because nobody walks to a decoy when nobody walks to anything. The
+rest of the x-ray detection — which works from the block log, after the fact — is unaffected
+and is the more useful half anyway.
+
+`canaryForceWithBulkAntiXray` places them anyway. It is **not a supported mode**: it exists to
+test how the two interact, it warns at startup, and signals produced with it on are not
+defensible in an appeal.
 
 ## Known limits
 
