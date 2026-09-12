@@ -61,6 +61,28 @@ public final class ReplayCamera {
 	public static final String TAG = "staffcore_replay_camera";
 
 	/**
+	 * How far above the recorded position the camera sits.
+	 *
+	 * <h2>Why this is not zero, which is what it was</h2>
+	 * The position log records {@code player.getY()}, which is the player's <b>feet</b>. That is
+	 * the right thing to record — it is where the player was — and the old path teleported the
+	 * viewer there, so their eyes ended up at feet plus eye height without anybody thinking
+	 * about it.
+	 * <p>
+	 * A camera entity has no such courtesy. An {@code ItemDisplay} is dimensionless, so its view
+	 * is at its position exactly, which put the camera at the subject's feet: a block and a half
+	 * too low, and therefore <b>inside the floor</b> for anybody standing on ground. The symptom
+	 * was a view that intersected the terrain, showing block interiors and unlit voids rather
+	 * than the world.
+	 * <p>
+	 * 1.62 is a standing player's eye height. The log does not record pose, so a subject who was
+	 * sneaking (1.27) or crawling (0.4) is reconstructed slightly high — which is the right
+	 * direction to be wrong in, because too high looks over the ground and too low looks through
+	 * it.
+	 */
+	private static final double EYE_HEIGHT = 1.62;
+
+	/**
 	 * How many ticks the client spends gliding to each new camera position.
 	 * <p>
 	 * The driver posts a position every tick, so two is the shortest value that always has
@@ -89,7 +111,9 @@ public final class ReplayCamera {
 			Display.ItemDisplay camera =
 					new Display.ItemDisplay(EntityTypes.ITEM_DISPLAY, level);
 
-			camera.snapTo(x, y, z, yaw, pitch);
+			// Eye height, not the recorded position: the log stores feet, and a camera entity
+			// has no eye height of its own to add.
+			camera.snapTo(x, y + EYE_HEIGHT, z, yaw, pitch);
 			camera.setInvulnerable(true);
 			camera.setSilent(true);
 			camera.addTag(TAG);
@@ -130,7 +154,7 @@ public final class ReplayCamera {
 		// snapTo, which is moveTo in most versions and was renamed in 26.2. It sets the
 		// position the tracker then turns into the ordinary movement packets a client
 		// interpolates — as opposed to a teleport, which is the thing it does not.
-		camera.snapTo(x, y, z, yaw, pitch);
+		camera.snapTo(x, y + EYE_HEIGHT, z, yaw, pitch);
 		camera.setYHeadRot(yaw);
 
 		if (staff == null || staff.level() != camera.level()) return;
@@ -142,6 +166,10 @@ public final class ReplayCamera {
 		// of zero, so every leash pull silently span the viewer's own body to face north. It
 		// is invisible while they are looking through the camera and very visible the moment
 		// they are not.
+		// The player goes to the recorded position rather than to the camera's, because the
+		// camera is an eye and the player is a body. Nobody sees the difference — they are
+		// looking through the camera — but putting their feet where somebody's eyes were is
+		// the kind of thing that is wrong for a year before anybody notices.
 		if (staff.distanceToSqr(camera) > LEASH * LEASH
 				&& staff.level() instanceof ServerLevel level) {
 			staff.teleportTo(level, x, y, z, java.util.Set.of(), yaw, pitch, false);

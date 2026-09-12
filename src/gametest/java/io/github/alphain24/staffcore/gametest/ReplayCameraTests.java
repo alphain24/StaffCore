@@ -67,6 +67,37 @@ public class ReplayCameraTests {
 	}
 
 	@GameTest
+	public void theCameraSitsAtEyeHeightNotAtTheFeet(GameTestHelper helper) {
+		// The bug this pins was reported as "the replay intersects the ground", and that is
+		// exactly what it looked like.
+		//
+		// The position log records player.getY(), which is feet. The old path teleported the
+		// viewer there and their eyes ended up a block and a half higher for free. A camera
+		// entity gets no such courtesy: an ItemDisplay is dimensionless, so its view is at its
+		// position exactly — which put the camera in the floor and rendered the insides of
+		// blocks.
+		ServerLevel level = helper.getLevel();
+		ServerPlayer staff = Harness.mockPlayer(helper);
+		var where = helper.absolutePos(new net.minecraft.core.BlockPos(1, 2, 1));
+
+		Entity camera = ReplayCamera.open(staff, level, where.getX(), where.getY(), where.getZ(),
+				0, 0);
+		Harness.check(helper, camera != null, "no camera was created");
+
+		double lift = camera.getY() - where.getY();
+		Harness.check(helper, lift > 1.0,
+				"the camera is " + lift + " blocks above the recorded position. The log stores "
+						+ "feet, so a camera at that height is inside the floor and the viewer "
+						+ "sees block interiors instead of the world.");
+		Harness.check(helper, lift < 2.0,
+				"the camera is " + lift + " blocks up, which is above a player's head rather "
+						+ "than at their eyes");
+
+		ReplayCamera.close(staff, camera);
+		helper.succeed();
+	}
+
+	@GameTest
 	public void closingGivesTheirEyesBackAndRemovesIt(GameTestHelper helper) {
 		// The failure this rules out is the worst one available: a staff member left
 		// spectating an entity that no longer exists, which is a client with no camera at all.
