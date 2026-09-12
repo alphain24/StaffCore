@@ -39,24 +39,14 @@ public class StaffPanelMenu extends Gui {
 	private static final int RETURN = 15;
 	private static final int MOVEMENT = 16;
 
-	// Band 2 — people
-	private static final int PLAYERS = 19;
-	private static final int REPORTS = 20;
-	private static final int PUNISH = 21;
-	private static final int INVSEE = 22;
-	private static final int NOTES = 23;
-	private static final int HISTORY = 24;
-	private static final int SECURITY = 25;
-	private static final int CASES = 26;
-
-	// Band 3 — server
-	private static final int CONTROL = 28;
-	private static final int GRIEF = 29;
-	private static final int ANALYTICS = 30;
-	private static final int SCANNER = 31;
-	private static final int APPEALS = 32;
-	private static final int DISCORD = 33;
-	private static final int CONTRABAND = 34;
+	// Band 2 — sections. Everything that is a place to go rather than a switch to flip.
+	private static final int SEC_PLAYERS = 19;
+	private static final int SEC_PUNISH = 20;
+	private static final int SEC_SECURITY = 21;
+	private static final int SEC_XRAY = 22;
+	private static final int SEC_WORLD = 23;
+	private static final int SEC_SERVER = 24;
+	private static final int SEC_DISCORD = 25;
 
 	// Band 4 — info
 	private static final int SHIFT = 38;
@@ -87,8 +77,7 @@ public class StaffPanelMenu extends Gui {
 		set(SLOT_TITLE, branding(server));
 
 		buildPersonalBand();
-		buildPeopleBand();
-		buildServerBand();
+		buildSectionBand();
 		buildInfoBand(server);
 
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
@@ -218,151 +207,83 @@ public class StaffPanelMenu extends Gui {
 		});
 	}
 
-	// ------------------------------------------------------------------ band two
+	// ---------------------------------------------------------------- band two
 
-	private void buildPeopleBand() {
+	/**
+	 * The sections.
+	 *
+	 * <h2>Why this replaced two rows of buttons</h2>
+	 * The panel used to put fifteen destinations on one screen in two unlabelled bands. That is
+	 * a list, not a structure: everything was one click away and nothing was findable, because
+	 * the grouping only existed in the head of whoever chose the slot numbers.
+	 * <p>
+	 * Seven sections replace them, grouped by what somebody is trying to do rather than by
+	 * which module implements it. See {@link StaffSections} for what went where and why.
+	 * <p>
+	 * The personal toggles above are deliberately <em>not</em> sectioned. They are the
+	 * most-used buttons in the mod and they are actions rather than places, so putting them one
+	 * click further away would be tidier and worse.
+	 */
+	private void buildSectionBand() {
 		MinecraftServer server = Mc.server(viewer);
 		int online = server == null ? 0 : server.getPlayerList().getPlayerCount();
 
-		gated(PLAYERS, Nodes.STAFF_GUI, Icon.of(Items.PLAYER_HEAD)
-				.name("Online Players", Theme.TEXT)
-				.field("Online", String.valueOf(online))
+		gated(SEC_PLAYERS, Nodes.STAFF_GUI, Icon.of(Items.PLAYER_HEAD)
+				.name("Players", Theme.ACCENT)
+				.lore("Files, inventories, notes, history, teleport, freeze.")
 				.gap()
-				.action("Click", "browse everyone and act on them")
-				.build(), false, click -> PlayerListMenu.openForInspection(viewer));
+				.field("Online", String.valueOf(online))
+				.build(), false, click -> StaffSections.players(viewer));
 
 		int open = Mods.reports().openCount();
-		gated(REPORTS, Nodes.REPORT_VIEW, Icon.of(Items.PAPER)
-				.name("Reports", open > 0 ? Theme.WARN : Theme.TEXT)
-				.field("Waiting", String.valueOf(open), open > 0 ? Theme.WARN : Theme.MUTED)
+		gated(SEC_PUNISH, Nodes.PUNISH, Icon.of(Items.NETHERITE_AXE)
+				.name("Punishments", open > 0 ? Theme.WARN : Theme.ACCENT)
+				.lore("Punish, reports, appeals, history.")
 				.gap()
-				.action("Click", "open the queue")
+				.field("Reports waiting", String.valueOf(open),
+						open > 0 ? Theme.WARN : Theme.MUTED)
 				.count(Math.max(1, open))
-				.build(), open > 0, click -> ReportsMenu.open(viewer));
+				.build(), open > 0, click -> StaffSections.punishments(viewer));
 
-		gated(PUNISH, Nodes.PUNISH, Icon.of(Items.NETHERITE_AXE)
-				.name("Punish", Theme.BAD)
-				.lore("Warn, kick, mute or ban a player.")
-				.gap()
-				.action("Click", "pick who")
-				.build(), false, click ->
-				PlayerListMenu.open(viewer, PlayerListMenu.Purpose.PUNISH));
-
-		gated(INVSEE, Nodes.INVSEE, Icon.of(Items.CHEST)
-				.name("Inventories", Theme.TEXT)
-				.lore("Look inside what someone is carrying.")
-				.gap()
-				.action("Click", "pick who")
-				.build(), false, click ->
-				PlayerListMenu.open(viewer, PlayerListMenu.Purpose.INVSEE));
-
-		gated(NOTES, Nodes.NOTES, Icon.of(Items.WRITABLE_BOOK)
-				.name("Notes", Theme.TEXT)
-				.lore("Sticky records that outlive your shift.")
-				.gap()
-				.action("Click", "pick who")
-				.build(), false, click ->
-				PlayerListMenu.open(viewer, PlayerListMenu.Purpose.NOTES));
-
-		gated(HISTORY, Nodes.HISTORY, Icon.of(Items.BOOK)
-				.name("History", Theme.TEXT)
-				.lore("Every punishment a player has ever taken.")
-				.gap()
-				.action("Click", "pick who")
-				.build(), false, click ->
-				PlayerListMenu.open(viewer, PlayerListMenu.Purpose.HISTORY));
-
-		gated(SECURITY, Nodes.SECURITY_CHECK, Icon.of(Items.SPYGLASS)
-				.name("Security Check", Theme.TEXT)
-				.lore("Impossible items, illegal enchants, x-ray patterns.")
-				.gap()
-				.action("Click", "pick who")
-				.build(), false, click ->
-				PlayerListMenu.open(viewer, PlayerListMenu.Purpose.SECURITY));
-
-		// Beside the other people-shaped screens, because a case is about a person. Browsing
-		// only: clicking one closes the panel and prints it into chat, where the actions live.
 		int openCases = Mods.cases().openCount();
-		gated(CASES, Nodes.STAFF_GUI, Icon.of(Items.WRITABLE_BOOK)
-				.name("Cases", openCases > 0 ? Theme.WARN : Theme.TEXT)
-				.field("Open", String.valueOf(openCases), openCases > 0 ? Theme.WARN : Theme.MUTED)
-				.lore("Everything the detectors noticed, grouped by who.")
+		gated(SEC_SECURITY, Nodes.SECURITY_CHECK, Icon.of(Items.SPYGLASS)
+				.name("Security", openCases > 0 ? Theme.WARN : Theme.ACCENT)
+				.lore("Checks, sweeps, the vault, and cases.")
 				.gap()
-				.action("Click", "browse them")
+				.field("Open cases", String.valueOf(openCases),
+						openCases > 0 ? Theme.WARN : Theme.MUTED)
 				.count(Math.max(1, openCases))
-				.build(), openCases > 0, click -> CasesMenu.open(viewer));
-	}
+				.build(), openCases > 0, click -> StaffSections.security(viewer));
 
-	// ---------------------------------------------------------------- band three
+		// Its own section rather than part of Security, because this is the one area whose
+		// answer depends on what other mods are installed \u2014 and the prevention status
+		// belongs beside the detection whose meaning it changes.
+		boolean preventing = io.github.alphain24.staffcore.modules.security.AntiXrayCompanion
+				.present();
+		gated(SEC_XRAY, Nodes.SECURITY_CHECK, Icon.of(Items.DIAMOND_ORE)
+				.name("X-ray & cheats", Theme.ACCENT)
+				.lore("Mining analysis, decoys, and what prevents x-ray.")
+				.gap()
+				.state(preventing, "Prevention installed", "Detection only")
+				.build(), false, click -> StaffSections.antiCheat(viewer));
 
-	private void buildServerBand() {
-		boolean locked = Mods.control().isChatMuted();
+		gated(SEC_WORLD, Nodes.LOGS, Icon.of(Items.IRON_PICKAXE)
+				.name("World", Theme.ACCENT)
+				.lore("Grief log, rollbacks, restore points, inspect.")
+				.build(), false, click -> StaffSections.world(viewer));
+
 		boolean maintenance = Mods.control().isMaintenance();
-
-		gated(CONTROL, Nodes.CHAT_CONTROL, Icon.of(Items.REDSTONE_TORCH)
-				.name("Server Control", (locked || maintenance) ? Theme.WARN : Theme.TEXT)
-				.lore("Chat lock, maintenance mode, broadcasts, TPS.")
+		gated(SEC_SERVER, Nodes.CHAT_CONTROL, Icon.of(Items.LEVER)
+				.name("Server", maintenance ? Theme.WARN : Theme.ACCENT)
+				.lore("Chat, maintenance, broadcasts, analytics, status.")
 				.gap()
-				.state(!locked, "Chat open", "Chat locked")
 				.state(!maintenance, "Open to all", "Maintenance mode")
-				.build(), locked || maintenance, click -> ControlMenu.open(viewer));
+				.build(), maintenance, click -> StaffSections.server(viewer));
 
-		gated(GRIEF, Nodes.ROLLBACK, Icon.of(Items.TNT)
-				.name("Grief Log", Theme.TEXT)
-				.lore("What was broken and built around you, and by whom.")
-				.gap()
-				.action("Click", "inspect the area you are standing in")
-				.build(), false, click -> GriefMenu.open(viewer));
-
-		gated(ANALYTICS, Nodes.ANALYTICS, Icon.of(Items.MAP)
-				.name("Analytics", Theme.TEXT)
-				.lore("Who is working, and how much.")
-				.gap()
-				.action("Click", "open the leaderboard")
-				.build(), false, click -> AnalyticsMenu.open(viewer));
-
-		gated(SCANNER, Nodes.ITEMSCAN, Icon.of(Items.HOPPER)
-				.name("Item Scanner", Theme.TEXT)
-				.lore("Sweep every online player for impossible items.")
-				.gap()
-				.action("Click", "run a sweep now")
-				.build(), false, click -> runSweep());
-
-		int openAppeals = Mods.appeals().openCount();
-		gated(APPEALS, Nodes.APPEALS, Icon.of(Items.PAPER)
-				.name("Appeals", openAppeals > 0 ? Theme.WARN : Theme.TEXT)
-				.field("Waiting", String.valueOf(openAppeals), openAppeals > 0 ? Theme.WARN : Theme.MUTED)
-				.lore("What punished players have said in their defence.")
-				.gap()
-				.action("Click", "open the queue")
-				.build(), openAppeals > 0, click -> AppealsMenu.open(viewer));
-
-		boolean discord = Mods.discord().isConfigured();
-		Icon discordIcon = Icon.of(Items.AMETHYST_SHARD)
-				.name("Discord Bridge", discord ? Theme.GOOD : Theme.MUTED)
-				.lore("Punishments, reports and alerts mirrored to a channel.")
-				.gap()
-				.state(discord, "Webhook configured", "No webhook set");
-		if (!discord) {
-			discordIcon.lore("Set discordWebhookUrl in config/staffcore.json.");
-		}
-		set(DISCORD, discordIcon.build());
-
-		int held = Mods.security().vault().heldCount();
-		gated(CONTRABAND, Nodes.VAULT, Icon.of(Items.BUNDLE)
-				.name("Contraband", held > 0 ? Theme.WARN : Theme.TEXT)
-				.field("Held", String.valueOf(held), held > 0 ? Theme.WARN : Theme.MUTED)
-				.lore("What counts as contraband, and what has been taken.")
-				.gap()
-				.action("Left-click", "open the vault")
-				.action("Right-click", "edit the rules")
-				.build(), held > 0, click -> {
-					if (click.isRight()) {
-						ContrabandMenu.open(viewer);
-					} else {
-						VaultMenu.open(viewer);
-					}
-				});
+		gated(SEC_DISCORD, Nodes.RELOAD, Icon.of(Items.ENDER_EYE)
+				.name("Discord", Theme.ACCENT)
+				.lore("What is posted, and whether the bridge is configured.")
+				.build(), false, click -> StaffSections.discord(viewer));
 	}
 
 	// ----------------------------------------------------------------- band four
@@ -435,20 +356,4 @@ public class StaffPanelMenu extends Gui {
 			action.run(click);
 		});
 	}
-
-	private void runSweep() {
-		MinecraftServer server = Mc.server(viewer);
-		if (server == null) return;
-
-		var hits = Mods.security().sweep(server);
-		if (hits.isEmpty()) {
-			viewer.sendSystemMessage(Theme.good("Item sweep clean — nothing impossible online."));
-			Sfx.success(viewer);
-			return;
-		}
-		viewer.sendSystemMessage(Theme.warn("Item sweep found " + hits.size() + " player(s) worth a look:"));
-		hits.forEach(h -> viewer.sendSystemMessage(Theme.info("  " + h)));
-		Sfx.alertPing(viewer);
-	}
-
 }
