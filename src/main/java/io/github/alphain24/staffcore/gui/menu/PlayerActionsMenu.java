@@ -44,6 +44,7 @@ public class PlayerActionsMenu extends Gui {
 	private static final int REVOKE_MUTE = 24;
 	private static final int IP_BAN = 25;
 	private static final int TELEPORTS = 22;
+	private static final int RISK = 31;
 
 	private static final int ENDERCHEST = 17;
 	private static final int LOGS = 28;
@@ -187,6 +188,14 @@ public class PlayerActionsMenu extends Gui {
 				.gap()
 				.action("Click", "see where they went")
 				.build(), true, click -> TeleportHistoryMenu.open(viewer, target));
+
+		action(RISK, Nodes.HISTORY, Icon.of(Items.COMPARATOR)
+				.name("Risk Profile", Theme.TEXT)
+				.lore("Everything on record about them, weighed,")
+				.lore("with every reason shown. Not a verdict.")
+				.gap()
+				.action("Click", "see it")
+				.build(), true, click -> RiskProfileMenu.open(viewer, target));
 
 		buildRevokes(ban, mute);
 		buildIdentityBand(live);

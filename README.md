@@ -170,6 +170,7 @@ has already logged off.
 | `/staff unipban <player>` | `staff.punish.revoke` | Lift only the connection ban, for somebody who shares it |
 | `/staff ipbans` | `staff.history` | IP bans in force, with who issued, who approved and refused logins |
 | `/staff history <player> [clear]` | `staff.history`, `staff.history.clear` | Their record |
+| `/staff risk <player>` | `staff.history` | Everything on record about them — bans, open and actioned cases, detector signals, reports, banned linked accounts, account age — weighed, with every point shown. Lifted punishments and cleared cases count for nothing. Nothing acts on it |
 | `/staff notes <player> [add \| list \| remove <n>]` | `staff.notes[.view\|.remove]` | Sticky records |
 | `/staff chat` · `/staff say <msg>` | `staff.chat` | Toggle channel, one-off line |
 | `/staff alerts` | `staff.alerts` | Toggle your alerts |

@@ -380,6 +380,30 @@ public final class StaffCommands {
 				.executes(StaffCommands::listAddressBans));
 	}
 
+	private static int riskProfile(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+		NameAndId target = singleProfile(ctx, "target");
+		if (target == null) return 0;
+		audit(ctx, "/staff risk " + target.name());
+
+		var assessment = io.github.alphain24.staffcore.modules.cases.RiskProfile.assess(
+				io.github.alphain24.staffcore.modules.cases.RiskProfile.gather(
+						ctx.getSource().getServer(), target.id()));
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(target.name() + ": " + assessment.level().label() + " ("
+						+ assessment.score() + ")", Theme.ACCENT))
+				.append(Icon.text("  — not a verdict; nothing acts on it", Theme.MUTED)), false);
+		if (assessment.factors().isEmpty()) {
+			return ok(ctx, "Nothing on record that counts.");
+		}
+		for (var factor : assessment.factors()) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  +" + factor.points() + "  ", Theme.WARN)
+					.append(Icon.text(factor.label(), Theme.TEXT))
+					.append(Icon.text("  " + factor.detail(), Theme.MUTED)), false);
+		}
+		return 1;
+	}
+
 	private static int teleportHistory(CommandContext<CommandSourceStack> ctx)
 			throws CommandSyntaxException {
 		NameAndId target = singleProfile(ctx, "target");
@@ -873,6 +897,13 @@ public final class StaffCommands {
 
 		// Where a player teleported from and to. The screen when run by a player, lines when
 		// run from the console.
+		// Everything on record about a player, weighed, with every reason. Not a verdict.
+		staff.then(Commands.literal("risk")
+				.requires(src -> Permissions.check(src, Nodes.HISTORY))
+				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
+						.executes(StaffCommands::riskProfile)));
+
 		staff.then(Commands.literal("tphistory")
 				.requires(src -> Permissions.check(src, Nodes.LOGS))
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
