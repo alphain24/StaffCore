@@ -38,6 +38,8 @@ public class CasesMenu extends PagedGui<Case> {
 	/** Which slice of the list is being shown. Filtering is the one thing this screen does. */
 	private Case.Status filter = null;
 	private boolean mineOnly;
+	/** Only one kind of case, or every kind. */
+	private io.github.alphain24.staffcore.modules.cases.CaseCategory kind = null;
 
 	public static void open(ServerPlayer viewer) {
 		Guis.navigate(viewer, Theme.title("Cases"), CasesMenu::new);
@@ -50,7 +52,7 @@ public class CasesMenu extends PagedGui<Case> {
 
 	@Override
 	protected List<Case> entries() {
-		return Mods.cases().store().list(filter, mineOnly ? Mc.name(viewer) : null, 0, 200);
+		return Mods.cases().store().list(filter, mineOnly ? Mc.name(viewer) : null, kind, 0, 200);
 	}
 
 	@Override
@@ -61,11 +63,13 @@ public class CasesMenu extends PagedGui<Case> {
 				.name("Cases", Theme.ACCENT)
 				.field("Open", String.valueOf(open))
 				.field("Showing", filter == null ? "everything" : filter.stored())
+				.field("Kind", kind == null ? "every kind" : kind.label())
 				.field("Assignee", mineOnly ? Mc.name(viewer) : "anyone")
 				.gap()
 				.paragraph("Strongest first, then newest.", Theme.MUTED)
 				.gap()
 				.action("Left-click", "cycle the status filter")
+				.action("Shift-click", "cycle the kind of case")
 				.action("Right-click", "show only cases assigned to you");
 
 		if (open > 0) icon.glow();
@@ -77,8 +81,8 @@ public class CasesMenu extends PagedGui<Case> {
 		String name = subject.subjectName() == null
 				? subject.subjectId().toString() : subject.subjectName();
 
-		Icon icon = Icon.of(iconFor(subject))
-				.name(subject.id(), Theme.ACCENT)
+		Icon icon = Icon.of(iconFor(subject.category()))
+				.name(subject.category().label() + " · " + subject.id(), Theme.ACCENT)
 				.field("Subject", name)
 				.field("Severity", String.valueOf(subject.severity()))
 				.field("Status", subject.status().stored())
@@ -90,7 +94,7 @@ public class CasesMenu extends PagedGui<Case> {
 			icon.gap().paragraph(subject.summary(), Theme.TEXT);
 		}
 
-		icon.gap().action("Click", "read the case in chat");
+		icon.gap().action("Click", "open the case");
 
 		// Severity is the reason the list is ordered the way it is, so it should be visible
 		// without reading the tooltip.
@@ -98,33 +102,25 @@ public class CasesMenu extends PagedGui<Case> {
 		return icon.build();
 	}
 
-	private net.minecraft.world.item.Item iconFor(Case subject) {
-		return switch (subject.status()) {
-			case OPEN -> Items.PAPER;
-			case INVESTIGATING -> Items.SPYGLASS;
-			case ACTIONED -> Items.IRON_BARS;
-			case CLEARED -> Mc.dye(net.minecraft.world.item.DyeColor.LIME);
-			case STALE -> Items.COBWEB;
+	/** One look per kind of case, so a list of them can be read at a glance. */
+	static net.minecraft.world.item.Item iconFor(
+			io.github.alphain24.staffcore.modules.cases.CaseCategory category) {
+		return switch (category) {
+			case GRIEFING -> Items.TNT;
+			case CHEATING -> Items.DIAMOND_ORE;
+			case ILLEGAL_ITEMS -> Items.BARRIER;
+			case BAN_EVASION -> Items.NAME_TAG;
+			case CHAT -> Items.WRITABLE_BOOK;
+			case OTHER -> Items.PAPER;
 		};
 	}
 
 	@Override
 	protected void onPick(Case subject, Click click) {
-		// Closes rather than staying open, and that is the point of the screen ending here:
-		// the case view is chat, chat is behind the container, and a case read through a
-		// half-covered window is a case somebody skims.
-		viewer.closeContainer();
+		// Its own screen now: the evidence has to be clickable, and chat cannot open a replay
+		// without a typed command. The full chat view is one button away on that screen.
 		Sfx.page(viewer);
-
-		var found = Mods.cases().store().byId(subject.id());
-		if (found.isEmpty()) {
-			// It was on screen a moment ago. Cases are never deleted, so this means storage
-			// went away rather than that somebody removed it.
-			viewer.sendSystemMessage(Theme.bad("Case " + subject.id() + " could not be read."));
-			return;
-		}
-		io.github.alphain24.staffcore.modules.cases.CaseView.print(
-				viewer.createCommandSourceStack(), found.get());
+		CaseMenu.open(viewer, subject.id());
 	}
 
 	/**
@@ -138,7 +134,8 @@ public class CasesMenu extends PagedGui<Case> {
 	protected void build() {
 		super.build();
 		button(SLOT_HEADER, header(), click -> {
-			if (click.isRight()) mineOnly = !mineOnly;
+			if (click.isShift()) kind = nextKind(kind);
+			else if (click.isRight()) mineOnly = !mineOnly;
 			else filter = nextFilter(filter);
 
 			Sfx.toggleOn(viewer);
@@ -147,6 +144,13 @@ public class CasesMenu extends PagedGui<Case> {
 	}
 
 	/** Everything, then each status in turn, then back to everything. */
+	private static io.github.alphain24.staffcore.modules.cases.CaseCategory nextKind(
+			io.github.alphain24.staffcore.modules.cases.CaseCategory current) {
+		var all = io.github.alphain24.staffcore.modules.cases.CaseCategory.values();
+		if (current == null) return all[0];
+		return current.ordinal() + 1 >= all.length ? null : all[current.ordinal() + 1];
+	}
+
 	private static Case.Status nextFilter(Case.Status current) {
 		if (current == null) return Case.Status.OPEN;
 		Case.Status[] all = Case.Status.values();

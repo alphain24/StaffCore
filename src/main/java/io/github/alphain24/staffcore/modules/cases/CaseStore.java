@@ -61,13 +61,18 @@ public final class CaseStore {
 		StaffConfig cfg = StaffConfig.get();
 		Landing[] result = { new Landing(incoming, null, false) };
 
+		CaseCategory category = CaseCategory.of(incoming);
+
 		StaffCore.storage().inTransaction(conn -> {
-			Optional<Case> existing = openCaseFor(conn, incoming.subjectId());
+			// Only a case of the same kind. A chat report about somebody under investigation
+			// for x-ray is not part of the x-ray investigation, and joining it would close with
+			// it — and count in its evidence — when that case is cleared.
+			Optional<Case> existing = openCaseFor(conn, incoming.subjectId(), category);
 			String caseId = existing.map(Case::id).orElse(null);
 			boolean opened = false;
 
 			if (caseId == null && incoming.confidence() >= cfg.caseAutoOpenSeverity) {
-				caseId = insertCase(conn, incoming);
+				caseId = insertCase(conn, incoming, category);
 				opened = true;
 			}
 
@@ -99,20 +104,99 @@ public final class CaseStore {
 	 */
 	public String openManually(UUID subject, String subjectName, String openedBy, String summary,
 			int severity) {
+		return openManually(subject, subjectName, openedBy, summary, severity, CaseCategory.OTHER);
+	}
+
+	/**
+	 * As above, as a given kind of case. When the player already has an open case of that kind
+	 * it is returned instead: two live griefing investigations into one person is two places
+	 * for the evidence to be split between.
+	 */
+	public String openManually(UUID subject, String subjectName, String openedBy, String summary,
+			int severity, CaseCategory category) {
 
 		if (!ready()) return null;
 		String[] id = { null };
 
 		StaffCore.storage().inTransaction(conn -> {
-			id[0] = insertCase(conn, subject, subjectName, openedBy, summary, severity);
+			Optional<Case> existing = openCaseFor(conn, subject, category);
+			if (existing.isPresent()) {
+				id[0] = existing.get().id();
+				appendEvent(conn, id[0], openedBy, "note",
+						"asked to open a " + category.label() + " case: " + summary);
+				return;
+			}
+			id[0] = insertCase(conn, subject, subjectName, openedBy, summary, severity, category);
 			appendEvent(conn, id[0], openedBy, "opened", summary);
 		});
 		return id[0];
 	}
 
+	/**
+	 * Moves a case to another kind, for the report whose words were read wrong.
+	 * <p>
+	 * Refused when the player already has an open case of the new kind — the evidence would
+	 * then be split across two live cases. Close or merge by hand first.
+	 */
+	public boolean setCategory(String caseId, CaseCategory category, String actor) {
+		if (!ready()) return false;
+		Optional<Case> current = byId(caseId);
+		if (current.isEmpty()) return false;
+		if (current.get().category() == category) return true;
+
+		Optional<Case> clash = openCaseFor(current.get().subjectId(), category);
+		if (clash.isPresent() && !clash.get().id().equals(caseId) && current.get().status().isLive()) {
+			return false;
+		}
+
+		return StaffCore.storage().inTransaction(conn -> {
+			try (PreparedStatement ps = conn.prepareStatement(
+					"UPDATE cases SET category = ? WHERE id = ?")) {
+				ps.setString(1, category.stored());
+				ps.setString(2, caseId);
+				ps.executeUpdate();
+			}
+			appendEvent(conn, caseId, actor, "category",
+					current.get().category().label() + " -> " + category.label());
+		});
+	}
+
 	// ------------------------------------------------------------------- the rules
 
-	/** The one open case for a subject, if there is one. */
+	/** The one open case of this kind for a subject, if there is one. */
+	public Optional<Case> openCaseFor(UUID subject, CaseCategory category) {
+		if (!ready()) return Optional.empty();
+		try {
+			return openCaseFor(StaffCore.storage().conn(), subject, category);
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Cases] Could not look up the open case for {}", subject, e);
+			return Optional.empty();
+		}
+	}
+
+	/** Every open case for a subject, newest first — one per kind at most. */
+	public List<Case> openCasesFor(UUID subject) {
+		List<Case> out = new ArrayList<>();
+		if (!ready()) return out;
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement("""
+				SELECT * FROM cases
+				WHERE subject_uuid = ? AND status IN ('open','investigating')
+				ORDER BY opened_at DESC
+				""")) {
+			ps.setString(1, subject.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) out.add(read(rs));
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Cases] Could not list open cases for {}", subject, e);
+		}
+		return out;
+	}
+
+	/**
+	 * The newest open case for a subject, of any kind. For callers that only need somewhere to
+	 * file context — a note — rather than a case of a particular kind.
+	 */
 	public Optional<Case> openCaseFor(UUID subject) {
 		if (!ready()) return Optional.empty();
 		try {
@@ -120,6 +204,25 @@ public final class CaseStore {
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Cases] Could not look up the open case for {}", subject, e);
 			return Optional.empty();
+		}
+	}
+
+	private Optional<Case> openCaseFor(java.sql.Connection conn, UUID subject,
+			CaseCategory category) throws SQLException {
+
+		// Newest first, as below. A case from before categories has a null category and is read
+		// as OTHER, so it goes on collecting only what OTHER collects.
+		try (PreparedStatement ps = conn.prepareStatement("""
+				SELECT * FROM cases
+				WHERE subject_uuid = ? AND status IN ('open','investigating')
+				  AND COALESCE(category, 'other') = ?
+				ORDER BY opened_at DESC LIMIT 1
+				""")) {
+			ps.setString(1, subject.toString());
+			ps.setString(2, category.stored());
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? Optional.of(read(rs)) : Optional.empty();
+			}
 		}
 	}
 
@@ -292,18 +395,27 @@ public final class CaseStore {
 
 	/** Severity first, then recency — the order the list screen reads in. */
 	public List<Case> list(Case.Status status, String assignee, int offset, int limit) {
+		return list(status, assignee, null, offset, limit);
+	}
+
+	/** As above, narrowed to one kind of case when {@code category} is not null. */
+	public List<Case> list(Case.Status status, String assignee, CaseCategory category,
+			int offset, int limit) {
+
 		List<Case> out = new ArrayList<>();
 		if (!ready()) return out;
 
 		StringBuilder sql = new StringBuilder("SELECT * FROM cases WHERE 1=1");
 		if (status != null) sql.append(" AND status = ?");
 		if (assignee != null) sql.append(" AND assigned_to = ?");
+		if (category != null) sql.append(" AND COALESCE(category, 'other') = ?");
 		sql.append(" ORDER BY severity DESC, opened_at DESC LIMIT ? OFFSET ?");
 
 		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(sql.toString())) {
 			int i = 1;
 			if (status != null) ps.setString(i++, status.stored());
 			if (assignee != null) ps.setString(i++, assignee);
+			if (category != null) ps.setString(i++, category.stored());
 			ps.setInt(i++, limit);
 			ps.setInt(i, offset);
 
@@ -433,19 +545,21 @@ public final class CaseStore {
 
 	// -------------------------------------------------------------------- plumbing
 
-	private String insertCase(java.sql.Connection conn, Signal from) throws SQLException {
+	private String insertCase(java.sql.Connection conn, Signal from, CaseCategory category)
+			throws SQLException {
 		return insertCase(conn, from.subjectId(), from.subjectName(), Case.SYSTEM,
-				from.headline() + " from " + from.sourceModule(), from.confidence());
+				from.headline() + " from " + from.sourceModule(), from.confidence(), category);
 	}
 
 	private String insertCase(java.sql.Connection conn, UUID subject, String subjectName,
-			String openedBy, String summary, int severity) throws SQLException {
+			String openedBy, String summary, int severity, CaseCategory category)
+			throws SQLException {
 
 		String id = uniqueId(conn);
 		try (PreparedStatement ps = conn.prepareStatement("""
 				INSERT INTO cases (id, subject_uuid, subject_name, status, severity, summary,
-				                   opened_at, opened_by, server_version, mod_version)
-				VALUES (?,?,?,'open',?,?,?,?,?,?)
+				                   opened_at, opened_by, server_version, mod_version, category)
+				VALUES (?,?,?,'open',?,?,?,?,?,?,?)
 				""")) {
 			ps.setString(1, id);
 			ps.setString(2, subject.toString());
@@ -456,6 +570,7 @@ public final class CaseStore {
 			ps.setString(7, openedBy);
 			ps.setString(8, Versions.minecraft());
 			ps.setString(9, Versions.mod());
+			ps.setString(10, category.stored());
 			ps.executeUpdate();
 		}
 		return id;
@@ -563,6 +678,7 @@ public final class CaseStore {
 				rs.wasNull() ? null : closedAt, rs.getString("closed_by"),
 				rs.getString("resolution"), rs.getString("server_version"),
 				rs.getString("mod_version"),
-				Resolution.of(rs.getString("resolution_reason")));
+				Resolution.of(rs.getString("resolution_reason")),
+				CaseCategory.ofStored(rs.getString("category")));
 	}
 }

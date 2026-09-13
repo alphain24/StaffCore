@@ -124,11 +124,22 @@ public final class AntiCheatModule implements Module {
 		// A UUID is not always available — some providers report by name — and a signal must
 		// be attributable to attach to anything, so a nameless event stays an alert.
 		if (event.playerId() != null) {
+			long now = System.currentTimeMillis();
+			net.minecraft.server.level.ServerPlayer flagged = server == null ? null
+					: server.getPlayerList().getPlayer(event.playerId());
 			Mods.cases().emit(server,
 					io.github.alphain24.staffcore.modules.cases.Signal.Type.ANTICHEAT,
 					event.playerId(), event.playerName(),
 					event.hasConfidence() ? event.confidence() : cfg.antiCheatAlertConfidence,
-					"[" + event.provider() + "] " + event.headline(), "anticheat");
+					"[" + event.provider() + "] " + event.headline(), "anticheat",
+					java.util.List.of(
+							io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.replay(
+									event.playerId(), event.playerName(),
+									flagged == null ? null
+											: io.github.alphain24.staffcore.compat.Mc.dimensionId(flagged.level()),
+									flagged == null ? null : flagged.blockPosition(),
+									now - 5 * 60_000L, now + 60_000L,
+									"what they were doing when " + event.provider() + " flagged it")));
 			return;
 		}
 

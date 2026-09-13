@@ -72,12 +72,28 @@ public class ReportModule implements Module {
 			// open case about the same player — which is the connection worth having, because
 			// "somebody reported them for it" is what turns a marginal detector score into a
 			// reason to act.
-			io.github.alphain24.staffcore.module.Mods.cases().emit(
-					io.github.alphain24.staffcore.StaffCore.server(),
+			// The ten minutes before the report is when whatever was reported happened. Where
+			// the player is now is the other half, while they are still there.
+			java.util.List<io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft> drafts =
+					new java.util.ArrayList<>();
+			net.minecraft.server.MinecraftServer server = io.github.alphain24.staffcore.StaffCore.server();
+			net.minecraft.server.level.ServerPlayer online = server == null ? null
+					: server.getPlayerList().getPlayer(target);
+			String world = online == null ? null
+					: io.github.alphain24.staffcore.compat.Mc.dimensionId(online.level());
+			drafts.add(io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.replay(
+					target, targetName, world, online == null ? null : online.blockPosition(),
+					now - 10 * 60_000L, now, "the ten minutes before " + reporterName + " reported"));
+			if (online != null) {
+				drafts.add(io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.location(
+						target, targetName, world, online.blockPosition(),
+						"where " + targetName + " was when reported"));
+			}
+			io.github.alphain24.staffcore.module.Mods.cases().emit(server,
 					io.github.alphain24.staffcore.modules.cases.Signal.Type.REPORT,
 					target, targetName,
 					io.github.alphain24.staffcore.config.StaffConfig.get().reportSignalConfidence,
-					reporterName + " reported: " + reason, "report");
+					reporterName + " reported: " + reason, "report", drafts);
 			return Result.OK;
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Report] file failed", e);

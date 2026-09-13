@@ -22,7 +22,12 @@ public record Case(String id, UUID subjectId, String subjectName, Status status,
 		 * which the corpus treats as unknown rather than as innocence, because backfilling it
 		 * would invent a judgement nobody made.
 		 */
-		Resolution resolutionReason) {
+		Resolution resolutionReason,
+		/**
+		 * What kind of wrongdoing this is about. A player can have one open case of each kind;
+		 * see {@link CaseCategory} for why they are kept apart.
+		 */
+		CaseCategory category) {
 
 	/** Whether this case is evidence the detector was wrong about somebody. */
 	public boolean isCorpusNegative() {

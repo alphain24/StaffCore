@@ -50,6 +50,14 @@ public class TeleportModule implements Module {
 		Sfx.success(staff);
 	}
 
+	/** As below, into a given world — case evidence can be anywhere. */
+	public void toPosition(ServerPlayer staff, net.minecraft.server.level.ServerLevel level,
+			double x, double y, double z) {
+		remember(staff);
+		Mc.teleport(staff, level, x, y, z, staff.getYRot(), staff.getXRot());
+		Sfx.teleport(staff);
+	}
+
 	public void toPosition(ServerPlayer staff, double x, double y, double z) {
 		remember(staff);
 		Mc.teleport(staff, staff.level(), x, y, z, staff.getYRot(), staff.getXRot());

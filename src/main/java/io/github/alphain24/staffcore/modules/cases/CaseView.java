@@ -37,6 +37,7 @@ public final class CaseView {
 		to.sendSuccess(() -> statusLine(subject), false);
 
 		signals(to, store.signalsFor(subject.id()));
+		evidence(to, subject);
 		links(to, store.linksFor(subject.id()));
 		events(to, store.eventsFor(subject.id()));
 
@@ -48,12 +49,43 @@ public final class CaseView {
 						Theme.ACCENT, "Assign this case to somebody"))
 				.append(Icon.text("  ", Theme.MUTED))
 				.append(Link.suggest("[close]", "/staff case " + subject.id() + " cleared ",
-						Theme.ACCENT, "Close this case as cleared, with a reason")), false);
+						Theme.ACCENT, "Close this case as cleared, with a reason"))
+				.append(Icon.text("  ", Theme.MUTED))
+				.append(Link.suggest("[+evidence]", "/staff case " + subject.id() + " evidence ",
+						Theme.ACCENT, "File a replay, block damage, a location or a snapshot")), false);
+	}
+
+	/**
+	 * The evidence filed on a case, each with a link that opens it.
+	 * <p>
+	 * Distinct from the signals above, which are what the detectors said. These are the things
+	 * to go and look at — and opening one goes through that tool's own permission.
+	 */
+	public static void evidence(CommandSourceStack to, Case subject) {
+		var items = Mods.cases().evidence().forCase(subject.id());
+		if (items.isEmpty()) {
+			to.sendSuccess(() -> Icon.text("  No evidence filed.  ", Theme.MUTED)
+					.append(Link.suggest("[file some]", "/staff case " + subject.id() + " evidence ",
+							Theme.ACCENT, "replay <ago> [length] · blocks [radius] [ago] · location · snapshot")),
+					false);
+			return;
+		}
+
+		to.sendSuccess(() -> Icon.text("  To look at (" + items.size() + "):", Theme.TEXT), false);
+		for (CaseEvidence.Item item : items) {
+			to.sendSuccess(() -> Icon.text("    #" + item.id() + " ", Theme.MUTED)
+					.append(Link.run("[open]", "/staff case " + subject.id() + " evidence view "
+							+ item.id(), Theme.ACCENT, "Open this " + item.kind().label().toLowerCase(java.util.Locale.ROOT)))
+					.append(Icon.text("  " + item.describe(), Theme.TEXT))
+					.append(Icon.text(item.label() == null ? "" : "  — " + item.label(), Theme.MUTED)),
+					false);
+		}
 	}
 
 	private static MutableComponent header(Case subject) {
 		return Theme.prefix()
 				.append(Link.copy(subject.id(), subject.id(), Theme.ACCENT, "Copy the case id"))
+				.append(Icon.text("  " + subject.category().label(), Theme.TEXT))
 				.append(Icon.text("  " + subject.status().stored(), severityColour(subject)))
 				.append(Icon.text("  severity " + subject.severity(), Theme.MUTED));
 	}
@@ -164,6 +196,7 @@ public final class CaseView {
 				.append(Icon.text("  " + pad(String.valueOf(subject.severity()), 3),
 						severityColour(subject)))
 				.append(Icon.text("  " + pad(subject.status().stored(), 13), Theme.MUTED))
+				.append(Icon.text(pad(subject.category().label(), 19), Theme.TEXT))
 				.append(Link.subject(name, subject.subjectId()))
 				.append(Icon.text("  ", Theme.MUTED))
 				.append(Link.time(subject.openedAt()));

@@ -2365,12 +2365,58 @@ public final class StaffCommands {
 							return b.buildFuture();
 						})
 						.executes(ctx -> caseList(ctx,
-								Case.Status.of(StringArgumentType.getString(ctx, "status")), null))));
+								Case.Status.of(StringArgumentType.getString(ctx, "status")), null)))
+				.then(Commands.literal("type")
+						.then(Commands.argument("category", StringArgumentType.word())
+								.suggests(CASE_CATEGORIES)
+								.executes(ctx -> caseListOfCategory(ctx)))));
 
 		staff.then(Commands.literal("case")
 				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
+				// By hand, for something a staff member saw that no detector did.
+				.then(Commands.literal("open")
+						.then(Commands.argument("target", GameProfileArgument.gameProfile())
+								.suggests(KNOWN_PLAYERS)
+								.then(Commands.argument("category", StringArgumentType.word())
+										.suggests(CASE_CATEGORIES)
+										.executes(ctx -> caseOpen(ctx, "Opened by hand"))
+										.then(Commands.argument("summary",
+														StringArgumentType.greedyString())
+												.executes(ctx -> caseOpen(ctx,
+														StringArgumentType.getString(ctx, "summary")))))))
 				.then(Commands.argument("id", StringArgumentType.word())
 						.executes(StaffCommands::caseShow)
+						.then(Commands.literal("category")
+								.then(Commands.argument("category", StringArgumentType.word())
+										.suggests(CASE_CATEGORIES)
+										.executes(StaffCommands::caseCategory)))
+						.then(Commands.literal("evidence")
+								.executes(StaffCommands::caseEvidenceList)
+								.then(Commands.literal("replay")
+										.then(Commands.argument("ago", StringArgumentType.word())
+												.executes(ctx -> caseEvidenceReplay(ctx, null))
+												.then(Commands.argument("length", StringArgumentType.word())
+														.executes(ctx -> caseEvidenceReplay(ctx,
+																StringArgumentType.getString(ctx, "length"))))))
+								.then(Commands.literal("blocks")
+										.executes(ctx -> caseEvidenceBlocks(ctx, 16, "1h"))
+										.then(Commands.argument("radius", IntegerArgumentType.integer(1, 128))
+												.executes(ctx -> caseEvidenceBlocks(ctx,
+														IntegerArgumentType.getInteger(ctx, "radius"), "1h"))
+												.then(Commands.argument("ago", StringArgumentType.word())
+														.executes(ctx -> caseEvidenceBlocks(ctx,
+																IntegerArgumentType.getInteger(ctx, "radius"),
+																StringArgumentType.getString(ctx, "ago"))))))
+								.then(Commands.literal("location")
+										.executes(StaffCommands::caseEvidenceLocation))
+								.then(Commands.literal("snapshot")
+										.executes(StaffCommands::caseEvidenceSnapshot))
+								.then(Commands.literal("view")
+										.then(Commands.argument("n", com.mojang.brigadier.arguments.LongArgumentType.longArg(1))
+												.executes(StaffCommands::caseEvidenceView)))
+								.then(Commands.literal("retract")
+										.then(Commands.argument("n", com.mojang.brigadier.arguments.LongArgumentType.longArg(1))
+												.executes(StaffCommands::caseEvidenceRetract))))
 						.then(Commands.literal("note")
 								.then(Commands.argument("text", StringArgumentType.greedyString())
 										.executes(ctx -> caseNote(ctx))))
@@ -2454,6 +2500,214 @@ public final class StaffCommands {
 		for (Case one : cases) {
 			ctx.getSource().sendSuccess(() -> CaseView.line(one), false);
 		}
+		return 1;
+	}
+
+	private static final com.mojang.brigadier.suggestion.SuggestionProvider<CommandSourceStack>
+			CASE_CATEGORIES = (c, b) -> {
+				for (io.github.alphain24.staffcore.modules.cases.CaseCategory category : io.github.alphain24.staffcore.modules.cases.CaseCategory.values()) {
+					b.suggest(category.stored(), () -> category.label());
+				}
+				return b.buildFuture();
+			};
+
+	private static io.github.alphain24.staffcore.modules.cases.CaseCategory requireCategory(CommandContext<CommandSourceStack> ctx) {
+		String typed = StringArgumentType.getString(ctx, "category");
+		io.github.alphain24.staffcore.modules.cases.CaseCategory category = io.github.alphain24.staffcore.modules.cases.CaseCategory.parse(typed);
+		if (category == null) {
+			fail(ctx, "\"" + typed + "\" is not a kind of case. Use one of: "
+					+ java.util.Arrays.stream(io.github.alphain24.staffcore.modules.cases.CaseCategory.values()).map(io.github.alphain24.staffcore.modules.cases.CaseCategory::stored)
+							.collect(java.util.stream.Collectors.joining(", ")) + ".");
+		}
+		return category;
+	}
+
+	/** Who is acting, for a case record: the player's name, or the console's. */
+	private static String caseActor(CommandContext<CommandSourceStack> ctx) {
+		ServerPlayer player = ctx.getSource().getPlayer();
+		return player == null ? ctx.getSource().getTextName() : Mc.name(player);
+	}
+
+	private static int caseListOfCategory(CommandContext<CommandSourceStack> ctx) {
+		io.github.alphain24.staffcore.modules.cases.CaseCategory category = requireCategory(ctx);
+		if (category == null) return 0;
+
+		var cases = Mods.cases().store().list(null, null, category, 0, 20);
+		if (cases.isEmpty()) {
+			ctx.getSource().sendSuccess(() -> Theme.info("No " + category.label() + " cases."), false);
+			return 1;
+		}
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(cases.size() + " " + category.label() + " case(s)", Theme.ACCENT))
+				.append(Icon.text("  — strongest first", Theme.MUTED)), false);
+		for (Case one : cases) {
+			ctx.getSource().sendSuccess(() -> CaseView.line(one), false);
+		}
+		return 1;
+	}
+
+	private static int caseOpen(CommandContext<CommandSourceStack> ctx, String summary)
+			throws CommandSyntaxException {
+
+		NameAndId target = singleProfile(ctx, "target");
+		if (target == null) return 0;
+		io.github.alphain24.staffcore.modules.cases.CaseCategory category = requireCategory(ctx);
+		if (category == null) return 0;
+
+		String actor = caseActor(ctx);
+		var existing = Mods.cases().store().openCaseFor(target.id(), category);
+		// Severity 0: a case opened by hand has no detector score, and inventing one would
+		// sort it among the detector cases as though a detector had scored it.
+		String id = Mods.cases().store().openManually(target.id(), target.name(), actor, summary,
+				0, category);
+		if (id == null) return fail(ctx, "The case could not be opened. The server log says why.");
+
+		audit(ctx, "/staff case open " + target.name() + " " + category.stored(), id);
+		ctx.getSource().sendSuccess(() -> Theme.good(existing.isPresent()
+				? target.name() + " already has an open " + category.label() + " case, " + id
+						+ ". Added a note to it instead."
+				: "Opened " + category.label() + " case " + id + " for " + target.name() + "."), false);
+		return 1;
+	}
+
+	private static int caseCategory(CommandContext<CommandSourceStack> ctx) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+		io.github.alphain24.staffcore.modules.cases.CaseCategory category = requireCategory(ctx);
+		if (category == null) return 0;
+
+		if (!Mods.cases().store().setCategory(found.id(), category, caseActor(ctx))) {
+			return fail(ctx, "Could not move " + found.id() + " to " + category.label() + ". "
+					+ "If the player already has an open " + category.label() + " case, add to "
+					+ "that one instead.");
+		}
+		audit(ctx, "/staff case " + found.id() + " category " + category.stored(), found.id());
+		ctx.getSource().sendSuccess(() -> Theme.good(found.id() + " is now a "
+				+ category.label() + " case."), false);
+		return 1;
+	}
+
+	private static int caseEvidenceList(CommandContext<CommandSourceStack> ctx) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+		CaseView.evidence(ctx.getSource(), found);
+		return 1;
+	}
+
+	/** Reads a length like "30m" for the evidence commands, or says why not. */
+	private static Long evidenceLength(CommandContext<CommandSourceStack> ctx, String typed) {
+		var parsed = io.github.alphain24.staffcore.util.DurationParser.of(typed);
+		if (!parsed.valid() || parsed.millis() == null || parsed.millis() <= 0) {
+			fail(ctx, parsed.valid() ? "\"" + typed + "\" has to be a length, like 30m or 2h."
+					: parsed.problem());
+			return null;
+		}
+		return parsed.millis();
+	}
+
+	private static int fileEvidence(CommandContext<CommandSourceStack> ctx, Case found,
+			io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft draft) {
+		long id = Mods.cases().evidence().add(found.id(), draft, caseActor(ctx));
+		if (id < 0) return fail(ctx, "The evidence could not be saved. The server log says why.");
+
+		audit(ctx, "/staff case " + found.id() + " evidence " + draft.kind().name().toLowerCase(java.util.Locale.ROOT), found.id());
+		ctx.getSource().sendSuccess(() -> Theme.good("Filed " + draft.kind().label().toLowerCase(java.util.Locale.ROOT)
+				+ " as #" + id + " on " + found.id() + ".")
+				.append(Icon.text("  ", Theme.MUTED))
+				.append(io.github.alphain24.staffcore.gui.Link.run("[open]",
+						"/staff case " + found.id() + " evidence view " + id, Theme.ACCENT,
+						"Open it now")), false);
+		return 1;
+	}
+
+	private static int caseEvidenceReplay(CommandContext<CommandSourceStack> ctx, String lengthTyped) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+		Long ago = evidenceLength(ctx, StringArgumentType.getString(ctx, "ago"));
+		if (ago == null) return 0;
+		Long length = lengthTyped == null ? ago : evidenceLength(ctx, lengthTyped);
+		if (length == null) return 0;
+
+		long from = System.currentTimeMillis() - ago;
+		long to = Math.min(System.currentTimeMillis(), from + length);
+		return fileEvidence(ctx, found, io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.replay(found.subjectId(), found.subjectName(),
+				null, null, from, to, "filed by " + caseActor(ctx)));
+	}
+
+	private static int caseEvidenceBlocks(CommandContext<CommandSourceStack> ctx, int radius,
+			String agoTyped) throws CommandSyntaxException {
+
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		Long ago = evidenceLength(ctx, agoTyped);
+		if (ago == null) return 0;
+
+		long now = System.currentTimeMillis();
+		return fileEvidence(ctx, found, io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.blocks(found.subjectId(), found.subjectName(),
+				Mc.dimensionId(self.level()), self.blockPosition(), radius, now - ago, now,
+				"filed by " + caseActor(ctx)));
+	}
+
+	private static int caseEvidenceLocation(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		return fileEvidence(ctx, found, io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.location(found.subjectId(), found.subjectName(),
+				Mc.dimensionId(self.level()), self.blockPosition(), "filed by " + caseActor(ctx)));
+	}
+
+	private static int caseEvidenceSnapshot(CommandContext<CommandSourceStack> ctx) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+		if (!Permissions.check(ctx.getSource(), Nodes.INVSEE)) {
+			return fail(ctx, "Taking a snapshot needs " + Nodes.INVSEE + ".");
+		}
+		ServerPlayer subject = ctx.getSource().getServer().getPlayerList().getPlayer(found.subjectId());
+		if (subject == null) {
+			return fail(ctx, found.subjectName() + " is offline, so there is no inventory to "
+					+ "photograph now. Their saved snapshots are under their file.");
+		}
+		var snapshot = Mods.inventory().capture(subject, "Evidence for case " + found.id(),
+				caseActor(ctx));
+		if (snapshot == null) return fail(ctx, "The snapshot could not be taken. The server log says why.");
+		return fileEvidence(ctx, found, io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.snapshot(found.subjectId(), found.subjectName(),
+				snapshot.id(), snapshot.label()));
+	}
+
+	private static int caseEvidenceView(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		long n = com.mojang.brigadier.arguments.LongArgumentType.getLong(ctx, "n");
+
+		var item = Mods.cases().evidence().byId(n);
+		if (item.isEmpty() || !item.get().caseId().equals(found.id())) {
+			return fail(ctx, "Case " + found.id() + " has no evidence #" + n + ".");
+		}
+		audit(ctx, "/staff case " + found.id() + " evidence view " + n, found.id());
+		return io.github.alphain24.staffcore.modules.cases.EvidenceViewer.open(self, item.get()) ? 1 : 0;
+	}
+
+	private static int caseEvidenceRetract(CommandContext<CommandSourceStack> ctx) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+		long n = com.mojang.brigadier.arguments.LongArgumentType.getLong(ctx, "n");
+
+		var item = Mods.cases().evidence().byId(n);
+		if (item.isEmpty() || !item.get().caseId().equals(found.id())) {
+			return fail(ctx, "Case " + found.id() + " has no evidence #" + n + ".");
+		}
+		if (!Mods.cases().evidence().retract(n, caseActor(ctx))) {
+			return fail(ctx, "Could not retract #" + n + ". The server log says why.");
+		}
+		audit(ctx, "/staff case " + found.id() + " evidence retract " + n, found.id());
+		ctx.getSource().sendSuccess(() -> Theme.good("Retracted #" + n + ". It is kept in the "
+				+ "case history, marked as retracted."), false);
 		return 1;
 	}
 

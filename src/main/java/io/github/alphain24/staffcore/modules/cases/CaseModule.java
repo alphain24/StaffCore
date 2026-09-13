@@ -55,6 +55,12 @@ public class CaseModule implements Module {
 	}
 
 	private final CaseStore store = new CaseStore();
+	private final CaseEvidence evidence = new CaseEvidence();
+
+	/** Replays, block damage, places and snapshots filed against cases. */
+	public CaseEvidence evidence() {
+		return evidence;
+	}
 
 	public CaseStore store() {
 		return store;
@@ -93,6 +99,36 @@ public class CaseModule implements Module {
 		CaseStore.Landing landing = land(server, signal);
 		announce(server, landing);
 		return landing;
+	}
+
+	/**
+	 * As {@link #emit(MinecraftServer, Signal)}, with the evidence the detector already has to
+	 * hand — the window and place a griefing burst happened in, the dig an x-ray score was about.
+	 * <p>
+	 * Filed only when the signal lands in a case. A signal too weak to open one is kept on the
+	 * player's record; its evidence is not, because it would be evidence for nothing, and the
+	 * replay and block log it points at are there to be filed by hand if a case opens later.
+	 */
+	public CaseStore.Landing emit(MinecraftServer server, Signal signal,
+			java.util.List<CaseEvidence.Draft> drafts) {
+
+		CaseStore.Landing landing = land(server, signal);
+		if (landing.caseId() != null && drafts != null) {
+			for (CaseEvidence.Draft draft : drafts) {
+				evidence.add(landing.caseId(), draft, Case.SYSTEM);
+			}
+		}
+		announce(server, landing);
+		return landing;
+	}
+
+	/** Convenience for the common shape, with evidence. */
+	public CaseStore.Landing emit(MinecraftServer server, Signal.Type type, UUID subject,
+			String subjectName, int confidence, String detail, String sourceModule,
+			java.util.List<CaseEvidence.Draft> drafts) {
+
+		return emit(server, Signal.of(type, subject, subjectName, confidence, detail, sourceModule),
+				drafts);
 	}
 
 	/**
@@ -300,12 +336,14 @@ public class CaseModule implements Module {
 
 	// -------------------------------------------------------------------- reading
 
-	/** A one-line summary for the player context panel: open case, or unattached signals. */
+	/** A one-line summary for the player context panel: open cases, or unattached signals. */
 	public String contextFor(UUID subject) {
-		var open = store.openCaseFor(subject);
-		if (open.isPresent()) {
-			Case c = open.get();
-			return "case " + c.id() + " (" + c.status().stored() + ", severity " + c.severity() + ")";
+		var open = store.openCasesFor(subject);
+		if (!open.isEmpty()) {
+			return open.stream()
+					.map(c -> c.category().label().toLowerCase(java.util.Locale.ROOT) + " case "
+							+ c.id() + " (" + c.status().stored() + ", severity " + c.severity() + ")")
+					.collect(java.util.stream.Collectors.joining("; "));
 		}
 
 		int quiet = store.unattachedFor(subject, 50).size();

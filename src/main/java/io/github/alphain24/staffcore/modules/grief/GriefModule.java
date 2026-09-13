@@ -672,8 +672,8 @@ public class GriefModule implements Module {
 	 * a detector that fires on every strip-miner is one staff learn to ignore.
 	 */
 	private void noteBreak(ServerPlayer player) {
-		noteDestroyed(Mc.server(player), player.getUUID(), Mc.name(player), 1,
-				player.blockPosition(), "by hand");
+		noteDestroyed(Mc.server(player), Mc.dimensionId(player.level()), player.getUUID(),
+				Mc.name(player), 1, player.blockPosition(), "by hand");
 	}
 
 	/**
@@ -696,12 +696,12 @@ public class GriefModule implements Module {
 		}
 		if (destroyed == 0) return;
 
-		noteDestroyed(level.getServer(), who.id(), who.name(), destroyed,
+		noteDestroyed(level.getServer(), Mc.dimensionId(level), who.id(), who.name(), destroyed,
 				BlockPos.containing(explosion.center()), who.how());
 	}
 
-	private void noteDestroyed(MinecraftServer server, UUID id, String name, int destroyed,
-			BlockPos where, String how) {
+	private void noteDestroyed(MinecraftServer server, String world, UUID id, String name,
+			int destroyed, BlockPos where, String how) {
 
 		StaffConfig cfg = StaffConfig.get();
 		long now = System.currentTimeMillis();
@@ -718,10 +718,22 @@ public class GriefModule implements Module {
 
 		// Crossing rather than equal: one blast can carry the count straight past the bar.
 		if (BreakBurst.crossed(burst, destroyed, cfg.massGriefBlocks) && server != null) {
+			// The two things anybody opening this case will want first: the player doing it,
+			// and what it did to the blocks. A minute either side, because the start of a
+			// burst is when the counter noticed, not when the player arrived.
+			long from = burst.windowStart() - 60_000L;
+			long to = now + 60_000L;
 			Mods.cases().emit(server,
 					io.github.alphain24.staffcore.modules.cases.Signal.Type.MASS_GRIEF,
 					id, name, cfg.massGriefSignalConfidence,
-					burstDetail(burst, cfg.massGriefWindowSeconds, where), "grief");
+					burstDetail(burst, cfg.massGriefWindowSeconds, where), "grief",
+					java.util.List.of(
+							io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.replay(
+									id, name, world, where, from, to,
+									"what " + name + " did during the burst"),
+							io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.blocks(
+									id, name, world, where, 32, from, to + 4 * 60_000L,
+									burst.describe())));
 		}
 	}
 

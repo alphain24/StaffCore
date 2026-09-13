@@ -136,6 +136,18 @@ public final class SessionReplay {
 	public static Entry enter(MinecraftServer server, ServerPlayer staff, UUID subjectId,
 			String subjectName, String caseId, long windowMs) {
 
+		long now = System.currentTimeMillis();
+		return enter(server, staff, subjectId, subjectName, caseId, now - windowMs, now);
+	}
+
+	/**
+	 * As above, for a fixed stretch of the past rather than the last so-many minutes — the
+	 * window a piece of case evidence was filed with, which has to mean the same thing next
+	 * week as it did when it was filed.
+	 */
+	public static Entry enter(MinecraftServer server, ServerPlayer staff, UUID subjectId,
+			String subjectName, String caseId, long from, long to) {
+
 		if (server == null || staff == null) return Entry.no("No server.");
 		if (ReplaySession.isReplaying(staff.getUUID())) {
 			return Entry.no("You are already in a replay. /staff replay exit first.");
@@ -153,9 +165,7 @@ public final class SessionReplay {
 					+ "recording from that point, so this window will stay empty.");
 		}
 
-		long now = System.currentTimeMillis();
-		PositionLog.Track track = PositionLog.reconstruct(subjectId, subjectName,
-				now - windowMs, now);
+		PositionLog.Track track = PositionLog.reconstruct(subjectId, subjectName, from, to);
 
 		if (track.isEmpty()) {
 			int days = io.github.alphain24.staffcore.config.StaffConfig.get()

@@ -389,11 +389,20 @@ public final class Canaries {
 				? Math.min(99, 80 + (count - threshold) * 5)
 				: Math.max(10, (100 / threshold) * count / 2);
 
+		long now = System.currentTimeMillis();
 		io.github.alphain24.staffcore.module.Mods.cases().emit(level.getServer(),
 				io.github.alphain24.staffcore.modules.cases.Signal.Type.XRAY,
 				player.getUUID(), Mc.name(player), confidence,
 				"broke a decoy ore that was never there, at " + canary.pos().toShortString()
-						+ " (" + count + " this session)", "canary");
+						+ " (" + count + " this session)", "canary",
+				java.util.List.of(
+						io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.location(
+								player.getUUID(), Mc.name(player), Mc.dimensionId(level),
+								canary.pos(), "where the decoy was"),
+						io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.replay(
+								player.getUUID(), Mc.name(player), Mc.dimensionId(level),
+								canary.pos(), now - 10 * 60_000L, now + 60_000L,
+								"how they found their way to it")));
 
 		// Nothing here punishes. A canary is about as conclusive as this mod gets, which is
 		// exactly why a human confirming it costs nothing worth saving.

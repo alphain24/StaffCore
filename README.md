@@ -208,6 +208,10 @@ has already logged off.
 | `/staff panel` | `staff.gui` | Open the panel |
 | `/staff cases [status \| mine]` | `staff.gui` | Open cases, strongest first |
 | `/staff case <id>` | `staff.gui` | Read one case; add `note`, `assign`, `claim`, `investigating`, `cleared`, `actioned` |
+| `/staff cases type <kind>` | `staff.gui` | Cases of one kind: `griefing`, `cheating`, `illegal_items`, `ban_evasion`, `chat`, `other` |
+| `/staff case open <player> <kind> [summary]` | `staff.gui` | Open a case by hand; a player has at most one open case of each kind |
+| `/staff case <id> category <kind>` | `staff.gui` | Move a case to another kind, for a report sorted wrongly |
+| `/staff case <id> evidence` | `staff.gui` | List the evidence to open; add `replay <ago> [length]`, `blocks [radius] [ago]`, `location`, `snapshot`, `view <n>`, `retract <n>` |
 | `/staff vault` | `security.vault` | The contraband vault; `security.vault.destroy` to destroy an item for good |
 | `/staff contraband` | `security.vault` | The contraband rules; `security.contraband.edit` to change them |
 | `/staff anticheat [player]` | `security.check` | Bridge state, or one player's findings |

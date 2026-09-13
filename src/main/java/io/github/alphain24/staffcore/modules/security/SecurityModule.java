@@ -525,11 +525,17 @@ public class SecurityModule implements Module {
 				lastReported.put(id, confidence);
 
 				if (confidence >= cfg.xrayAlertConfidence) {
+					long to = System.currentTimeMillis();
+					long from = to - Math.max(1, cfg.xraySweepMinutes) * 60_000L * 6;
 					Mods.cases().emit(server,
 							io.github.alphain24.staffcore.modules.cases.Signal.Type.XRAY,
 							id, finding.player(), confidence,
 							finding.headline() + " in " + finding.world() + " around y "
-									+ finding.band(), "security");
+									+ finding.band(), "security",
+							java.util.List.of(
+									io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft
+											.xrayDig(id, finding.player(), from, to,
+													"the dig the score was about")));
 				} else {
 					// Deliberately not an alert. This exists so silence is distinguishable
 					// from absence — an owner who never sees anything should be able to tell

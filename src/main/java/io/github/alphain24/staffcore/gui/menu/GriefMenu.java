@@ -126,6 +126,13 @@ public class GriefMenu extends Gui {
 						StaffConfig.get().defaultRollbackMinutes, null));
 	}
 
+	/** Centred on a place and reaching back far enough — used by case evidence. */
+	public static void openAround(ServerPlayer viewer, BlockPos centre, int minutes) {
+		Guis.navigate(viewer, Theme.title("Grief Log", "Evidence"),
+				(id, inv, v) -> new GriefMenu(id, inv, v, centre,
+						Math.min(7 * 24 * 60, Math.max(5, minutes)), null));
+	}
+
 	private static void reopen(ServerPlayer viewer, BlockPos centre, int minutes, String filter) {
 		Guis.silent(viewer, Theme.title("Grief Log"),
 				(id, inv, v) -> new GriefMenu(id, inv, v, centre, minutes, filter));

@@ -4,6 +4,7 @@ import io.github.alphain24.staffcore.StaffCore;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -1164,8 +1165,52 @@ final class Schema {
 			//      column says a row's drops were recorded, so an empty result means "dropped
 			//      nothing" rather than "nobody looked". The table itself is created by the
 			//      table reconciliation, like every table added after the first release.
-			conn -> addColumn(conn, "block_log", "drops_recorded", "INTEGER")
+			conn -> addColumn(conn, "block_log", "drops_recorded", "INTEGER"),
+
+			// 27 - what kind of wrongdoing a case is about.
+			//
+			//      One open case per player collected every signal about them, so clearing an
+			//      x-ray suspicion closed a griefing investigation with it, and the threshold
+			//      evidence counted it as an x-ray false positive. Existing cases take the kind
+			//      of the first signal that opened them; a case opened by hand, with no signal,
+			//      stays null and reads as "other".
+			conn -> {
+				addColumn(conn, "cases", "category", "TEXT");
+				backfillCaseCategories(conn);
+			}
 	);
+
+	/** Migration 27's backfill, from each uncategorised case's earliest signal. */
+	private static void backfillCaseCategories(Connection conn) throws SQLException {
+		java.util.Map<String, String> categories = new java.util.HashMap<>();
+		try (Statement st = conn.createStatement();
+				ResultSet rs = st.executeQuery("""
+						SELECT s.case_id, s.type, s.evidence_json FROM signals s
+						WHERE s.case_id IS NOT NULL
+						  AND s.occurred_at = (SELECT MIN(t.occurred_at) FROM signals t
+						                        WHERE t.case_id = s.case_id)
+						""")) {
+			while (rs.next()) {
+				io.github.alphain24.staffcore.modules.cases.Signal first =
+						io.github.alphain24.staffcore.modules.cases.Signal.of(
+								io.github.alphain24.staffcore.modules.cases.Signal.Type.of(
+										rs.getString("type")),
+								java.util.UUID.randomUUID(), null, 0,
+								rs.getString("evidence_json"), "migration");
+				categories.putIfAbsent(rs.getString("case_id"),
+						io.github.alphain24.staffcore.modules.cases.CaseCategory.of(first).stored());
+			}
+		}
+		try (PreparedStatement ps = conn.prepareStatement(
+				"UPDATE cases SET category = ? WHERE id = ? AND category IS NULL")) {
+			for (var entry : categories.entrySet()) {
+				ps.setString(1, entry.getValue());
+				ps.setString(2, entry.getKey());
+				ps.addBatch();
+			}
+			ps.executeBatch();
+		}
+	}
 
 	/**
 	 * Columns that must exist whatever the version counter believes.
@@ -1211,6 +1256,7 @@ final class Schema {
 			{"command_log", "server_version", "TEXT"},
 			{"punishments", "appeal_code", "TEXT"},
 			{"cases", "resolution_reason", "TEXT"},
+			{"cases", "category", "TEXT"},
 			{"punishments", "server_version", "TEXT"},
 			{"punishments", "mod_version", "TEXT"},
 			{"inventory_audit", "server_version", "TEXT"},
@@ -1246,6 +1292,10 @@ final class Schema {
 	 * for databases that already exist; this is how a new one gets it.
 	 */
 	private static final String[] REQUIRED_TABLES = {
+			// What a case can point at and open. See CaseEvidence.
+			io.github.alphain24.staffcore.modules.cases.CaseEvidence.TABLE,
+			io.github.alphain24.staffcore.modules.cases.CaseEvidence.INDEX,
+
 			// What each destroyed block dropped. See RecordedDrops.
 			"""
 			CREATE TABLE IF NOT EXISTS block_drops (
