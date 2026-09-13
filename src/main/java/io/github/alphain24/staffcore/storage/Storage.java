@@ -394,7 +394,7 @@ public final class Storage {
 	 * expects it and can tell a withheld table from a missing one.
 	 */
 	private static final java.util.Set<String> PERSONAL_TABLES =
-			java.util.Set.of("position_run", "position_log");
+			java.util.Set.of("position_run", "position_log", "teleport_log");
 
 	private boolean exportTable(String table, Path out, boolean includePersonal) {
 		boolean withheld = !includePersonal && PERSONAL_TABLES.contains(table);

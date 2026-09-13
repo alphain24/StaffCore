@@ -308,6 +308,13 @@ public class GriefModule implements Module {
 				}
 			}
 
+			// Teleports are kept as long as the block history they sit beside. See TeleportLog.
+			try (PreparedStatement ps = conn.prepareStatement(
+					"DELETE FROM teleport_log WHERE at < ?")) {
+				ps.setLong(1, cutoff);
+				ps.executeUpdate();
+			}
+
 			// Drops belong to their row the same way, and would be the same unbounded table.
 			try (PreparedStatement ps = conn.prepareStatement(
 					"DELETE FROM block_drops WHERE created_at < ?")) {
@@ -1279,6 +1286,14 @@ public class GriefModule implements Module {
 	 * Shared rather than duplicated: a second pool would double the connections against a
 	 * database whose whole concurrency story is one connection and a write lock.
 	 */
+	/**
+	 * Runs a write on the log writer thread, for another module's rows. Dropped when the writer
+	 * is not running, which only happens before the module is enabled or after shutdown.
+	 */
+	public void offThread(Runnable work) {
+		if (worker != null && !worker.isShutdown()) worker.execute(work);
+	}
+
 	public <T> void readOffThread(MinecraftServer server, java.util.function.Supplier<T> read,
 			T onFailure, Consumer<T> onDone) {
 		readAsync(server, read, onFailure, onDone);

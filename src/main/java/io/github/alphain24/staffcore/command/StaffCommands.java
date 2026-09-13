@@ -380,6 +380,38 @@ public final class StaffCommands {
 				.executes(StaffCommands::listAddressBans));
 	}
 
+	private static int teleportHistory(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+		NameAndId target = singleProfile(ctx, "target");
+		if (target == null) return 0;
+		audit(ctx, "/staff tphistory " + target.name());
+
+		ServerPlayer viewer = ctx.getSource().getPlayer();
+		if (viewer != null) {
+			io.github.alphain24.staffcore.gui.menu.TeleportHistoryMenu.open(viewer, target);
+			return 1;
+		}
+
+		var entries = Mods.teleport().log().forPlayer(target.id(), 20);
+		if (entries.isEmpty()) return ok(ctx, "No teleports on record for " + target.name() + ".");
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(target.name() + "'s last " + entries.size() + " teleport(s)",
+						Theme.ACCENT)), false);
+		for (var entry : entries) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  " + TimeFormat.ago(entry.at()) + "  "
+					+ (entry.player().equals(target.id()) ? "" : entry.name() + ": ")
+					+ entry.cause().label()
+					+ (entry.actor() == null ? "" : " by " + entry.actor())
+					+ (entry.otherName() == null ? "" : " (" + entry.otherName() + ")") + "  ", Theme.MUTED)
+					.append(Link.position(entry.fromWorld(), net.minecraft.core.BlockPos.containing(
+							entry.fromX(), entry.fromY(), entry.fromZ())))
+					.append(Icon.text(" -> ", Theme.MUTED))
+					.append(Link.position(entry.toWorld(), net.minecraft.core.BlockPos.containing(
+							entry.toX(), entry.toY(), entry.toZ()))), false);
+		}
+		return 1;
+	}
+
 	private static int addressBan(CommandContext<CommandSourceStack> ctx, Long durationMs,
 			String reason) throws CommandSyntaxException {
 
@@ -838,6 +870,14 @@ public final class StaffCommands {
 							LogsMenu.open(viewer, target);
 							return 1;
 						})));
+
+		// Where a player teleported from and to. The screen when run by a player, lines when
+		// run from the console.
+		staff.then(Commands.literal("tphistory")
+				.requires(src -> Permissions.check(src, Nodes.LOGS))
+				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
+						.executes(StaffCommands::teleportHistory)));
 
 		staff.then(Commands.literal("alts")
 				.requires(src -> Permissions.check(src, Nodes.ALTS))

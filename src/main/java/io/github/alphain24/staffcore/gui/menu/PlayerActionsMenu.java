@@ -43,6 +43,7 @@ public class PlayerActionsMenu extends Gui {
 	private static final int REVOKE_BAN = 23;
 	private static final int REVOKE_MUTE = 24;
 	private static final int IP_BAN = 25;
+	private static final int TELEPORTS = 22;
 
 	private static final int ENDERCHEST = 17;
 	private static final int LOGS = 28;
@@ -177,6 +178,15 @@ public class PlayerActionsMenu extends Gui {
 			viewer.sendSystemMessage(Theme.good("Brought " + target.name() + " to you."));
 			viewer.closeContainer();
 		});
+
+		int teleports = Mods.teleport().log().forPlayer(target.id(), 200).size();
+		action(TELEPORTS, Nodes.LOGS, Icon.of(Items.ENDER_EYE)
+				.name("Teleport History", Theme.TEXT)
+				.field("On record", teleports >= 200 ? "200+" : String.valueOf(teleports))
+				.lore("Commands, pearls, portals, respawns and staff.")
+				.gap()
+				.action("Click", "see where they went")
+				.build(), true, click -> TeleportHistoryMenu.open(viewer, target));
 
 		buildRevokes(ban, mute);
 		buildIdentityBand(live);

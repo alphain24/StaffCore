@@ -35,8 +35,31 @@ public class TeleportModule implements Module {
 
 	private final Map<UUID, Location> lastPos = new HashMap<>();
 
+	private final TeleportLog log = new TeleportLog();
+	private boolean registered;
+
+	/** Where players have teleported from and to. */
+	public TeleportLog log() {
+		return log;
+	}
+
+	@Override
+	public void onEnable() {
+		if (registered) return;
+		registered = true;
+
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(log::tick);
+		// A respawn is a teleport the game makes, so it is named rather than left as a jump.
+		net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents.AFTER_RESPAWN.register(
+				(old, fresh, alive) -> log.expect(fresh, TeleportLog.Cause.RESPAWN, null, null, null));
+		net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register(
+				(handler, server) -> log.forget(handler.getPlayer().getUUID()));
+	}
+
 	public void toPlayer(ServerPlayer staff, ServerPlayer target) {
 		remember(staff);
+		log.expect(staff, TeleportLog.Cause.STAFF_TO_PLAYER, Mc.name(staff), target.getUUID(),
+				Mc.name(target));
 		Mc.teleport(staff, target.level(), target.getX(), target.getY(), target.getZ(),
 				target.getYRot(), target.getXRot());
 		Sfx.teleport(staff);
@@ -44,6 +67,8 @@ public class TeleportModule implements Module {
 
 	public void bringHere(ServerPlayer staff, ServerPlayer target) {
 		remember(target);
+		log.expect(target, TeleportLog.Cause.STAFF_BRING, Mc.name(staff), staff.getUUID(),
+				Mc.name(staff));
 		Mc.teleport(target, staff.level(), staff.getX(), staff.getY(), staff.getZ(),
 				staff.getYRot(), staff.getXRot());
 		Sfx.teleport(target);
@@ -54,12 +79,14 @@ public class TeleportModule implements Module {
 	public void toPosition(ServerPlayer staff, net.minecraft.server.level.ServerLevel level,
 			double x, double y, double z) {
 		remember(staff);
+		log.expect(staff, TeleportLog.Cause.STAFF_TO_PLACE, Mc.name(staff), null, null);
 		Mc.teleport(staff, level, x, y, z, staff.getYRot(), staff.getXRot());
 		Sfx.teleport(staff);
 	}
 
 	public void toPosition(ServerPlayer staff, double x, double y, double z) {
 		remember(staff);
+		log.expect(staff, TeleportLog.Cause.STAFF_TO_PLACE, Mc.name(staff), null, null);
 		Mc.teleport(staff, staff.level(), x, y, z, staff.getYRot(), staff.getXRot());
 		Sfx.teleport(staff);
 	}
@@ -72,6 +99,7 @@ public class TeleportModule implements Module {
 		ServerLevel level = Mc.server(staff) == null ? null : Mc.server(staff).getLevel(prev.dimension());
 		if (level == null) return false;
 
+		log.expect(staff, TeleportLog.Cause.STAFF_BACK, Mc.name(staff), null, null);
 		Mc.teleport(staff, level, prev.pos().x, prev.pos().y, prev.pos().z, prev.yaw(), prev.pitch());
 		Sfx.teleport(staff);
 		return true;

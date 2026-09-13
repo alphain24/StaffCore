@@ -195,6 +195,7 @@ has already logged off.
 | `/staff maintenance` | `control.maintenance` | MOTD swap, blocks new logins **and kicks everyone already on** |
 | `/staff enderchest <player>` | `security.enderchest` | Live ender chest view |
 | `/staff logs <player>` | `staff.logs` | Joins, leaves and deaths |
+| `/staff tphistory <player>` | `staff.logs` | Every teleport of 16+ blocks or change of world, whatever caused it, with staff teleports named; kept as long as the grief log and left out of `/staff export` unless personal data is included |
 | `/staff alts <player>` | `staff.alts` | Accounts sharing an address |
 | `/staff appeals` | `staff.appeals` | Appeal queue |
 | `/staff rollback area <radius> [minutes]` | `grief.rollback` | Undo **everyone's** changes here |

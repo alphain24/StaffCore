@@ -1292,6 +1292,11 @@ final class Schema {
 	 * for databases that already exist; this is how a new one gets it.
 	 */
 	private static final String[] REQUIRED_TABLES = {
+			// Where players teleported from and to. See TeleportLog.
+			io.github.alphain24.staffcore.modules.teleport.TeleportLog.TABLE,
+			io.github.alphain24.staffcore.modules.teleport.TeleportLog.INDEX,
+			io.github.alphain24.staffcore.modules.teleport.TeleportLog.OTHER_INDEX,
+
 			// Bans on the address a player joins from. See AddressBans.
 			io.github.alphain24.staffcore.modules.punish.AddressBans.TABLE,
 			io.github.alphain24.staffcore.modules.punish.AddressBans.INDEX,
