@@ -121,6 +121,7 @@ final class Schema {
 				    state       TEXT,
 				    gamemode    TEXT,
 				    drops       INTEGER,
+				    drops_recorded INTEGER,
 				    world       TEXT    NOT NULL,
 				    x INTEGER, y INTEGER, z INTEGER,
 				    created_at  INTEGER NOT NULL,
@@ -1151,7 +1152,19 @@ final class Schema {
 			//      is random. Charging for all of it took real items off players for blocks
 			//      that never existed. 1 means it dropped, 0 means it did not, and null means
 			//      nobody recorded it, which keeps every older row on the gamemode rule.
-			conn -> addColumn(conn, "block_log", "drops", "INTEGER")
+			conn -> addColumn(conn, "block_log", "drops", "INTEGER"),
+
+			// 26 - what a destroyed block actually came out as.
+			//
+			//      Migration 25 got rollback to stop billing for blocks a blast never dropped,
+			//      and still billed the block itself for everything else: stone for stone,
+			//      when stone drops cobblestone. So a rollback looked for items that were
+			//      never on the ground and left the real drops where they fell. The drops are
+			//      now read off the game as it hands them out and kept in block_drops; this
+			//      column says a row's drops were recorded, so an empty result means "dropped
+			//      nothing" rather than "nobody looked". The table itself is created by the
+			//      table reconciliation, like every table added after the first release.
+			conn -> addColumn(conn, "block_log", "drops_recorded", "INTEGER")
 	);
 
 	/**
@@ -1181,6 +1194,7 @@ final class Schema {
 			{"block_log", "state", "TEXT"},
 			{"block_log", "gamemode", "TEXT"},
 			{"block_log", "drops", "INTEGER"},
+			{"block_log", "drops_recorded", "INTEGER"},
 			{"rollback_change", "prior_state", "TEXT"},
 			{"pending_actions", "ref_kind", "TEXT"},
 			{"inventory_audit", "items_data", "TEXT"},
@@ -1232,6 +1246,19 @@ final class Schema {
 	 * for databases that already exist; this is how a new one gets it.
 	 */
 	private static final String[] REQUIRED_TABLES = {
+			// What each destroyed block dropped. See RecordedDrops.
+			"""
+			CREATE TABLE IF NOT EXISTS block_drops (
+			    world      TEXT    NOT NULL,
+			    x INTEGER NOT NULL, y INTEGER NOT NULL, z INTEGER NOT NULL,
+			    created_at INTEGER NOT NULL,
+			    item       TEXT    NOT NULL,
+			    count      INTEGER NOT NULL
+			)
+			""",
+			"CREATE INDEX IF NOT EXISTS idx_block_drops_area ON block_drops(world, x, z, created_at)",
+			"CREATE INDEX IF NOT EXISTS idx_block_drops_age ON block_drops(created_at)",
+
 			"""
 			CREATE TABLE IF NOT EXISTS incident_witness (
 			    id      INTEGER PRIMARY KEY AUTOINCREMENT,

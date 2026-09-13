@@ -77,6 +77,8 @@ public class GriefModule implements Module {
 	private final Map<UUID, GriefRehearsal> rehearsals = new HashMap<>();
 	/** Who set off the explosions vanilla does not attribute. */
 	private final BlastAttribution blasts = new BlastAttribution();
+	/** What destroyed blocks actually dropped, so a rollback takes back the right items. */
+	private final RecordedDrops recordedDrops = new RecordedDrops();
 
 	/** Bounds for {@code /staff grief test [blocks]}; see {@link GriefRehearsal}. */
 	public static final int TEST_BLOCKS = GriefRehearsal.DEFAULT_BLOCKS;
@@ -206,9 +208,10 @@ public class GriefModule implements Module {
 
 			long now = System.currentTimeMillis();
 			// Recorded here rather than inferred later: a rollback runs long after the fact,
-			// and by then there is no way to know whether the drop ever existed.
+			// and by then there is no way to know whether the drop ever existed — or what it
+			// was, since stone comes out as cobblestone and glass as nothing.
 			log(Mc.name(sp), "BREAK", state, pos, Mc.dimensionId(level), now,
-					sp.gameMode().getName());
+					sp.gameMode().getName(), null, recordedDrops.takeHandDrops(sp.getUUID(), pos));
 			commitContents(sp, pos, Mc.dimensionId(level), now, Mc.server(sp));
 			noteBreak(sp);
 		});
@@ -297,6 +300,13 @@ public class GriefModule implements Module {
 				}
 			}
 
+			// Drops belong to their row the same way, and would be the same unbounded table.
+			try (PreparedStatement ps = conn.prepareStatement(
+					"DELETE FROM block_drops WHERE created_at < ?")) {
+				ps.setLong(1, cutoff);
+				ps.executeUpdate();
+			}
+
 			// Container snapshots outlive their block-log row otherwise, and nothing else
 			// ever deletes them. A chest broken on a busy server writes up to twenty-seven
 			// rows, so an unbounded table of them is not a rounding error — and every one of
@@ -365,6 +375,7 @@ public class GriefModule implements Module {
 		bursts.clear();
 		rehearsals.clear();
 		blasts.clear();
+		recordedDrops.clear();
 	}
 
 	/**
@@ -387,7 +398,7 @@ public class GriefModule implements Module {
 	 * @return how many positions were recorded
 	 */
 	public int logExplosion(ServerLevel level, List<BlockPos> positions, String source,
-			boolean dropsItems) {
+			boolean dropsItems, long now) {
 		// Retired before the config gate. Whether explosions are logged is a preference;
 		// whether a decoy is left standing in a crater is a correctness question, and tying
 		// the second to the first would make a logging setting quietly cause false positives.
@@ -398,7 +409,6 @@ public class GriefModule implements Module {
 
 		MinecraftServer server = level.getServer();
 		String world = Mc.dimensionId(level);
-		long now = System.currentTimeMillis();
 
 		// A TNT cannon or a chain reaction can level thousands of blocks at once, and writing
 		// every one would bury the log the incident is meant to be readable in. The cap is
@@ -427,10 +437,52 @@ public class GriefModule implements Module {
 			// Gamemode is left unset: nothing here was in one. It stays null rather than
 			// being borrowed to mean "explosion", because the source name already says that
 			// and a column that means two things is a column nobody can query.
-			log(source, "BREAK", state, pos, world, now, null, dropsItems ? 1 : 0);
+			// Drops recorded, with an empty map: the blast has not handed them out yet.
+			// logExplosionDrops writes them when it has, under this same timestamp.
+			log(source, "BREAK", state, pos, world, now, null, dropsItems ? 1 : 0, Map.of());
 			recorded++;
 		}
 		return recorded;
+	}
+
+	/**
+	 * Writes what an explosion's blocks dropped, once it has dropped them.
+	 * <p>
+	 * Separate from {@link #logExplosion} because the two happen at opposite ends of the blast:
+	 * the blocks can only be described before they go, and the drops only exist after. The
+	 * shared timestamp is what joins them.
+	 *
+	 * @param byPosition packed block position to item id and count
+	 */
+	public void logExplosionDrops(ServerLevel level, long at,
+			Map<Long, Map<String, Integer>> byPosition) {
+
+		if (byPosition.isEmpty() || !StaffConfig.get().logExplosions) return;
+		if (!StaffCore.storage().isReady() || worker == null) return;
+		// With block drops off nothing spawned, and owing it would bill for items that never
+		// existed. Nothing is written, and the rows still say their drops were recorded.
+		if (!Boolean.TRUE.equals(level.getGameRules().get(
+				net.minecraft.world.level.gamerules.GameRules.BLOCK_DROPS))) return;
+
+		String world = Mc.dimensionId(level);
+		Map<Long, Map<String, Integer>> copy = new HashMap<>(byPosition);
+		worker.execute(() -> {
+			try {
+				java.sql.Connection conn = StaffCore.storage().conn();
+				for (Map.Entry<Long, Map<String, Integer>> entry : copy.entrySet()) {
+					RecordedDrops.write(conn, world, BlockPos.of(entry.getKey()), at,
+							entry.getValue());
+				}
+			} catch (SQLException | RuntimeException e) {
+				StaffCore.LOGGER.error("[Grief] could not record what an explosion dropped", e);
+			}
+		});
+	}
+
+	/** Called from the block-drops mixin with the loot a player's break is about to spawn. */
+	public void onHandDrops(ServerPlayer player, ServerLevel level, BlockPos pos,
+			List<ItemStack> drops) {
+		recordedDrops.onHandDrops(player.getUUID(), level, pos, drops);
 	}
 
 	/**
@@ -833,6 +885,7 @@ public class GriefModule implements Module {
 		bursts.remove(player);
 		rehearsals.remove(player);
 		blasts.forget(player);
+		recordedDrops.forget(player);
 		containers.forget(player);
 		pendingBreaks.remove(player);
 		// Dropped rather than cleared: the connection is already going away, and the ghost
@@ -865,15 +918,19 @@ public class GriefModule implements Module {
 	 */
 	private void log(String player, String action, BlockState state, BlockPos pos, String world,
 			long now, String gamemode) {
-		log(player, action, state, pos, world, now, gamemode, null);
+		log(player, action, state, pos, world, now, gamemode, null, null);
 	}
 
 	/**
-	 * @param drops whether this change produced an item: {@code 1}, {@code 0}, or {@code null}
-	 *              when nothing better than the gamemode is known — see migration 25
+	 * @param drops          whether this change produced an item: {@code 1}, {@code 0}, or
+	 *                       {@code null} when nothing better than the gamemode is known — see
+	 *                       migration 25
+	 * @param dropsSeen      what it actually dropped, written alongside the row; {@code null}
+	 *                       when nobody saw, which is different from an empty map — see
+	 *                       migration 26
 	 */
 	private void log(String player, String action, BlockState state, BlockPos pos, String world,
-			long now, String gamemode, Integer drops) {
+			long now, String gamemode, Integer drops, Map<String, Integer> dropsSeen) {
 
 		eventsSeen.incrementAndGet();
 
@@ -895,8 +952,8 @@ public class GriefModule implements Module {
 
 		worker.execute(() -> {
 			String sql = """
-					INSERT INTO block_log (player_name, action, block, state, gamemode, world, x, y, z, created_at, drops)
-					VALUES (?,?,?,?,?,?,?,?,?,?,?)
+					INSERT INTO block_log (player_name, action, block, state, gamemode, world, x, y, z, created_at, drops, drops_recorded)
+					VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
 					""";
 			try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(sql)) {
 				ps.setString(1, player);
@@ -911,8 +968,14 @@ public class GriefModule implements Module {
 				ps.setLong(10, now);
 				if (drops == null) ps.setNull(11, java.sql.Types.INTEGER);
 				else ps.setInt(11, drops);
+				if (dropsSeen == null) ps.setNull(12, java.sql.Types.INTEGER);
+				else ps.setInt(12, 1);
 				ps.executeUpdate();
 				rowsWritten.incrementAndGet();
+				// The coordinates, not the position object: the caller's may be mutable and
+				// have moved on by the time this runs on the writer thread.
+				RecordedDrops.write(StaffCore.storage().conn(), world, new BlockPos(x, y, z), now,
+						dropsSeen);
 			} catch (SQLException | RuntimeException e) {
 				// RuntimeException too: a parameter/placeholder mismatch throws an index
 				// error rather than a SQLException, and catching only the latter is how the
@@ -1012,7 +1075,7 @@ public class GriefModule implements Module {
 
 	/** One logged change a rollback intends to undo, read out before any of it is acted on. */
 	private record Planned(long id, BlockPos pos, String action, String blockId, String state,
-			String gamemode, Integer drops, long at) {
+			String gamemode, Integer drops, Integer dropsRecorded, long at) {
 
 		boolean droppedAnything() {
 			return GriefModule.droppedAnything(drops, gamemode);
@@ -1883,7 +1946,8 @@ public class GriefModule implements Module {
 		int reverted = 0;
 		int skipped = 0;
 		List<Long> applied = new ArrayList<>();
-		List<Item> restored = new ArrayList<>();
+		/** What the restored blocks dropped when they were destroyed, and so what is owed. */
+		Map<Item, Integer> restored = new HashMap<>();
 		/** What is going back, for the preview to show rather than merely count. */
 		Map<Item, Integer> tally = new java.util.LinkedHashMap<>();
 		/** Contents put back into containers, which the offender must therefore not keep. */
@@ -1913,6 +1977,7 @@ public class GriefModule implements Module {
 							rs.getString("state"),
 							rs.getString("gamemode"),
 							nullableInt(rs, "drops"),
+							nullableInt(rs, "drops_recorded"),
 							rs.getLong("created_at")));
 				}
 			}
@@ -1920,6 +1985,20 @@ public class GriefModule implements Module {
 			StaffCore.LOGGER.error("[Grief] rollback failed", e);
 			return RollbackResult.NOTHING;
 		}
+
+		// Read in one query rather than one per row, and only when a row needs it.
+		Map<RecordedDrops.Key, Map<String, Integer>> recorded = Map.of();
+		if (plan.stream().anyMatch(row -> row.dropsRecorded() != null)) {
+			try {
+				recorded = RecordedDrops.readArea(StaffCore.storage().conn(), world, cutoff,
+						centre, radius);
+			} catch (SQLException e) {
+				// Nothing recorded is read as nothing owed for those rows — under-charging,
+				// which is the smaller wrong, and the blocks still go back.
+				StaffCore.LOGGER.error("[Grief] could not read recorded drops for a rollback", e);
+			}
+		}
+		final Map<RecordedDrops.Key, Map<String, Integer>> dropsByRow = recorded;
 
 		for (Planned row : plan) {
 			BlockState replacement;
@@ -1945,7 +2024,22 @@ public class GriefModule implements Module {
 				// Only what actually dropped is owed. A block broken in creative gave its
 				// breaker nothing, so putting it back costs them nothing either — charging
 				// them would take a real item off somebody to pay for one that never existed.
-				if (row.droppedAnything()) restored.add(block.asItem());
+				if (row.dropsRecorded() != null) {
+					// The loot the game actually handed out — cobblestone for stone, nothing
+					// for glass, the random few a crystal left. Absent means it dropped nothing.
+					Map<String, Integer> dropped = dropsByRow.get(new RecordedDrops.Key(
+							row.pos().getX(), row.pos().getY(), row.pos().getZ(), row.at()));
+					if (dropped != null) {
+						dropped.forEach((id, count) -> {
+							Item item = Mc.itemFromId(id, null);
+							if (item != null && item != net.minecraft.world.item.Items.AIR) {
+								restored.merge(item, count, Integer::sum);
+							}
+						});
+					}
+				} else if (row.droppedAnything()) {
+					restored.merge(block.asItem(), 1, Integer::sum);
+				}
 
 				// Anything that was inside it when it was broken. Restoring the block alone
 				// gives the victim an empty chest and lets the griefer keep the contents,
@@ -2024,14 +2118,13 @@ public class GriefModule implements Module {
 	 * preview of a different sum is not a preview.
 	 */
 	private List<LootRecovery.Charge> previewCharges(ServerLevel level, BlockPos centre,
-			int radius, List<Item> restored, String player, long windowMs,
+			int radius, Map<Item, Integer> restored, String player, long windowMs,
 			Map<Item, Integer> contents) {
 
 		if (!StaffConfig.get().rollbackReclaimsDrops) return List.of();
 		if (restored.isEmpty() && contents.isEmpty()) return List.of();
 
-		Map<Item, Integer> owed = new HashMap<>();
-		for (Item item : restored) owed.merge(item, 1, Integer::sum);
+		Map<Item, Integer> owed = new HashMap<>(restored);
 		contents.forEach((item, count) -> owed.merge(item, count, Integer::sum));
 
 		return LootRecovery.preview(level, player, owed, centre, radius, windowMs, containers);
@@ -2065,16 +2158,13 @@ public class GriefModule implements Module {
 	 * defence, and it is the cheapest one there was.
 	 */
 	private Reclaim reclaimDrops(ServerLevel level, BlockPos centre, int radius,
-			List<Item> restored, String player, long windowMs, Map<Item, Integer> contents,
+			Map<Item, Integer> restored, String player, long windowMs, Map<Item, Integer> contents,
 			Set<BlockPos> restoredContainers, long pointId, String staff) {
 
 		if (!StaffConfig.get().rollbackReclaimsDrops) return Reclaim.NOTHING;
 		if (restored.isEmpty() && contents.isEmpty()) return Reclaim.NOTHING;
 
-		Map<Item, Integer> owed = new HashMap<>();
-		for (Item item : restored) {
-			owed.merge(item, 1, Integer::sum);
-		}
+		Map<Item, Integer> owed = new HashMap<>(restored);
 		// Whatever went back into a restored container is owed too. Putting the diamonds
 		// back in the chest while the griefer keeps their copy would turn a repair into a
 		// duplication — the same trap the block drops already close.

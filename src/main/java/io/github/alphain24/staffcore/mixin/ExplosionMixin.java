@@ -9,12 +9,20 @@ import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ServerExplosion;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import io.github.alphain24.staffcore.compat.Mc;
+import net.minecraft.world.item.ItemStack;
+
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * Records what an explosion is about to destroy.
@@ -36,6 +44,15 @@ import java.util.List;
 public class ExplosionMixin {
 
 	@Shadow @Final private ServerLevel level;
+
+	/**
+	 * The timestamp this blast's rows were logged under, so its drops can be filed under the
+	 * same one. Per explosion, on the explosion — never shared between two.
+	 */
+	@Unique private long staffcore$loggedAt;
+
+	/** Packed position to item id and count, filled as the blast hands its drops out. */
+	@Unique private Map<Long, Map<String, Integer>> staffcore$drops;
 
 	@Inject(method = "interactWithBlocks", at = @At("HEAD"))
 	private void staffcore$recordExplosion(List<BlockPos> positions, CallbackInfo ci) {
@@ -63,7 +80,51 @@ public class ExplosionMixin {
 
 		// Both read the blocks, so both run here at HEAD, while the blocks are still there.
 		grief.noteBlast(level, self, who, positions);
-		grief.logExplosion(level, positions, source,
-				self.getBlockInteraction() == Explosion.BlockInteraction.DESTROY);
+		long now = System.currentTimeMillis();
+		int logged = grief.logExplosion(level, positions, source,
+				self.getBlockInteraction() == Explosion.BlockInteraction.DESTROY, now);
+
+		if (logged > 0) {
+			staffcore$loggedAt = now;
+			staffcore$drops = new HashMap<>();
+		}
+	}
+
+	/**
+	 * Sees each block's drops as the blast collects them.
+	 * <p>
+	 * Before vanilla merges them. A merged stack is filed under the position of the first
+	 * block that contributed, so reading drops after the merge would put forty cobblestone
+	 * under one block and none under the other thirty-nine — and a rollback of part of the
+	 * crater would owe the wrong amount.
+	 */
+	@ModifyArg(method = "interactWithBlocks",
+			at = @At(value = "INVOKE",
+					target = "Lnet/minecraft/world/level/block/state/BlockState;onExplosionHit(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/Explosion;Ljava/util/function/BiConsumer;)V"),
+			index = 3)
+	private BiConsumer<ItemStack, BlockPos> staffcore$seeDrops(BiConsumer<ItemStack, BlockPos> collect) {
+		Map<Long, Map<String, Integer>> drops = staffcore$drops;
+		if (drops == null) return collect;
+
+		return (stack, pos) -> {
+			// Counted now: the collector grows the first stack it keeps as later ones merge
+			// into it, so a reference kept here would read a different number later.
+			if (stack != null && !stack.isEmpty()) {
+				drops.computeIfAbsent(pos.asLong(), p -> new HashMap<>())
+						.merge(Mc.itemId(stack.getItem()), stack.getCount(), Integer::sum);
+			}
+			collect.accept(stack, pos);
+		};
+	}
+
+	/** Files the drops once the blast has handed all of them out. */
+	@Inject(method = "interactWithBlocks", at = @At("TAIL"))
+	private void staffcore$fileDrops(List<BlockPos> positions, CallbackInfo ci) {
+		Map<Long, Map<String, Integer>> drops = staffcore$drops;
+		staffcore$drops = null;
+		if (drops == null) return;
+
+		StaffCore.modules().get("grief", GriefModule.class).ifPresent(grief ->
+				grief.logExplosionDrops(level, staffcore$loggedAt, drops));
 	}
 }

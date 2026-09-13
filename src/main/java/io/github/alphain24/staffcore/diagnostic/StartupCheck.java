@@ -152,6 +152,15 @@ public final class StartupCheck {
 					"<init>", "staffcore$rememberUnownedTnt", MIXIN_PKG + "PrimedTntMixin",
 					"net.minecraft.world.level.Level", "double", "double", "double",
 					"net.minecraft.world.entity.LivingEntity"),
+			// Without this a rollback owes the block rather than what it dropped - stone
+			// instead of cobblestone - finds nothing, and leaves the real drops behind.
+			new Target(Tier.OPTIONAL, "Rollback takes back what a break actually dropped",
+					"net.minecraft.world.level.block.Block",
+					"dropResources", "staffcore$seeBreakDrops", MIXIN_PKG + "BlockDropsMixin",
+					"net.minecraft.world.level.block.state.BlockState",
+					"net.minecraft.world.level.Level", "net.minecraft.core.BlockPos",
+					"net.minecraft.world.level.block.entity.BlockEntity",
+					"net.minecraft.world.entity.Entity", "net.minecraft.world.item.ItemStack"),
 			// Fire is the classic griefing tool, and without this the blocks it eats are
 			// never recorded - only the flint-and-steel that started it.
 			new Target(Tier.IMPORTANT, "Fire damage log", "net.minecraft.world.level.block.FireBlock",

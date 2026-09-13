@@ -9,6 +9,7 @@
   "required": false,
   "package": "io.github.alphain24.staffcore.mixin",
   "mixins": [
+    "BlockDropsMixin",
     "BlockItemMixin",
     "ChunkSendMixin",
     "DisplayInterpolationAccessor",
