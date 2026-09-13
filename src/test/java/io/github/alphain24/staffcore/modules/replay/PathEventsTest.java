@@ -130,6 +130,52 @@ class PathEventsTest {
 				"a position was still painted after every change to it had happened");
 	}
 
+	/** A break whose hole is known to last until {@code release}. */
+	private static PathEvents.Change brokeUntil(long at, int x, long release) {
+		return new PathEvents.Change(at, new BlockPos(x, 64, 0), WORLD, "BREAK", "stone", null,
+				release);
+	}
+
+	@Test
+	@DisplayName("a blast's hole stays open after its moment until the rollback filled it")
+	void aBreakStaysAHoleUntilSomethingFillsIt() {
+		// The replay that was opened to look at grief used to show the blast and then the wall
+		// still standing, because the area had been rolled back since.
+		BlockPos pos = new BlockPos(7, 64, 0);
+		List<PathEvents.Change> changes = List.of(brokeUntil(T0 + 1000, 7, T0 + 60_000));
+
+		assertFalse(PathEvents.holesAt(changes, T0 + 999).contains(pos),
+				"a hole before the block was broken");
+		assertTrue(PathEvents.holesAt(changes, T0 + 1000).contains(pos),
+				"no hole at the instant of the blast");
+		assertTrue(PathEvents.holesAt(changes, T0 + 59_999).contains(pos),
+				"the hole closed before the rollback that filled it");
+		assertFalse(PathEvents.holesAt(changes, T0 + 60_000).contains(pos),
+				"the hole was still drawn after the rollback put the block back");
+	}
+
+	@Test
+	@DisplayName("with nothing known after it, a hole stays open to the end of the replay")
+	void anUnfilledHoleStaysOpen() {
+		BlockPos pos = new BlockPos(3, 64, 0);
+		List<PathEvents.Change> changes = List.of(brokeUntil(T0, 3, PathEvents.NEVER));
+
+		assertTrue(PathEvents.holesAt(changes, T0 + 86_400_000L).contains(pos));
+	}
+
+	@Test
+	@DisplayName("a later place at the same spot ends the hole, whichever came first in the list")
+	void theLatestChangeDescribesThePosition() {
+		BlockPos pos = new BlockPos(5, 64, 0);
+		List<PathEvents.Change> changes = List.of(
+				brokeUntil(T0 + 1000, 5, PathEvents.NEVER),
+				placed(T0 + 2000, 5));
+
+		assertTrue(PathEvents.holesAt(changes, T0 + 1500).contains(pos));
+		assertFalse(PathEvents.holesAt(changes, T0 + 2500).contains(pos),
+				"a block placed back into the hole did not close it");
+	}
+
 	@Test
 	@DisplayName("no changes means nothing is drawn, and nothing throws")
 	void theEmptyCase() {
