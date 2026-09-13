@@ -177,6 +177,7 @@ public class BlockHistoryMenu extends Gui {
 			case "OPEN" -> "opened";
 			case "TAKE" -> "took";
 			case "PUT" -> "put in";
+			case "IGNITE" -> "lit";
 			default -> row.action().toLowerCase(java.util.Locale.ROOT);
 		};
 

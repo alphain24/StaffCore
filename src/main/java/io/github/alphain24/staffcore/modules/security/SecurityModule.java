@@ -205,7 +205,7 @@ public class SecurityModule implements Module {
 		return out;
 	}
 
-	private static String plain(ItemStack stack) {
+	static String plain(ItemStack stack) {
 		return stack.getHoverName().getString();
 	}
 
@@ -268,7 +268,7 @@ public class SecurityModule implements Module {
 
 	private int contrabandTick;
 	/** What has already been reported per player, so one bad item is one alert. */
-	private final java.util.Map<java.util.UUID, java.util.Set<Item>> reported = new java.util.HashMap<>();
+	private final java.util.Map<java.util.UUID, java.util.Set<String>> reported = new java.util.HashMap<>();
 
 	/**
 	 * Watches for illegal items appearing in a normal player's inventory, and tells staff
@@ -344,7 +344,51 @@ public class SecurityModule implements Module {
 						+ stack.getCount() + "× " + plain(stack) + " in their " + where
 						+ (isOperator ? " — operator tooling" : " — not obtainable in survival"));
 			}
+
+			// What the item is made of, not only what it is. A diamond sword is legal; one
+			// with Sharpness 255 is not, and the automatic watch used to look at the item type
+			// alone — so the thing hacked clients hand out most went unnoticed unless somebody
+			// happened to run /staff check. Shulkers and bundles are looked inside, because
+			// that is where anything worth hiding goes.
+			for (String problem : impossibleTraits(stack, where)) {
+				alertOnce(server, player, stack.getItem(), problem, problem);
+			}
 		}
+	}
+
+	/**
+	 * What is impossible about an item beyond its type: an enchantment above the level the game
+	 * allows, a stack above its size — for the item itself and for anything inside it.
+	 * <p>
+	 * Deliberately only things survival cannot produce. An enchantment on an item it does not
+	 * normally go on is left alone: anvils, loot and trades make plenty of those legitimately,
+	 * and flagging them would teach staff to ignore this alert.
+	 */
+	public static List<String> impossibleTraits(ItemStack stack, String where) {
+		List<String> out = new ArrayList<>();
+		if (stack.isEmpty()) return out;
+
+		if (stack.getCount() > Mc.maxStackSize(stack)) {
+			out.add("has " + stack.getCount() + "× " + plain(stack) + " stacked in their " + where
+					+ " (the most one stack can hold is " + Mc.maxStackSize(stack) + ")");
+		}
+		for (ItemEnchantments enchants : List.of(
+				stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY),
+				stack.getOrDefault(DataComponents.STORED_ENCHANTMENTS, ItemEnchantments.EMPTY))) {
+			for (Holder<Enchantment> holder : enchants.keySet()) {
+				int level = enchants.getLevel(holder);
+				int max = holder.value().getMaxLevel();
+				if (level > max) {
+					out.add("has " + plain(stack) + " with "
+							+ Enchantment.getFullname(holder, level).getString()
+							+ " in their " + where + " (the highest possible is " + max + ")");
+				}
+			}
+		}
+		for (ItemStack nested : contentsOf(stack)) {
+			out.addAll(impossibleTraits(nested, where + ", inside " + plain(stack)));
+		}
+		return out;
 	}
 
 	/**
@@ -358,8 +402,17 @@ public class SecurityModule implements Module {
 	 * the connection the old alert channel could never make.
 	 */
 	private void alertOnce(MinecraftServer server, ServerPlayer player, Item item, String detail) {
-		Set<Item> seen = reported.computeIfAbsent(player.getUUID(), k -> new java.util.HashSet<>());
-		if (!seen.add(item)) return;
+		alertOnce(server, player, item, Mc.itemId(item), detail);
+	}
+
+	/**
+	 * @param key what counts as "the same finding" for this player — once per session, so a
+	 *            sword in their hotbar is one alert rather than one every two seconds
+	 */
+	private void alertOnce(MinecraftServer server, ServerPlayer player, Item item, String key,
+			String detail) {
+		Set<String> seen = reported.computeIfAbsent(player.getUUID(), k -> new java.util.HashSet<>());
+		if (!seen.add(key)) return;
 
 		Mods.cases().emit(server, io.github.alphain24.staffcore.modules.cases.Signal.Type.CONTRABAND,
 				player.getUUID(), Mc.name(player),

@@ -30,6 +30,9 @@
 			"io.github.alphain24.staffcore.gametest.RollbackDropSweepTests",
 			"io.github.alphain24.staffcore.gametest.ReplayDamageTests",
 			"io.github.alphain24.staffcore.gametest.CaseEvidenceTests",
+			"io.github.alphain24.staffcore.gametest.ContainerRollbackTests",
+			"io.github.alphain24.staffcore.gametest.AppealTests",
+			"io.github.alphain24.staffcore.gametest.IllegalEnchantTests",
 			"io.github.alphain24.staffcore.gametest.ReplayCameraTests"
 		]
 	},

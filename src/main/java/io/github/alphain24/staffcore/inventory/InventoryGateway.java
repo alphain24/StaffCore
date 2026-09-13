@@ -74,6 +74,9 @@ public final class InventoryGateway {
 		/** A staff member editing another player's inventory through invsee. */
 		INVSEE_EDIT("staff inventory edit"),
 
+		/** Handing back what a rollback took out of a chest, to whoever put it there. */
+		ROLLBACK_RETURN("rollback return", "Container log - open and close"),
+
 		/** Writing a recorded inventory back onto a player. */
 		SNAPSHOT_RESTORE("snapshot restore", "Item pickup log"),
 

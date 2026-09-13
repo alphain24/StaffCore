@@ -76,11 +76,23 @@ public final class BlastAttribution {
 	 * there recently, the primed TNT is theirs.
 	 */
 	void onTntPrimed(UUID tnt, String world, BlockPos pos, long now) {
+		placerOfPrimed(tnt, world, pos, now, true);
+	}
+
+	/**
+	 * A TNT has been primed at {@code pos}, by anybody. Returns whoever placed a TNT block there
+	 * recently, or null when none is known — which for a dispenser, or TNT placed before a
+	 * restart, is the honest answer.
+	 *
+	 * @param unowned whether nothing lit it; only then does the primed TNT inherit the placer
+	 */
+	Culprit placerOfPrimed(UUID tnt, String world, BlockPos pos, long now, boolean unowned) {
 		Placement placed = placedTnt.remove(new Where(world, pos.asLong()));
-		if (placed == null || now - placed.at() > PLACEMENT_MS) return;
+		if (placed == null || now - placed.at() > PLACEMENT_MS) return null;
 
 		Culprit who = placed.who();
-		primedTnt.put(tnt, new Culprit(who.id(), who.name(), "TNT they placed"));
+		if (unowned) primedTnt.put(tnt, new Culprit(who.id(), who.name(), "TNT they placed"));
+		return who;
 	}
 
 	/** Who primed TNT belongs to. Removed when read: a TNT explodes once. */

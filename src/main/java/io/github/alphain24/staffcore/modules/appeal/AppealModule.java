@@ -37,22 +37,36 @@ public class AppealModule implements Module {
 	public record Appeal(long id, UUID targetUuid, String targetName, String text,
 			String status, String handledBy, String verdict, long createdAt, Long handledAt) {}
 
-	public enum Result { OK, ALREADY_OPEN, UNAVAILABLE }
+	public enum Result { OK, ALREADY_OPEN, UNAVAILABLE, NOTHING_TO_APPEAL }
 
 	// -------------------------------------------------------------------- filing
 
+	/**
+	 * Files an appeal against the punishment the player is under.
+	 * <p>
+	 * An appeal is always an appeal <em>of something</em>. It used to be accepted from anybody,
+	 * so a player with nothing against them could fill the queue staff work through, and every
+	 * genuine appeal waited behind the ones that were not. In game the only thing a player can
+	 * be under is a mute — somebody banned is not online to type — so a player without an active
+	 * one is told there is nothing to appeal, and where a ban appeal goes instead.
+	 */
 	public Result file(UUID target, String targetName, String text) {
 		Connection c = conn();
 		if (c == null) return Result.UNAVAILABLE;
+
+		io.github.alphain24.staffcore.modules.punish.Punishment against =
+				io.github.alphain24.staffcore.module.Mods.punish().activeMute(target);
+		if (against == null) return Result.NOTHING_TO_APPEAL;
 		if (hasOpen(target)) return Result.ALREADY_OPEN;
 
 		try (PreparedStatement ps = c.prepareStatement(
-				"INSERT INTO appeals (target_uuid, target_name, text, status, created_at) "
-						+ "VALUES (?,?,?,'OPEN',?)")) {
+				"INSERT INTO appeals (target_uuid, target_name, text, status, created_at, punishment_id) "
+						+ "VALUES (?,?,?,'OPEN',?,?)")) {
 			ps.setString(1, target.toString());
 			ps.setString(2, targetName);
 			ps.setString(3, text);
 			ps.setLong(4, System.currentTimeMillis());
+			ps.setLong(5, against.id());
 			ps.executeUpdate();
 			return Result.OK;
 		} catch (SQLException e) {

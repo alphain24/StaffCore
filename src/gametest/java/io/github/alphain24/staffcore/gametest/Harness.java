@@ -54,6 +54,34 @@ final class Harness {
 	}
 
 	/**
+	 * A real survival player with a name of its own, placed the way the game places a mock one.
+	 * <p>
+	 * Every mock player is called test-mock-player, and anything that looks a player up by
+	 * name — a rollback charging the griefer, a debt collected on login — finds whichever of
+	 * them the server lists first, which is usually another test's. A test about charging the
+	 * right player needs a player nobody else shares a name with. This is also not stuck in
+	 * creative, so the game's own survival rules apply to it.
+	 */
+	static ServerPlayer namedPlayer(GameTestHelper helper) {
+		String name = ("t" + java.util.UUID.randomUUID().toString().replace("-", "")).substring(0, 12);
+		com.mojang.authlib.GameProfile profile =
+				new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), name);
+		net.minecraft.server.network.CommonListenerCookie cookie =
+				net.minecraft.server.network.CommonListenerCookie.createInitial(profile, false);
+		net.minecraft.server.level.ServerLevel level = helper.getLevel();
+		ServerPlayer player = new ServerPlayer(level.getServer(), level, cookie.gameProfile(),
+				cookie.clientInformation());
+		net.minecraft.network.Connection connection =
+				new net.minecraft.network.Connection(net.minecraft.network.protocol.PacketFlow.SERVERBOUND);
+		new io.netty.channel.embedded.EmbeddedChannel(connection);
+		level.getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+		player.setGameMode(GameType.SURVIVAL);
+		player.snapTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(
+				helper.absolutePos(new net.minecraft.core.BlockPos(0, 2, 0))));
+		return player;
+	}
+
+	/**
 	 * <b>Do not add {@code forgetAll()} calls to these tests.</b>
 	 * <p>
 	 * Gametests inside a batch run at the same time, in different parts of the world. Every

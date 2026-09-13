@@ -37,7 +37,8 @@ import java.util.Map;
  *       to have happened at that spot — somebody placing a block there, or the rollback that
  *       put it back — and only then released to whatever is really there.</li>
  *   <li><b>PLACE</b> — the block did not exist before and does after. Painted as air until its
- *       moment, then released.</li>
+ *       moment, then painted as the block that was placed until the next thing known to have
+ *       happened there, and only then released.</li>
  * </ul>
  *
  * <h2>Why a break keeps its hole</h2>
@@ -48,9 +49,11 @@ import java.util.Map;
  * the one thing it could not show. A break's hole is now drawn for as long as it really was a
  * hole, and handed back to the real world at the moment that stopped being true.
  * <p>
- * A place is still released at its moment. The removals that follow a placed block are the ones
- * the log does not see — TNT is primed away, sand falls, a piston moves it — so holding a placed
- * block would draw it long after it was gone.
+ * A place is held the same way, for the same reason: the lava, the TNT and the wall a griefer
+ * put down are what a rollback removes first, and a replay that released them at their moment
+ * showed the griefer placing nothing. The removal the log used not to see was TNT being lit —
+ * the block goes the instant it is primed, with no break — so lighting TNT is now logged as
+ * {@code IGNITE}, and that ends the TNT block's picture at the moment it was lit.
  *
  * <h2>Client-side only, like everything else here</h2>
  * Painted with {@code ClientboundBlockUpdatePacket} through {@link ReplayStage}. The world is
@@ -79,22 +82,33 @@ public final class PathEvents {
 	 *               reconstruction is invisible and a slightly wrong one is not.
 	 */
 	public record Change(long at, BlockPos pos, String world, String action, String block,
-			BlockState before, long releaseAt) {
+			BlockState before, long releaseAt, BlockState after) {
 
 		/** A change with nothing known after it beyond its own moment: released on the spot. */
 		public Change(long at, BlockPos pos, String world, String action, String block,
 				BlockState before) {
-			this(at, pos, world, action, block, before, at);
+			this(at, pos, world, action, block, before, at, null);
+		}
+
+		/** As above, with how long its aftermath is known to have stood. */
+		public Change(long at, BlockPos pos, String world, String action, String block,
+				BlockState before, long releaseAt) {
+			this(at, pos, world, action, block, before, releaseAt, null);
+		}
+
+		public boolean isPlace() {
+			return "PLACE".equals(action);
+		}
+
+		/** Whether what this change left behind is still the truth at {@code clock}. */
+		boolean aftermathStandsAt(long clock) {
+			return clock >= at && clock < releaseAt;
 		}
 
 		public boolean isBreak() {
 			return "BREAK".equals(action);
 		}
 
-		/** Whether this break's hole is still the truth at {@code clock}. */
-		boolean holeStandsAt(long clock) {
-			return isBreak() && clock >= at && clock < releaseAt;
-		}
 	}
 
 	/** "Nothing is known to have filled this hole before the replay ends." */
@@ -134,12 +148,14 @@ public final class PathEvents {
 				while (rs.next()) {
 					String action = rs.getString("action");
 					ids.add(rs.getLong("id"));
+					BlockState logged = stateOf(server, rs.getString("state"), rs.getString("block"));
+					boolean isBreak = "BREAK".equals(action);
 					out.add(new Change(rs.getLong("created_at"),
 							new BlockPos(rs.getInt("x"), rs.getInt("y"), rs.getInt("z")),
 							world, action, rs.getString("block"),
-							"BREAK".equals(action)
-									? stateOf(server, rs.getString("state"), rs.getString("block"))
-									: Blocks.AIR.defaultBlockState()));
+							isBreak ? logged : Blocks.AIR.defaultBlockState(),
+							rs.getLong("created_at"),
+							isBreak ? Blocks.AIR.defaultBlockState() : logged));
 				}
 			}
 		} catch (SQLException e) {
@@ -156,7 +172,7 @@ public final class PathEvents {
 			StaffCore.LOGGER.error("[Replay] could not read what happened after the damage", e);
 			List<Change> held = new ArrayList<>(out.size());
 			for (Change change : out) {
-				held.add(change.isBreak() ? withRelease(change, NEVER) : change);
+				held.add(withRelease(change, NEVER));
 			}
 			return held;
 		}
@@ -176,12 +192,11 @@ public final class PathEvents {
 	private static List<Change> withReleases(java.sql.Connection conn, String world, long from,
 			long to, List<Change> changes, List<Long> ids) throws SQLException {
 
-		if (changes.stream().noneMatch(Change::isBreak)) return changes;
+		if (changes.isEmpty()) return changes;
 
 		int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
 		int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
 		for (Change change : changes) {
-			if (!change.isBreak()) continue;
 			BlockPos p = change.pos();
 			minX = Math.min(minX, p.getX()); maxX = Math.max(maxX, p.getX());
 			minY = Math.min(minY, p.getY()); maxY = Math.max(maxY, p.getY());
@@ -194,7 +209,7 @@ public final class PathEvents {
 				SELECT x, y, z, created_at FROM block_log
 				 WHERE world = ? AND created_at BETWEEN ? AND ?
 				   AND x BETWEEN ? AND ? AND y BETWEEN ? AND ? AND z BETWEEN ? AND ?
-				   AND action IN ('BREAK', 'PLACE')
+				   AND action IN ('BREAK', 'PLACE', 'IGNITE')
 				 ORDER BY created_at
 				 LIMIT ?
 				""")) {
@@ -234,10 +249,6 @@ public final class PathEvents {
 		List<Change> out = new ArrayList<>(changes.size());
 		for (int i = 0; i < changes.size(); i++) {
 			Change change = changes.get(i);
-			if (!change.isBreak()) {
-				out.add(change);
-				continue;
-			}
 			long release = restoredAt.getOrDefault(ids.get(i), NEVER);
 			List<Long> times = timesAt.get(change.pos().asLong());
 			if (times != null) {
@@ -255,7 +266,7 @@ public final class PathEvents {
 
 	private static Change withRelease(Change change, long releaseAt) {
 		return new Change(change.at(), change.pos(), change.world(), change.action(),
-				change.block(), change.before(), releaseAt);
+				change.block(), change.before(), releaseAt, change.after());
 	}
 
 	/**
@@ -293,9 +304,12 @@ public final class PathEvents {
 	public static Map<BlockPos, BlockState> at(List<Change> changes, long clock) {
 		Map<BlockPos, BlockState> painted = new LinkedHashMap<>();
 
-		// First the holes that are still holes, then the "before" of whatever is still to come.
-		for (BlockPos hole : holesAt(changes, clock)) {
-			painted.put(hole, Blocks.AIR.defaultBlockState());
+		// First what each change that has happened left behind, while it still stands — the
+		// hole a break made, the block a place put down — then the "before" of whatever is
+		// still to come.
+		for (Change change : aftermathAt(changes, clock).values()) {
+			BlockState left = change.isBreak() ? Blocks.AIR.defaultBlockState() : change.after();
+			if (left != null) painted.put(change.pos(), left);
 		}
 
 		for (Change change : changes) {
@@ -328,15 +342,30 @@ public final class PathEvents {
 	 * round. Positions only, so the rule can be checked without a block registry.
 	 */
 	static java.util.Set<BlockPos> holesAt(List<Change> changes, long clock) {
+		java.util.Set<BlockPos> holes = new java.util.LinkedHashSet<>();
+		for (Change change : aftermathAt(changes, clock).values()) {
+			if (change.isBreak()) holes.add(change.pos());
+		}
+		return holes;
+	}
+
+	/**
+	 * The latest change at each position that has already happened and whose result still
+	 * stands at this moment. A later change at the same spot replaces an earlier one, whichever
+	 * order they were read in.
+	 */
+	static Map<BlockPos, Change> aftermathAt(List<Change> changes, long clock) {
 		Map<BlockPos, Change> latestPassed = new LinkedHashMap<>();
 		for (Change change : changes) {
 			if (change.at() <= clock) latestPassed.put(change.pos(), change);
 		}
-		java.util.Set<BlockPos> holes = new java.util.LinkedHashSet<>();
+		Map<BlockPos, Change> standing = new LinkedHashMap<>();
 		for (Change change : latestPassed.values()) {
-			if (change.holeStandsAt(clock)) holes.add(change.pos());
+			if ((change.isBreak() || change.isPlace()) && change.aftermathStandsAt(clock)) {
+				standing.put(change.pos(), change);
+			}
 		}
-		return holes;
+		return standing;
 	}
 
 	/** How many of these have already happened at a given moment. For the sidebar. */

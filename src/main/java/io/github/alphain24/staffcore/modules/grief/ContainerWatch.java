@@ -256,8 +256,17 @@ public final class ContainerWatch {
 	 *                 stay un-retired so retrying works, and this is the number that says so
 	 *                 out loud instead of leaving staff to compare counts by hand.
 	 */
-	public record Result(int restored, int deferred) {
-		static final Result NOTHING = new Result(0, 0);
+	/**
+	 * @param debited  items taken back off whoever took them, so the chest getting its items
+	 *                 back does not leave a copy in somebody's pocket
+	 * @param returned items handed back to whoever had put them in
+	 */
+	public record Result(int restored, int deferred, int debited, int returned) {
+		static final Result NOTHING = new Result(0, 0, 0, 0);
+
+		Result(int restored, int deferred) {
+			this(restored, deferred, 0, 0);
+		}
 	}
 
 	/**
@@ -295,6 +304,15 @@ public final class ContainerWatch {
 		int restored = 0;
 		int deferred = 0;
 		List<Long> applied = new ArrayList<>();
+
+		// What each player's movements come to once undone. A theft undone means the chest has
+		// its items back, so the thief must not keep them; a put undone means items came out
+		// of a chest, and they belong to whoever put them in. Netted per player and item,
+		// because somebody who carried gold from one chest to another has neither kept any
+		// nor lost any, and charging them for the take while deleting the put would do both.
+		Map<String, Map<net.minecraft.world.item.Item, Integer>> tookBack = new LinkedHashMap<>();
+		Map<String, List<ItemStack>> takenOut = new LinkedHashMap<>();
+		java.util.Set<BlockPos> touched = new java.util.HashSet<>();
 
 		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(sql)) {
 			int i = 1;
@@ -340,9 +358,23 @@ public final class ContainerWatch {
 					}
 
 					// TAKE is undone by putting it back; PUT is undone by removing it.
-					boolean undone = "TAKE".equals(move.action())
-							? insert(container, move.slot(), stack)
-							: remove(container, stack);
+					boolean undone;
+					if ("TAKE".equals(move.action())) {
+						undone = insert(container, move.slot(), stack.copy());
+						if (undone) {
+							tookBack.computeIfAbsent(move.player(), p -> new HashMap<>())
+									.merge(stack.getItem(), move.count(), Integer::sum);
+						}
+					} else {
+						int removed = removeCounted(container, stack);
+						undone = removed > 0;
+						if (undone) {
+							ItemStack out = stack.copy();
+							out.setCount(removed);
+							takenOut.computeIfAbsent(move.player(), p -> new ArrayList<>()).add(out);
+						}
+					}
+					if (undone) touched.addAll(Mc.containerHalves(level, pos));
 
 					// Only a row that actually applied is retired. Marking a failed one
 					// rolled-back would quietly forget it: the chest was full, the items were
@@ -361,7 +393,87 @@ public final class ContainerWatch {
 		}
 
 		if (!applied.isEmpty()) retire(applied);
-		return new Result(restored, deferred);
+		if (dryRun || (tookBack.isEmpty() && takenOut.isEmpty())) {
+			return new Result(restored, deferred);
+		}
+
+		int debited = 0;
+		int returned = 0;
+		java.util.Set<String> players = new java.util.LinkedHashSet<>(tookBack.keySet());
+		players.addAll(takenOut.keySet());
+
+		for (String who : players) {
+			Map<net.minecraft.world.item.Item, Integer> took = tookBack.getOrDefault(who, Map.of());
+			List<ItemStack> out = takenOut.getOrDefault(who, List.of());
+
+			Map<net.minecraft.world.item.Item, Integer> put = new HashMap<>();
+			for (ItemStack stack : out) put.merge(stack.getItem(), stack.getCount(), Integer::sum);
+
+			Map<net.minecraft.world.item.Item, Integer> owed = new HashMap<>();
+			took.forEach((item, n) -> {
+				int net = n - put.getOrDefault(item, 0);
+				if (net > 0) owed.put(item, net);
+			});
+
+			if (!owed.isEmpty()) {
+				// Every route they could have kept it by, and never the chests this rollback
+				// has just put things back into.
+				LootRecovery.Result result = LootRecovery.collect(level, who, owed, centre, radius,
+						windowMs, this, "Items returned to a chest they took them from", true,
+						touched);
+				debited += result.recovered();
+			}
+
+			List<ItemStack> handBack = new ArrayList<>();
+			Map<net.minecraft.world.item.Item, Integer> spare = new HashMap<>();
+			put.forEach((item, n) -> {
+				int net = n - took.getOrDefault(item, 0);
+				if (net > 0) spare.put(item, net);
+			});
+			for (ItemStack stack : out) {
+				int wanted = spare.getOrDefault(stack.getItem(), 0);
+				if (wanted <= 0) continue;
+				ItemStack give = stack.copy();
+				give.setCount(Math.min(wanted, stack.getCount()));
+				spare.put(stack.getItem(), wanted - give.getCount());
+				handBack.add(give);
+			}
+			if (!handBack.isEmpty()) returned += handBack(level, who, handBack);
+		}
+		return new Result(restored, deferred, debited, returned);
+	}
+
+	/**
+	 * Gives items a rollback took out of a chest back to whoever put them there — into their
+	 * inventory now, or on their next login. Never onto the floor, where anybody could take them.
+	 */
+	private int handBack(net.minecraft.server.level.ServerLevel level, String who,
+			List<ItemStack> stacks) {
+
+		MinecraftServer server = level.getServer();
+		int total = 0;
+		for (ItemStack stack : stacks) total += stack.getCount();
+
+		ServerPlayer online = server.getPlayerList().getPlayerByName(who);
+		if (online != null) {
+			io.github.alphain24.staffcore.inventory.InventoryGateway.give(online,
+					io.github.alphain24.staffcore.inventory.InventoryGateway.Origin.ROLLBACK_RETURN,
+					io.github.alphain24.staffcore.permission.Actor.system(),
+					"items a rollback took back out of a chest you had put them in", stacks);
+			return total;
+		}
+
+		var id = io.github.alphain24.staffcore.util.PlayerLookup.uuid(server, who);
+		if (id.isEmpty()) {
+			StaffCore.LOGGER.warn("[Grief] could not hand {} item(s) back to {}: no such player",
+					total, who);
+			return 0;
+		}
+		for (ItemStack stack : stacks) {
+			StaffCore.pending().queueGive(server, id.get(), who, stack,
+					"Items a rollback took back out of a chest you had put them in", "system", null);
+		}
+		return total;
 	}
 
 	// ------------------------------------------------------------------ undoing theft
@@ -652,6 +764,21 @@ public final class ContainerWatch {
 			}
 		}
 		return false;   // full; the items stay owed rather than being dropped on the floor
+	}
+
+	/** Removes up to the stack's count of matching items; returns how many came out. */
+	private int removeCounted(Container container, ItemStack stack) {
+		int owed = stack.getCount();
+		for (int slot = 0; slot < container.getContainerSize() && owed > 0; slot++) {
+			ItemStack inSlot = container.getItem(slot);
+			if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, stack)) continue;
+
+			int take = Math.min(owed, inSlot.getCount());
+			inSlot.shrink(take);
+			owed -= take;
+		}
+		container.setChanged();
+		return stack.getCount() - owed;
 	}
 
 	private boolean remove(Container container, ItemStack stack) {

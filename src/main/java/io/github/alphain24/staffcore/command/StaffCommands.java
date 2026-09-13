@@ -594,6 +594,13 @@ public final class StaffCommands {
 				Sfx.deny(player);
 				return fail(ctx, "You already have an appeal waiting on a verdict.");
 			}
+			case NOTHING_TO_APPEAL -> {
+				Sfx.deny(player);
+				String invite = StaffConfig.get().discordInvite;
+				return fail(ctx, "You have no active punishment to appeal."
+						+ (invite == null || invite.isBlank() ? ""
+								: " Ban appeals go through our Discord: " + invite));
+			}
 			default -> {
 				Sfx.error(player);
 				return fail(ctx, "Appeals are unavailable right now.");

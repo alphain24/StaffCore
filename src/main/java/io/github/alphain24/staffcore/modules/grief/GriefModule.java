@@ -610,8 +610,28 @@ public class GriefModule implements Module {
 	 * none. Called from the primed-TNT mixin; see {@link BlastAttribution}.
 	 */
 	public void onTntPrimed(net.minecraft.world.entity.item.PrimedTnt tnt, ServerLevel level) {
-		blasts.onTntPrimed(tnt.getUUID(), Mc.dimensionId(level), tnt.blockPosition(),
-				System.currentTimeMillis());
+		onTntPrimed(tnt, level, null);
+	}
+
+	/**
+	 * Any TNT primed at a block, lit by {@code igniter} or by nothing.
+	 * <p>
+	 * When a TNT block somebody placed is lit, the block goes with no break, and the log used to
+	 * say nothing — so a replay drew the TNT standing long after it had gone. The lighting is
+	 * written as an {@code IGNITE} row, on whoever lit it, or on the placer when nothing did.
+	 * Rollback only reads breaks and places, so it never tries to undo one.
+	 */
+	public void onTntPrimed(net.minecraft.world.entity.item.PrimedTnt tnt, ServerLevel level,
+			net.minecraft.world.entity.LivingEntity igniter) {
+
+		String world = Mc.dimensionId(level);
+		BlockPos pos = tnt.blockPosition();
+		BlastAttribution.Culprit placer = blasts.placerOfPrimed(tnt.getUUID(), world, pos,
+				System.currentTimeMillis(), igniter == null);
+		if (placer == null) return;
+
+		String who = igniter instanceof ServerPlayer lit ? Mc.name(lit) : placer.name();
+		log(who, "IGNITE", Blocks.TNT.defaultBlockState(), pos, world);
 	}
 
 	/**

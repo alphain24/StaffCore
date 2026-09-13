@@ -31,9 +31,9 @@ public abstract class PrimedTntMixin {
 	private void staffcore$rememberUnownedTnt(Level level, double x, double y, double z,
 			LivingEntity owner, CallbackInfo ci) {
 
-		if (owner != null || !(level instanceof ServerLevel serverLevel)) return;
+		if (!(level instanceof ServerLevel serverLevel)) return;
 
 		StaffCore.modules().get("grief", GriefModule.class).ifPresent(grief ->
-				grief.onTntPrimed((PrimedTnt) (Object) this, serverLevel));
+				grief.onTntPrimed((PrimedTnt) (Object) this, serverLevel, owner));
 	}
 }
