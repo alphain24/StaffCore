@@ -543,6 +543,138 @@ public final class CaseStore {
 		return out;
 	}
 
+	// ------------------------------------------------------------ the case board
+
+	/** The two halves of the case board. */
+	public enum Board {
+		/** Open and investigating: somebody still has to do something. */
+		OPEN("open", "investigating"),
+		/** Actioned, cleared and stale: nothing more is expected. */
+		SOLVED("actioned", "cleared", "stale");
+
+		private final String[] statuses;
+
+		Board(String... statuses) {
+			this.statuses = statuses;
+		}
+
+		String sqlIn() {
+			return "('" + String.join("','", statuses) + "')";
+		}
+	}
+
+	/**
+	 * One half of the board, newest first.
+	 * <p>
+	 * Newest by when it opened for open cases, and by when it closed for solved ones — the
+	 * case somebody closed a minute ago is the one anybody reading that list is looking for,
+	 * whenever it was opened.
+	 */
+	public List<Case> board(Board board, String assignee, CaseCategory category, int offset,
+			int limit) {
+
+		List<Case> out = new ArrayList<>();
+		if (!ready()) return out;
+
+		StringBuilder sql = new StringBuilder("SELECT * FROM cases WHERE status IN ")
+				.append(board.sqlIn());
+		if (assignee != null) sql.append(" AND assigned_to = ? COLLATE NOCASE");
+		if (category != null) sql.append(" AND COALESCE(category, 'other') = ?");
+		sql.append(board == Board.OPEN
+				? " ORDER BY opened_at DESC"
+				: " ORDER BY COALESCE(closed_at, opened_at) DESC");
+		sql.append(" LIMIT ? OFFSET ?");
+
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(sql.toString())) {
+			int i = 1;
+			if (assignee != null) ps.setString(i++, assignee);
+			if (category != null) ps.setString(i++, category.stored());
+			ps.setInt(i++, limit);
+			ps.setInt(i, offset);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) out.add(read(rs));
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Cases] Could not read the case board", e);
+		}
+		return out;
+	}
+
+	/** How many cases are on one half of the board. */
+	public int boardCount(Board board) {
+		if (!ready()) return 0;
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(
+				"SELECT COUNT(*) FROM cases WHERE status IN " + board.sqlIn());
+				ResultSet rs = ps.executeQuery()) {
+			return rs.next() ? rs.getInt(1) : 0;
+		} catch (SQLException e) {
+			return 0;
+		}
+	}
+
+	/** Live cases nobody is on, oldest first. */
+	public List<Case> unassignedLive(int limit) {
+		List<Case> out = new ArrayList<>();
+		if (!ready()) return out;
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement("""
+				SELECT * FROM cases
+				WHERE status IN ('open','investigating')
+				  AND (assigned_to IS NULL OR assigned_to = '')
+				ORDER BY opened_at ASC LIMIT ?
+				""")) {
+			ps.setInt(1, limit);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) out.add(read(rs));
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Cases] Could not read unassigned cases", e);
+		}
+		return out;
+	}
+
+	/** Live cases per assignee. */
+	public java.util.Map<String, Integer> liveLoads() {
+		java.util.Map<String, Integer> out = new java.util.HashMap<>();
+		if (!ready()) return out;
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement("""
+				SELECT assigned_to, COUNT(*) FROM cases
+				WHERE status IN ('open','investigating') AND assigned_to IS NOT NULL
+				GROUP BY assigned_to
+				""");
+				ResultSet rs = ps.executeQuery()) {
+			while (rs.next()) out.merge(rs.getString(1), rs.getInt(2), Integer::sum);
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Cases] Could not count assigned cases", e);
+		}
+		return out;
+	}
+
+	/**
+	 * Assigns only if the case is still unassigned, with the reason in the log.
+	 * <p>
+	 * Conditional in the statement itself. Somebody may have claimed it between the read that
+	 * chose it and this write, and an automatic pass must never take a case off a person.
+	 *
+	 * @return true when this call assigned it
+	 */
+	public boolean assignIfUnassigned(String caseId, String assignee, String why) {
+		if (!ready()) return false;
+		boolean[] done = {false};
+		StaffCore.storage().inTransaction(conn -> {
+			try (PreparedStatement ps = conn.prepareStatement("""
+					UPDATE cases SET assigned_to = ?
+					WHERE id = ? AND (assigned_to IS NULL OR assigned_to = '')
+					  AND status IN ('open','investigating')
+					""")) {
+				ps.setString(1, assignee);
+				ps.setString(2, caseId);
+				done[0] = ps.executeUpdate() == 1;
+			}
+			if (done[0]) appendEvent(conn, caseId, Case.SYSTEM, "assigned", why);
+		});
+		return done[0];
+	}
+
 	// -------------------------------------------------------------------- plumbing
 
 	private String insertCase(java.sql.Connection conn, Signal from, CaseCategory category)

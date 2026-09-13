@@ -170,7 +170,8 @@ public class ReasonMenu extends Gui {
 		if (server == null) return;
 
 		Punishment result = Mods.punish().apply(server, finished.target(), Mc.name(viewer),
-				finished.base(), finished.durationMs(), finished.reason(), null, null,
+				finished.base(), finished.durationMs(), finished.reason(), null,
+				io.github.alphain24.staffcore.gui.PunishFromCase.caseFor(viewer.getUUID(), finished.target().id()),
 				io.github.alphain24.staffcore.permission.Actor.of(viewer));
 
 		if (result == null) {

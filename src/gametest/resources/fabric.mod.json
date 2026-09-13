@@ -33,7 +33,8 @@
 			"io.github.alphain24.staffcore.gametest.ContainerRollbackTests",
 			"io.github.alphain24.staffcore.gametest.AppealTests",
 			"io.github.alphain24.staffcore.gametest.IllegalEnchantTests",
-			"io.github.alphain24.staffcore.gametest.ReplayCameraTests"
+			"io.github.alphain24.staffcore.gametest.ReplayCameraTests",
+			"io.github.alphain24.staffcore.gametest.CaseBoardTests"
 		]
 	},
 	"depends": {

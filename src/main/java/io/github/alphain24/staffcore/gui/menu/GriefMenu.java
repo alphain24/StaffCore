@@ -359,8 +359,7 @@ public class GriefMenu extends Gui {
 	}
 
 	private static String shortId(String id) {
-		int colon = id.indexOf(':');
-		return colon < 0 ? id : id.substring(colon + 1);
+		return RollbackPreview.shortId(id);
 	}
 
 	private void onPick(GriefModule.Entry entry, Click click) {
@@ -513,87 +512,10 @@ public class GriefMenu extends Gui {
 
 	/** {@code who} may be null, meaning everything in the area regardless of who did it. */
 	private void previewRollback(String who) {
-		ServerLevel level = viewer.level();
-		// The identity is passed to the preview as well as to the run, so the region lock is
-		// taken while this staff member is deciding rather than only while blocks are moving.
-		// The window somebody else can change the answer in is the human one.
-		GriefModule.RollbackResult preview =
-				Mods.grief().rollback(level, who, centre, radius, windowMs(), true,
-						io.github.alphain24.staffcore.permission.Actor.of(viewer));
-
-		if (preview.reverted() == 0) {
-			viewer.sendSystemMessage(Theme.warn(who == null
-					? "Nothing to roll back here."
-					: "Nothing of " + who + "'s to roll back here."));
-			Sfx.deny(viewer);
-			return;
-		}
-
-		Icon summary = (who == null ? Icon.of(Items.TNT) : profileIcon(who))
-				.name(who == null ? "Roll back this area" : "Roll back " + who, Theme.BAD)
-				.field("Scope", who == null ? "every player" : who)
-				.field("Changes to undo", String.valueOf(preview.reverted()))
-				.field("Radius", radius + " blocks")
-				.field("Window", TimeFormat.duration(windowMs()))
-				.field("Centre", "%d, %d, %d".formatted(centre.getX(), centre.getY(), centre.getZ()));
-
-		// What, not just how many. "412 changes" says how big the operation is and nothing
-		// about whether it is the right one; the item list is what staff actually check
-		// against before overwriting somebody's build.
-		if (!preview.restoring().isEmpty()) {
-			summary.gap().lore("Putting back:", Theme.TEXT);
-			preview.restoring().stream().limit(6).forEach(item ->
-					summary.lore("  " + item.count() + "× " + shortId(item.itemId()), Theme.MUTED));
-			if (preview.restoring().size() > 6) {
-				summary.lore("  … and " + (preview.restoring().size() - 6) + " more kinds", Theme.MUTED);
-			}
-		}
-
-		// The same warnings the chat preview prints, on the screen where this is decided.
-		// A confirm button with nothing unusual said next to it is a confirm button people
-		// press without reading, which is exactly what makes the unusual case dangerous.
-		var warnings = io.github.alphain24.staffcore.modules.grief.RollbackWarnings.forArea(
-				level, centre, radius, preview.reverted());
-		if (!warnings.isEmpty()) summary.gap();
-		for (var warning : warnings) summary.warn(warning.text());
-
-		if (preview.skipped() > 0) {
-			summary.gap().warn(preview.skipped() + " entry/entries reference blocks that no longer exist.");
-		}
-		summary.gap().warn("Anything built on top of these blocks is overwritten.");
-		if (preview.itemsReturned() > 0) {
-			summary.lore(preview.itemsReturned() + " container change(s) will also be undone.", Theme.MUTED);
-		}
-		if (preview.itemsDeferred() > 0) {
-			summary.warn(preview.itemsDeferred() + " stack(s) have nowhere to go — those chests are full.");
-		}
-		if (StaffConfig.get().rollbackReclaimsDrops) {
-			summary.lore("Dropped items from restored blocks are reclaimed.", Theme.MUTED);
-			if (StaffConfig.get().rollbackChasesBankedLoot) {
-				summary.lore("Loot stashed in chests elsewhere is followed.", Theme.MUTED);
-			}
-		}
-
-		// Drawn in the world, to this staff member only, while the confirm screen is up.
-		// The list above says what; this says where — and "where" is the question that
-		// actually decides whether the radius is right.
-		int drawn = Mods.grief().preview().show(viewer, level, preview.proposed());
-		if (drawn > 0) {
-			summary.gap().lore("Shown in the world in front of you — nobody else", Theme.ACCENT)
-					.lore("can see it, and nothing has been written yet.", Theme.ACCENT);
-			viewer.sendSystemMessage(Theme.info("Previewing " + drawn
-					+ " block(s) around you. Close the menu to clear it."));
-		}
-
-		ConfirmMenu.open(viewer, "Rollback", summary.build(),
-				() -> {
-					Mods.grief().preview().clear(viewer);
-					applyRollback(level, who);
-				},
-				() -> {
-					Mods.grief().preview().clear(viewer);
-					reopen(viewer, centre, windowMinutes, playerFilter);
-				});
+		RollbackPreview.open(viewer,
+				new RollbackPreview.Scope(viewer.level(), who, centre, radius, windowMs(), List.of()),
+				result -> reopen(viewer, centre, windowMinutes, playerFilter),
+				() -> reopen(viewer, centre, windowMinutes, playerFilter));
 	}
 
 	/**
@@ -607,54 +529,6 @@ public class GriefMenu extends Gui {
 	@Override
 	protected void onClosed() {
 		if (!isNavigating()) Mods.grief().preview().clear(viewer);
-	}
-
-	private void applyRollback(ServerLevel level, String who) {
-		GriefModule.RollbackResult result =
-				Mods.grief().rollback(level, who, centre, radius, windowMs(), false,
-						io.github.alphain24.staffcore.permission.Actor.of(viewer));
-
-		MinecraftServer server = Mc.server(viewer);
-		if (server != null) {
-			Mods.alerts().onStaffAction(server, "%s rolled back %d change(s) by %s at %d, %d, %d"
-					.formatted(Mc.name(viewer), result.reverted(), who == null ? "everyone" : who,
-							centre.getX(), centre.getY(), centre.getZ()));
-		}
-
-		viewer.sendSystemMessage(Theme.good("Reverted " + result.reverted() + " change(s)."));
-		if (result.dropsRemoved() > 0) {
-			viewer.sendSystemMessage(Theme.info(
-					"Reclaimed " + result.dropsRemoved() + " dropped item(s) so nothing was duplicated."));
-		}
-		if (result.bankedRemoved() > 0) {
-			viewer.sendSystemMessage(Theme.info(
-					"Took back " + result.bankedRemoved() + " item(s) stashed in chests elsewhere."));
-		}
-		if (result.debitsQueued() > 0) {
-			viewer.sendSystemMessage(Theme.info(result.debitsQueued()
-					+ " item(s) are owed by an offline player — collected when they next log in."));
-		}
-		if (result.itemsReturned() > 0) {
-			viewer.sendSystemMessage(Theme.info(
-					"Put " + result.itemsReturned() + " stack(s) back into containers."));
-		}
-		// The rows for these were left un-retired on purpose, so saying so turns a silent
-		// shortfall into something staff can act on.
-		if (result.itemsDeferred() > 0) {
-			viewer.sendSystemMessage(Theme.warn(result.itemsDeferred()
-					+ " stack(s) would not fit — clear space and run the rollback again."));
-		}
-		Sfx.bigSuccess(viewer);
-		reopen(viewer, centre, windowMinutes, playerFilter);
-	}
-
-	private Icon profileIcon(String name) {
-		MinecraftServer server = Mc.server(viewer);
-		if (server != null) {
-			var profile = PlayerLookup.profile(server, name);
-			if (profile.isPresent()) return Icon.head(profile.get());
-		}
-		return Icon.of(Items.PLAYER_HEAD);
 	}
 
 	// --------------------------------------------------------------------- chrome

@@ -8,6 +8,8 @@ import io.github.alphain24.staffcore.gui.Sfx;
 import io.github.alphain24.staffcore.gui.Theme;
 import io.github.alphain24.staffcore.module.Mods;
 import io.github.alphain24.staffcore.modules.cases.Case;
+import io.github.alphain24.staffcore.modules.cases.CaseCategory;
+import io.github.alphain24.staffcore.modules.cases.CaseStore;
 import io.github.alphain24.staffcore.util.TimeFormat;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -17,29 +19,28 @@ import net.minecraft.world.item.Items;
 import java.util.List;
 
 /**
- * Browsing cases. <b>Browsing only</b> — nothing here changes anything.
+ * The case board: open cases and solved ones, newest first.
  * <p>
- * That is a deliberate limit rather than an unfinished screen, and it is worth being explicit
- * because the missing buttons look like an omission. A server-side container UI desyncs: the
- * client's idea of which item is in which slot can differ from the server's for a few hundred
- * milliseconds after any change, and the server resolves a click by slot index. In a screen
- * that lists players and can issue punishments, that is a mis-click away from banning somebody
- * who happened to be one row up.
+ * Two tabs rather than a status filter to cycle through. "What still needs doing" and "what
+ * was decided" are the two questions anybody opens this list with, and cycling five statuses to
+ * get from one to the other made both of them a chore. Newest first, because the case that
+ * opened a minute ago is the one somebody has just been told about.
  * <p>
- * The list is also live — cases open, gain severity and get claimed while somebody is looking
- * at it — so the row under the cursor is exactly the thing most likely to have moved.
- * <p>
- * So clicking a case closes the screen and prints the chat view, where every action is a
- * command with a name, a permission check and an audit line. The GUI is for finding the case;
- * chat is for doing anything about it.
+ * Clicking a case opens it. Everything that changes a case happens on that screen, where the
+ * case is re-read at the moment of the click — the list here can be seconds stale, and a row
+ * that moved under the cursor must never be the one something is done to.
  */
 public class CasesMenu extends PagedGui<Case> {
 
-	/** Which slice of the list is being shown. Filtering is the one thing this screen does. */
-	private Case.Status filter = null;
+	private static final int SLOT_OPEN_TAB = 46;
+	private static final int SLOT_SOLVED_TAB = 47;
+	private static final int SLOT_KIND = 51;
+	private static final int SLOT_MINE = 52;
+
+	private CaseStore.Board board = CaseStore.Board.OPEN;
 	private boolean mineOnly;
 	/** Only one kind of case, or every kind. */
-	private io.github.alphain24.staffcore.modules.cases.CaseCategory kind = null;
+	private CaseCategory kind = null;
 
 	public static void open(ServerPlayer viewer) {
 		Guis.navigate(viewer, Theme.title("Cases"), CasesMenu::new);
@@ -52,27 +53,22 @@ public class CasesMenu extends PagedGui<Case> {
 
 	@Override
 	protected List<Case> entries() {
-		return Mods.cases().store().list(filter, mineOnly ? Mc.name(viewer) : null, kind, 0, 200);
+		return Mods.cases().store().board(board, mineOnly ? Mc.name(viewer) : null, kind, 0, 280);
 	}
 
 	@Override
 	protected ItemStack header() {
-		int open = Mods.cases().openCount();
-
-		Icon icon = Icon.of(Items.WRITABLE_BOOK)
-				.name("Cases", Theme.ACCENT)
-				.field("Open", String.valueOf(open))
-				.field("Showing", filter == null ? "everything" : filter.stored())
+		boolean open = board == CaseStore.Board.OPEN;
+		Icon icon = Icon.of(open ? Items.WRITABLE_BOOK : Items.WRITTEN_BOOK)
+				.name(open ? "Open cases" : "Solved cases", Theme.ACCENT)
 				.field("Kind", kind == null ? "every kind" : kind.label())
 				.field("Assignee", mineOnly ? Mc.name(viewer) : "anyone")
 				.gap()
-				.paragraph("Strongest first, then newest.", Theme.MUTED)
-				.gap()
-				.action("Left-click", "cycle the status filter")
-				.action("Shift-click", "cycle the kind of case")
-				.action("Right-click", "show only cases assigned to you");
-
-		if (open > 0) icon.glow();
+				.paragraph(open
+						? "Open and investigating, newest opened first."
+						: "Actioned, cleared and gone stale, most recently closed first.",
+						Theme.MUTED);
+		if (open && Mods.cases().openCount() > 0) icon.glow();
 		return icon.build();
 	}
 
@@ -84,11 +80,18 @@ public class CasesMenu extends PagedGui<Case> {
 		Icon icon = Icon.of(iconFor(subject.category()))
 				.name(subject.category().label() + " · " + subject.id(), Theme.ACCENT)
 				.field("Subject", name)
-				.field("Severity", String.valueOf(subject.severity()))
 				.field("Status", subject.status().stored())
+				.field("Severity", String.valueOf(subject.severity()))
 				.field("Assigned", subject.assignedTo() == null ? "nobody" : subject.assignedTo())
 				.gap()
 				.field("Opened", TimeFormat.ago(subject.openedAt()) + " by " + subject.openedBy());
+		if (subject.closedAt() != null) {
+			icon.field("Closed", TimeFormat.ago(subject.closedAt())
+					+ (subject.closedBy() == null ? "" : " by " + subject.closedBy()));
+		}
+		if (subject.resolutionReason() != null) {
+			icon.field("Outcome", subject.resolutionReason().label());
+		}
 
 		if (subject.summary() != null && !subject.summary().isBlank()) {
 			icon.gap().paragraph(subject.summary(), Theme.TEXT);
@@ -96,15 +99,12 @@ public class CasesMenu extends PagedGui<Case> {
 
 		icon.gap().action("Click", "open the case");
 
-		// Severity is the reason the list is ordered the way it is, so it should be visible
-		// without reading the tooltip.
 		if (subject.status().isLive() && subject.severity() >= 70) icon.glow();
 		return icon.build();
 	}
 
 	/** One look per kind of case, so a list of them can be read at a glance. */
-	static net.minecraft.world.item.Item iconFor(
-			io.github.alphain24.staffcore.modules.cases.CaseCategory category) {
+	static net.minecraft.world.item.Item iconFor(CaseCategory category) {
 		return switch (category) {
 			case GRIEFING -> Items.TNT;
 			case CHEATING -> Items.DIAMOND_ORE;
@@ -117,45 +117,68 @@ public class CasesMenu extends PagedGui<Case> {
 
 	@Override
 	protected void onPick(Case subject, Click click) {
-		// Its own screen now: the evidence has to be clickable, and chat cannot open a replay
-		// without a typed command. The full chat view is one button away on that screen.
 		Sfx.page(viewer);
 		CaseMenu.open(viewer, subject.id());
 	}
 
-	/**
-	 * Re-binds the header as a button so the filter can be cycled.
-	 * <p>
-	 * {@code PagedGui} paints the header as a plain item, which is right for screens whose
-	 * header is only a label. Filtering is the one thing this screen does, so it needs the
-	 * slot to be clickable.
-	 */
 	@Override
-	protected void build() {
-		super.build();
-		button(SLOT_HEADER, header(), click -> {
-			if (click.isShift()) kind = nextKind(kind);
-			else if (click.isRight()) mineOnly = !mineOnly;
-			else filter = nextFilter(filter);
+	protected void decorateFooter() {
+		int open = Mods.cases().store().boardCount(CaseStore.Board.OPEN);
+		int solved = Mods.cases().store().boardCount(CaseStore.Board.SOLVED);
 
+		button(SLOT_OPEN_TAB, tab(Items.WRITABLE_BOOK, "Open cases", open,
+				board == CaseStore.Board.OPEN), click -> show(CaseStore.Board.OPEN));
+		button(SLOT_SOLVED_TAB, tab(Items.WRITTEN_BOOK, "Solved cases", solved,
+				board == CaseStore.Board.SOLVED), click -> show(CaseStore.Board.SOLVED));
+
+		button(SLOT_KIND, Icon.of(kind == null ? Items.COMPASS : iconFor(kind))
+				.name("Kind: " + (kind == null ? "every kind" : kind.label()), Theme.ACCENT)
+				.action("Click", "next kind")
+				.action("Right-click", "previous kind")
+				.build(), click -> {
+			kind = click.isRight() ? previousKind(kind) : nextKind(kind);
+			resetPage();
+			Sfx.toggleOn(viewer);
+			render();
+		});
+
+		button(SLOT_MINE, Icon.of(mineOnly ? Items.NAME_TAG : Items.PAPER)
+				.name(mineOnly ? "Showing only yours" : "Showing everybody's", Theme.ACCENT)
+				.action("Click", mineOnly ? "show everybody's" : "show only cases assigned to you")
+				.build(), click -> {
+			mineOnly = !mineOnly;
+			resetPage();
 			Sfx.toggleOn(viewer);
 			render();
 		});
 	}
 
-	/** Everything, then each status in turn, then back to everything. */
-	private static io.github.alphain24.staffcore.modules.cases.CaseCategory nextKind(
-			io.github.alphain24.staffcore.modules.cases.CaseCategory current) {
-		var all = io.github.alphain24.staffcore.modules.cases.CaseCategory.values();
+	private ItemStack tab(net.minecraft.world.item.Item item, String label, int count, boolean selected) {
+		Icon icon = Icon.of(item)
+				.name(label + " (" + count + ")", selected ? Theme.GOOD : Theme.ACCENT)
+				.lore(selected ? "Showing now." : "Click to show.", Theme.MUTED);
+		if (selected) icon.glow();
+		return icon.build();
+	}
+
+	private void show(CaseStore.Board which) {
+		if (board == which) return;
+		board = which;
+		resetPage();
+		Sfx.page(viewer);
+		render();
+	}
+
+	private static CaseCategory nextKind(CaseCategory current) {
+		CaseCategory[] all = CaseCategory.values();
 		if (current == null) return all[0];
 		return current.ordinal() + 1 >= all.length ? null : all[current.ordinal() + 1];
 	}
 
-	private static Case.Status nextFilter(Case.Status current) {
-		if (current == null) return Case.Status.OPEN;
-		Case.Status[] all = Case.Status.values();
-		int next = current.ordinal() + 1;
-		return next >= all.length ? null : all[next];
+	private static CaseCategory previousKind(CaseCategory current) {
+		CaseCategory[] all = CaseCategory.values();
+		if (current == null) return all[all.length - 1];
+		return current.ordinal() == 0 ? null : all[current.ordinal() - 1];
 	}
 
 	@Override

@@ -82,6 +82,73 @@ public class CaseModule implements Module {
 
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(
 				server -> store.markStale(StaffConfig.get().caseStaleDays));
+
+		// Assignment runs when there may be something to do — a case opened, somebody who can
+		// take one joined — and on a slow timer as a backstop for cases opened by hand or
+		// while nobody was online. Checked every five seconds, done at most once in each.
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+			if (!StaffConfig.get().caseAutoAssign) return;
+			int tick = server.getTickCount();
+			if (tick % 6000 == 0) assignmentDue = true;
+			if (tick % 100 != 0 || !assignmentDue) return;
+			assignmentDue = false;
+			autoAssign(server);
+		});
+		net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register(
+				(handler, sender, server) -> assignmentDue = true);
+	}
+
+	/** Set when an assignment pass may find something; read on the next five-second check. */
+	private volatile boolean assignmentDue = true;
+
+	/** Asks for an assignment pass soon. */
+	public void requestAssignment() {
+		assignmentDue = true;
+	}
+
+	/**
+	 * Gives every unclaimed live case to whoever online has the fewest. See {@link CaseAssigner}.
+	 *
+	 * @return what was assigned, for the command that runs this by hand and for tests
+	 */
+	public java.util.List<CaseAssigner.Assignment> autoAssign(MinecraftServer server) {
+		if (server == null || !StaffCore.storage().isReady()) return java.util.List.of();
+
+		java.util.List<net.minecraft.server.level.ServerPlayer> staff = new java.util.ArrayList<>();
+		for (var player : server.getPlayerList().getPlayers()) {
+			if (io.github.alphain24.staffcore.permission.Permissions.check(player,
+					io.github.alphain24.staffcore.permission.Nodes.STAFF_GUI)) {
+				staff.add(player);
+			}
+		}
+		if (staff.isEmpty()) return java.util.List.of();
+
+		java.util.List<Case> waiting = store.unassignedLive(50);
+		if (waiting.isEmpty()) return java.util.List.of();
+
+		java.util.List<String> names = staff.stream()
+				.map(io.github.alphain24.staffcore.compat.Mc::name).toList();
+		java.util.List<CaseAssigner.Assignment> plan =
+				CaseAssigner.plan(waiting, names, store.liveLoads());
+
+		java.util.List<CaseAssigner.Assignment> done = new java.util.ArrayList<>();
+		for (CaseAssigner.Assignment assignment : plan) {
+			String why = "assigned automatically to " + assignment.staff() + ", who had "
+					+ assignment.hadBefore() + " open case(s) — the fewest of anybody online";
+			if (!store.assignIfUnassigned(assignment.caseId(), assignment.staff(), why)) continue;
+			done.add(assignment);
+
+			var target = server.getPlayerList().getPlayerByName(assignment.staff());
+			Case found = waiting.stream().filter(c -> c.id().equals(assignment.caseId()))
+					.findFirst().orElse(null);
+			if (target != null && found != null) {
+				target.sendSystemMessage(Theme.info("A " + found.category().label()
+						+ " case about " + (found.subjectName() == null ? "a player"
+						: found.subjectName()) + " was assigned to you: ")
+						.append(io.github.alphain24.staffcore.gui.Link.caseId(found.id())));
+			}
+		}
+		return done;
 	}
 
 	// ------------------------------------------------------------------- emitting
@@ -98,6 +165,7 @@ public class CaseModule implements Module {
 	public CaseStore.Landing emit(MinecraftServer server, Signal signal) {
 		CaseStore.Landing landing = land(server, signal);
 		announce(server, landing);
+		if (landing.openedCase()) requestAssignment();
 		return landing;
 	}
 
@@ -119,6 +187,7 @@ public class CaseModule implements Module {
 			}
 		}
 		announce(server, landing);
+		if (landing.openedCase()) requestAssignment();
 		return landing;
 	}
 

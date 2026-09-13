@@ -174,7 +174,8 @@ public class PunishMenu extends Gui {
 		// The identity, not the name. Resolving a name back to a player is a step that can
 		// fail, and the guards downstream treat an unresolvable name as untrusted.
 		Punishment result = Mods.punish().apply(server, target, Mc.name(viewer),
-				base, durationMs, offence.label, offence.id, null,
+				base, durationMs, offence.label, offence.id,
+				io.github.alphain24.staffcore.gui.PunishFromCase.caseFor(viewer.getUUID(), target.id()),
 				io.github.alphain24.staffcore.permission.Actor.of(viewer));
 
 		if (result == null) {

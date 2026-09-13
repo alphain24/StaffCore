@@ -2434,6 +2434,10 @@ public final class StaffCommands {
 						.then(Commands.literal("claim")
 								.executes(ctx -> caseAssign(ctx,
 										Mc.name(ctx.getSource().getPlayer()))))
+						// Where it happened: the newest evidence that says where.
+						.then(Commands.literal("tp")
+								.requires(src -> Permissions.check(src, Nodes.TP))
+								.executes(StaffCommands::caseTeleport))
 						.then(Commands.literal("investigating")
 								.executes(ctx -> caseStatus(ctx, Case.Status.INVESTIGATING, null)))
 						// A clear takes a reason before it takes a note, because the reason is
@@ -2568,6 +2572,15 @@ public final class StaffCommands {
 		String id = Mods.cases().store().openManually(target.id(), target.name(), actor, summary,
 				0, category);
 		if (id == null) return fail(ctx, "The case could not be opened. The server log says why.");
+		// Somebody who opens a case by hand is the person working it. From the console there
+		// is nobody, so it waits for the next assignment pass like a detector's case.
+		if (existing.isEmpty()) {
+			if (ctx.getSource().getPlayer() != null) {
+				Mods.cases().store().assignIfUnassigned(id, actor, "opened by hand by " + actor);
+			} else {
+				Mods.cases().requestAssignment();
+			}
+		}
 
 		audit(ctx, "/staff case open " + target.name() + " " + category.stored(), id);
 		ctx.getSource().sendSuccess(() -> Theme.good(existing.isPresent()
@@ -2728,6 +2741,21 @@ public final class StaffCommands {
 
 		audit(ctx, "/staff case " + found.id() + " note", found.id());
 		return ok(ctx, "Noted on case " + found.id() + ".");
+	}
+
+	private static int caseTeleport(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+
+		var scene = io.github.alphain24.staffcore.gui.menu.CaseMenu.sceneOf(
+				Mods.cases().evidence().forCase(found.id()));
+		if (scene.isEmpty()) {
+			return fail(ctx, "No evidence on case " + found.id() + " says where it happened. "
+					+ "Stand there and run /staff case " + found.id() + " evidence location.");
+		}
+		return io.github.alphain24.staffcore.gui.menu.CaseMenu.goTo(self, scene.get()) ? 1 : 0;
 	}
 
 	private static int caseAssign(CommandContext<CommandSourceStack> ctx, String assignee) {

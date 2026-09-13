@@ -592,6 +592,17 @@ public final class StaffConfig {
 	public int caseStaleDays = 14;
 
 	/**
+	 * Give each new case nobody has claimed to the staff member online with the fewest open
+	 * cases already assigned to them.
+	 * <p>
+	 * On means a case never sits unowned while somebody who could take it is online, and the
+	 * work spreads evenly; it can always be reassigned or unassigned by hand, and a case
+	 * somebody has claimed is never taken off them. Off means cases wait for somebody to
+	 * claim them, which suits a server where one person triages and hands work out.
+	 */
+	public boolean caseAutoAssign = true;
+
+	/**
 	 * How much weight a contraband find carries as a signal, 0-100.
 	 * <p>
 	 * Below {@link #caseAutoOpenSeverity} on purpose. One banned item is worth recording and

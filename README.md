@@ -213,6 +213,7 @@ has already logged off.
 | `/staff case open <player> <kind> [summary]` | `staff.gui` | Open a case by hand; a player has at most one open case of each kind |
 | `/staff case <id> category <kind>` | `staff.gui` | Move a case to another kind, for a report sorted wrongly |
 | `/staff case <id> evidence` | `staff.gui` | List the evidence to open; add `replay <ago> [length]`, `blocks [radius] [ago]`, `location`, `snapshot`, `view <n>`, `retract <n>` |
+| `/staff case <id> tp` | `staff.tp` | Go to where the case happened: the newest filed location, else the block damage, else the replay's start |
 | `/staff vault` | `security.vault` | The contraband vault; `security.vault.destroy` to destroy an item for good |
 | `/staff contraband` | `security.vault` | The contraband rules; `security.contraband.edit` to change them |
 | `/staff anticheat [player]` | `security.check` | Bridge state, or one player's findings |
@@ -288,6 +289,7 @@ Changing a default in the code alone would never reach a server that has already
   "confirmExpirySeconds": 60,         // how long a preview stays good for; 0 = forever
   "rollbackWarnBlocks": 500,          // preview says so loudly above this; 0 = never
   "xrayMinimumVolume": 512,           // smallest dig worth scoring; below this is noise
+  "caseAutoAssign": true,             // unclaimed cases go to the staff member online with the fewest
   "canaryBlocks": true,               // decoy ores; forced off by a bulk anti-xray mod
   "canaryDensity": 12,                // decoy veins (1-10 blocks) per player at once; 0 disables
   "canaryMaxY": 16,                   // below the depth where people build
