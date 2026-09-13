@@ -349,15 +349,14 @@ public final class StaffConfig {
 	/** Shown on the ban screen. Empty hides the appeal line entirely. */
 	public String discordInvite = "";
 	/**
-	 * When a banned player tries to join, show them a window with an "Open our Discord" button
-	 * and a "Copy appeal code" button before refusing them.
+	 * Give the ban screen an "Open our Discord" button and a "Copy appeal code" button.
 	 * <p>
-	 * The ban screen cannot do either: the Minecraft client does not let anything on its
-	 * disconnect screen be clicked. The window appears while the connection is still being set
-	 * up, before the player is placed in the world, and the ban is checked again after it — so
-	 * this changes what a banned player sees, never whether they get in. Off shows the plain
-	 * ban screen straight away, as before. Needs a discordInvite link or an appeal code to
-	 * have anything to show.
+	 * The client's own ban screen cannot have buttons, so this shows a copy of it that does,
+	 * while the connection is still being set up and before the player is placed in the world.
+	 * The ban is checked again afterwards, so this changes what a banned player sees, never
+	 * whether they get in. When they press Back, the client's disconnected screen follows with
+	 * one short line; no server can skip that screen. Off shows the plain ban screen straight
+	 * away, as before. Needs a discordInvite link or an appeal code to have a button to show.
 	 */
 	public boolean banAppealWindow = true;
 	/**

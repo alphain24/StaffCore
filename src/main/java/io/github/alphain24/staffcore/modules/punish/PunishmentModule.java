@@ -298,36 +298,6 @@ public class PunishmentModule implements Module {
 	}
 
 	/**
-	 * The ban screen's text without its heading, for the appeal window — whose title already
-	 * says "You are banned", and whose buttons replace the line telling them to go and type the
-	 * invite in.
-	 * <p>
-	 * The same facts in the same order as {@link #disconnectScreen}, so a player who saw one and
-	 * then the other is not left wondering which is right.
-	 */
-	public Component noticeBody(Punishment p) {
-		MutableComponent out = Icon.text(p.reasonOr("No reason given") + "\n\n", Theme.TEXT);
-		out.append(Icon.text("By " + p.staffName() + " on " + TimeFormat.stamp(p.createdAt())
-				+ "\n", Theme.MUTED));
-		out.append(lengthLine(p));
-
-		boolean link = io.github.alphain24.staffcore.modules.appeal.BanNotice
-				.inviteLink(StaffConfig.get().discordInvite) != null;
-		out.append(Icon.text("\nThink this is a mistake? You can appeal.\n", Theme.TEXT));
-		if (link && p.isAppealable()) {
-			out.append(Icon.text("Copy your appeal code, then open our Discord and paste it "
-					+ "into a ban appeal.\n", Theme.MUTED));
-		} else if (link) {
-			out.append(Icon.text("Open our Discord and ask for a ban appeal.\n", Theme.MUTED));
-		} else {
-			out.append(Icon.text("Contact a staff member and quote your appeal code.\n",
-					Theme.MUTED));
-		}
-		out.append(referenceBlock(p));
-		return out;
-	}
-
-	/**
 	 * The invite as chat text that opens in a browser when clicked, or plain text when it is
 	 * not a link a client would open.
 	 */

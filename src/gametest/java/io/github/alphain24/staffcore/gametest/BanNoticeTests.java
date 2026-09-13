@@ -29,6 +29,11 @@ import java.util.UUID;
  */
 public class BanNoticeTests {
 
+	private static String withoutCountdown(Component text) {
+		return text.getString().lines().filter(line -> !line.startsWith("Ends: "))
+				.collect(java.util.stream.Collectors.joining("\n"));
+	}
+
 	private static boolean isBanScreen(Component refusal) {
 		return refusal != null && refusal.getString().contains("You are banned");
 	}
@@ -101,7 +106,33 @@ public class BanNoticeTests {
 		MultiActionDialog window = (MultiActionDialog) decoded.dialog().value();
 		Harness.checkEquals(helper, 2, window.actions().size(),
 				"buttons after a round trip (Discord and appeal code)");
-		Harness.check(helper, window.exitAction().isPresent(), "the Leave button was lost");
+		Harness.check(helper, window.exitAction().isPresent(), "the Back button was lost");
+
+		// It has to be the old screen with buttons on it, not a second message about the ban.
+		Harness.check(helper, window.common().title().getContents()
+						instanceof net.minecraft.network.chat.contents.TranslatableContents title
+						&& title.getKey().equals("connect.failed"),
+				"the title is not the client's own ban-screen title: "
+						+ window.common().title().getString());
+		var body = (net.minecraft.server.dialog.body.PlainMessage) window.common().body().get(0);
+		// Compared without the "Ends: ... from now" line, which is worked out when each is
+		// built and ticks over between the two — a clock in an assertion is a flaky test.
+		Harness.checkEquals(helper, withoutCountdown(Mods.punish().disconnectScreen(ban)),
+				withoutCountdown(body.contents()), "the window's text against the old ban screen's");
+		helper.succeed();
+	}
+
+	@GameTest
+	public void backLeavesOneShortLineNotTheWholeBanAgain(GameTestHelper helper) {
+		NameAndId target = banned(helper);
+		Punishment ban = Mods.punish().activeBan(target.id());
+
+		String after = BanNotice.afterLeaving(ban).getString();
+		Harness.check(helper, after.contains(
+						io.github.alphain24.staffcore.modules.appeal.AppealCode.display(ban.appealCode())),
+				"the screen after Back lost the appeal code: " + after);
+		Harness.check(helper, !after.contains(ban.reason()),
+				"the screen after Back repeats the whole ban, which is the two-screens problem");
 		helper.succeed();
 	}
 }

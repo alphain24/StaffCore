@@ -8,7 +8,9 @@ import io.github.alphain24.staffcore.modules.punish.Punishment;
 import io.github.alphain24.staffcore.modules.punish.PunishmentModule;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientboundShowDialogPacket;
 import net.minecraft.resources.Identifier;
@@ -35,7 +37,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * A window with working buttons for a banned player: open the Discord, copy the appeal code.
+ * The ban screen with working buttons on it: open the Discord, copy the appeal code.
  *
  * <h2>Why not just make the ban screen clickable</h2>
  * Because the client will not click it. The disconnect screen draws its reason with a text
@@ -45,6 +47,18 @@ import java.util.function.Supplier;
  * A dialog can. The client accepts one while a connection is still being set up — after it
  * has logged in, before it is placed in the world — and a dialog button can open a web page or
  * put text on the clipboard.
+ *
+ * <h2>Why it copies the old screen</h2>
+ * The first version was a separate window with its own wording, followed by the ban screen —
+ * two screens saying the same thing two ways, which read as a glitch. So the window now
+ * <em>is</em> the ban screen: the client's own "Failed to connect to the server" title, the
+ * same text in the same colours, and the buttons underneath it.
+ * <p>
+ * Something still follows it, and cannot be removed. Every way a connection ends — the server
+ * closing it, the player's own Disconnect — lands on the client's disconnected screen; that is
+ * in the client and no server reaches it. Pressing Back therefore closes with one short line
+ * rather than the whole ban a second time. A window left to time out closes with the full
+ * text, because whoever walked away from it has not read it.
  *
  * <h2>How that is done without loosening the ban</h2>
  * Vanilla asks "may this profile in?" twice: once at login, and again at the very end of setup,
@@ -75,9 +89,12 @@ public final class BanNotice {
 	/** Between login and setup is milliseconds. Anything older is a connection that died. */
 	static final long PENDING_MS = 30_000L;
 
-	/** Wide enough for a reason to read as a sentence rather than a column. */
-	private static final int BODY_WIDTH = 300;
+	/** About as wide as the old screen's text, which the client sizes to the window. */
+	private static final int BODY_WIDTH = 340;
+	/** The client's standard button width, as on the old screen. */
 	private static final int BUTTON_WIDTH = 200;
+	/** Two of these side by side come to about the width of one standard button row. */
+	private static final int SIDE_BY_SIDE_WIDTH = 150;
 
 	/** True only for the duration of the login-stage check; see {@link #atLogin}. */
 	private static final ThreadLocal<Boolean> LOGIN_STAGE = ThreadLocal.withInitial(() -> false);
@@ -202,7 +219,7 @@ public final class BanNotice {
 			Punishment still = punish == null ? ban : punish.activeBan(player);
 
 			if (still != null) {
-				setup.disconnect(punish == null ? Component.literal("You are banned.")
+				setup.disconnect(leave || punish == null ? afterLeaving(still)
 						: punish.disconnectScreen(still));
 				return false;
 			}
@@ -236,43 +253,62 @@ public final class BanNotice {
 	public static Dialog dialogFor(Punishment ban, URI invite) {
 		PunishmentModule punish = StaffCore.modules()
 				.get("punishment", PunishmentModule.class).orElse(null);
+		// The ban screen's own text, unchanged, so this reads as that screen with buttons
+		// rather than as a different message about the same ban.
 		Component body = punish == null ? Component.literal(ban.reasonOr("No reason given"))
-				: punish.noticeBody(ban);
+				: punish.disconnectScreen(ban);
 
 		List<ActionButton> actions = new ArrayList<>();
 
 		if (invite != null) {
-			actions.add(button("Open our Discord", "Opens " + invite + " in your browser",
+			actions.add(button(Component.literal("Open our Discord"),
+					"Opens " + invite + " in your browser", SIDE_BY_SIDE_WIDTH,
 					new ClickEvent.OpenUrl(invite)));
 		}
 		if (ban.isAppealable()) {
 			String code = AppealCode.display(ban.appealCode());
-			actions.add(button("Copy appeal code: " + code,
+			actions.add(button(Component.literal("Copy appeal code"),
 					"Puts " + code + " on your clipboard, to paste into your appeal",
-					new ClickEvent.CopyToClipboard(code)));
+					SIDE_BY_SIDE_WIDTH, new ClickEvent.CopyToClipboard(code)));
 		}
 
-		ActionButton leave = button("Leave", "Back to the server list",
-				new ClickEvent.Custom(LEAVE, Optional.empty()));
+		// The client's own word for it, in the player's own language, as on the old screen.
+		ActionButton back = button(CommonComponents.GUI_BACK, "Back to the server list",
+				BUTTON_WIDTH, new ClickEvent.Custom(LEAVE, Optional.empty()));
 
 		CommonDialogData common = new CommonDialogData(
-				Icon.text("You are banned", Theme.BAD),
+				// Translated by the client, so it is the same title the old screen had.
+				Component.translatable("connect.failed"),
 				Optional.empty(),
 				true,
 				// Not paused, and nothing closes on a click: copying the code should leave the
-				// window up so the Discord button is still there to press next.
+				// screen up so the Discord button is still there to press next.
 				false,
 				DialogAction.NONE,
 				List.of(new PlainMessage(body, BODY_WIDTH)),
 				List.of());
 
-		return new MultiActionDialog(common, actions, Optional.of(leave), 1);
+		// At least one column: the codec rejects zero, which the client would see as a kick.
+		return new MultiActionDialog(common, actions, Optional.of(back), Math.max(1, actions.size()));
 	}
 
-	private static ActionButton button(String label, String tooltip, ClickEvent click) {
+	/**
+	 * What the client's disconnected screen says after Back — which it shows whatever the
+	 * server does. One line and the code, because they have just read the rest.
+	 */
+	public static Component afterLeaving(Punishment ban) {
+		MutableComponent out = Icon.text("You are banned.", Theme.BAD);
+		if (ban.isAppealable()) {
+			out.append(Icon.text("\nAppeal code: " + AppealCode.display(ban.appealCode()),
+					Theme.TEXT));
+		}
+		return out;
+	}
+
+	private static ActionButton button(Component label, String tooltip, int width,
+			ClickEvent click) {
 		return new ActionButton(
-				new CommonButtonData(Component.literal(label), Optional.of(Component.literal(tooltip)),
-						BUTTON_WIDTH),
+				new CommonButtonData(label, Optional.of(Component.literal(tooltip)), width),
 				Optional.of(new StaticAction(click)));
 	}
 

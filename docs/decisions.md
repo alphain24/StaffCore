@@ -1657,9 +1657,15 @@ The ban screen cannot do either. The 26.2 client draws the disconnect reason wit
 whose click handler is never set, so nothing on that screen can be clicked, whatever the server
 sends. That was checked in the client bytecode rather than assumed.
 
-A dialog can do both, and the client accepts one while the connection is still being set up. So
-a banned player now gets a window with "Open our Discord", "Copy appeal code" and "Leave", and
-the ordinary ban screen after it.
+A dialog can do both, and the client accepts one while the connection is still being set up.
+
+The first version was a window with its own wording, followed by the ban screen, and players
+read the two screens as a glitch. The window now copies the ban screen: the client's own "Failed
+to connect to the server" title, the same text and colours, the two buttons underneath, and Back.
+The client still shows its own "disconnected" screen when the connection ends, however it ends.
+That includes the player's own Disconnect, and no server can reach it. So Back ends on one short
+line and the appeal code, not the whole ban a second time. A window left to time out ends on the
+full text, since whoever walked away has not read it.
 
 Vanilla asks "may this profile in?" twice: at login, and again at the end of setup. The login
 gate answers both, and only the first may defer a ban. `BanNoticeLoginMixin` marks that call in
