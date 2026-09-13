@@ -260,6 +260,12 @@ public class PunishmentModule implements Module {
 				// Chat is the one place a link can simply be clicked, unlike the ban screen.
 				online.sendSystemMessage(Theme.info("Or appeal on Discord: ").append(inviteText(invite)));
 			}
+			if (p.isAppealable()) {
+				// And the one place a code can be copied. A player typing it back from memory
+				// is how an appeal ends up quoting somebody else's punishment.
+				online.sendSystemMessage(Theme.info("Your appeal code: ")
+						.append(copyable(AppealCode.display(p.appealCode()))));
+			}
 			Sfx.muted(online);
 		} else if (p.type() == PunishmentType.WARN) {
 			online.sendSystemMessage(Theme.warn("Warning from " + p.staffName() + " — " + p.reason()));
@@ -302,13 +308,21 @@ public class PunishmentModule implements Module {
 	 * not a link a client would open.
 	 */
 	private static MutableComponent inviteText(String invite) {
-		java.net.URI link = io.github.alphain24.staffcore.modules.appeal.BanNotice.inviteLink(invite);
+		java.net.URI link = io.github.alphain24.staffcore.modules.appeal.InviteLink.of(invite);
 		MutableComponent text = Icon.text(invite, Theme.ACCENT);
 		if (link == null) return text;
 		return text.withStyle(s -> s.withUnderlined(true)
 				.withClickEvent(new net.minecraft.network.chat.ClickEvent.OpenUrl(link))
 				.withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
 						Component.literal("Open in your browser"))));
+	}
+
+	/** Chat text that goes on the clipboard when clicked. */
+	private static MutableComponent copyable(String text) {
+		return Icon.text(text, Theme.ACCENT).withStyle(s -> s.withUnderlined(true)
+				.withClickEvent(new net.minecraft.network.chat.ClickEvent.CopyToClipboard(text))
+				.withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+						Component.literal("Click to copy"))));
 	}
 
 	/**

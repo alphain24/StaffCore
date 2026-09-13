@@ -1650,38 +1650,26 @@ there is nothing to run and nothing that needed running.
 
 ---
 
-## The appeal window, and why the ban is checked twice
+## Why the ban screen has no buttons
 
-Banned players asked for the Discord link to be clickable and the appeal code to be copyable.
-The ban screen cannot do either. The 26.2 client draws the disconnect reason with a text widget
-whose click handler is never set, so nothing on that screen can be clicked, whatever the server
-sends. That was checked in the client bytecode rather than assumed.
+Banned players asked for a Discord link they could click and an appeal code they could copy.
+Neither is possible on the ban screen, for reasons that are in the client:
 
-A dialog can do both, and the client accepts one while the connection is still being set up.
+- The 26.2 client never gives the disconnect screen a click handler, so text on it cannot be
+  clicked. Hovering can show a tooltip, and nothing can be copied or selected.
+- That screen's one extra button, labelled "Report To Server", is filled in only when the
+  player's own game hits an error. A server-sent disconnect, which is what a ban is, never
+  carries it.
 
-The first version was a window with its own wording, followed by the ban screen, and players
-read the two screens as a glitch. The window now copies the ban screen: the client's own "Failed
-to connect to the server" title, the same text and colours, the two buttons underneath, and Back.
-The client still shows its own "disconnected" screen when the connection ends, however it ends.
-That includes the player's own Disconnect, and no server can reach it. So Back ends on one short
-line and the appeal code, not the whole ban a second time. A window left to time out ends on the
-full text, since whoever walked away has not read it.
+A window during connection setup was built and removed. A dialog there can open links and copy
+text, and the ban stayed safe: the end-of-setup check still refused. But it could not replace the
+ban screen, only come before it. Every way a connection ends shows the client's own disconnected
+screen, and every server-made window gets Mojang's "custom screen" warning icon. Players saw two
+screens and a warning, and the old screen on its own looked better. The code is in the history
+at 53beb81 and 5ef730a if the client ever changes.
 
-Vanilla asks "may this profile in?" twice: at login, and again at the end of setup. The login
-gate answers both, and only the first may defer a ban. `BanNoticeLoginMixin` marks that call in
-a try/finally, so a check that throws cannot leave the mark set for the second. The window is
-queued after the registries are sent and before the spawn is prepared, as a setup task that never
-finishes while the ban stands. The end-of-setup check is unchanged and still refuses. Each new
-hook can fail on its own, and the result is the plain ban screen one step later. None of them
-decides whether a banned player gets in, which is why all three are optional and the login gate
-is still the only required hook.
-
-`BanNoticeTests` issues a real ban and checks three things: the ordinary check refuses, only the
-marked call defers, and the next check on the same thread refuses again, including after a
-marked check that threw. It also round-trips the window through the setup-stage packet codec,
-because a dialog the codec rejects is a client kick with no reason. What it cannot do is drive a
-real client through setup. Whether the window actually appears and its buttons work is a manual
-check in a real client, and it had not been done when this was written.
+So the ban screen is text. The link and code are copyable where the client allows it, which is
+chat: a muted player gets a clickable invite and a click-to-copy appeal code.
 
 ---
 
