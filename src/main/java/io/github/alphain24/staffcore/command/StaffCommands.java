@@ -894,6 +894,29 @@ public final class StaffCommands {
 		staff.then(Commands.literal("inspect")
 				.requires(src -> Permissions.check(src, Nodes.INSPECT_MODE))
 				.executes(StaffCommands::toggleInspect));
+
+		// The real mass-grief bar is out of reach by hand, so an alert that works and one that
+		// does not look the same until this is run. Admin only, like the other tests: the
+		// [TEST] alert it ends in goes to every staff member online.
+		staff.then(Commands.literal("grief")
+				.requires(src -> Permissions.check(src, Nodes.RELOAD))
+				.then(Commands.literal("test")
+						.executes(ctx -> griefTest(ctx,
+								io.github.alphain24.staffcore.modules.grief.GriefModule.TEST_BLOCKS))
+						.then(Commands.argument("blocks", IntegerArgumentType.integer(
+										io.github.alphain24.staffcore.modules.grief.GriefModule.TEST_MIN_BLOCKS,
+										io.github.alphain24.staffcore.modules.grief.GriefModule.TEST_MAX_BLOCKS))
+								.executes(ctx -> griefTest(ctx,
+										IntegerArgumentType.getInteger(ctx, "blocks"))))));
+	}
+
+	private static int griefTest(CommandContext<CommandSourceStack> ctx, int blocks)
+			throws CommandSyntaxException {
+
+		ServerPlayer self = ctx.getSource().getPlayerOrException();
+		audit(ctx, "/staff grief test " + blocks);
+		Mods.grief().rehearse(self, blocks);
+		return 1;
 	}
 
 	// ------------------------------------------------------------- rollback undo

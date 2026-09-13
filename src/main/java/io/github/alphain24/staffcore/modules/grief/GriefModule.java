@@ -3,8 +3,12 @@ package io.github.alphain24.staffcore.modules.grief;
 import io.github.alphain24.staffcore.StaffCore;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.config.StaffConfig;
+import io.github.alphain24.staffcore.gui.Icon;
+import io.github.alphain24.staffcore.gui.Theme;
 import io.github.alphain24.staffcore.module.Module;
 import io.github.alphain24.staffcore.module.Mods;
+import io.github.alphain24.staffcore.permission.Nodes;
+import io.github.alphain24.staffcore.permission.Permissions;
 import io.github.alphain24.staffcore.util.ItemCodec;
 import io.github.alphain24.staffcore.util.PlayerLookup;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
@@ -69,6 +73,13 @@ public class GriefModule implements Module {
 
 	/** Rolling break counts, for spotting somebody tearing through a build. */
 	private final Map<UUID, BreakBurst> bursts = new HashMap<>();
+	/** Staff running {@code /staff grief test}, and how far each has got. */
+	private final Map<UUID, GriefRehearsal> rehearsals = new HashMap<>();
+
+	/** Bounds for {@code /staff grief test [blocks]}; see {@link GriefRehearsal}. */
+	public static final int TEST_BLOCKS = GriefRehearsal.DEFAULT_BLOCKS;
+	public static final int TEST_MIN_BLOCKS = GriefRehearsal.MIN_BLOCKS;
+	public static final int TEST_MAX_BLOCKS = GriefRehearsal.MAX_BLOCKS;
 	/** Snapshot-and-diff of chest contents, so theft is recoverable and not just visible. */
 	private final ContainerWatch containers = new ContainerWatch();
 	/** Undo for rollbacks, so the most destructive tool here stops being the only one-way one. */
@@ -120,7 +131,6 @@ public class GriefModule implements Module {
 		return eventsSeen.get();
 	}
 
-		private record BreakBurst(long windowStart, int count) {}
 
 	@Override
 	public void onEnable() {
@@ -339,6 +349,7 @@ public class GriefModule implements Module {
 			worker = null;
 		}
 		bursts.clear();
+		rehearsals.clear();
 	}
 
 	/**
@@ -527,36 +538,166 @@ public class GriefModule implements Module {
 	 */
 	private void noteBreak(ServerPlayer player) {
 		StaffConfig cfg = StaffConfig.get();
-		if (cfg.massGriefBlocks <= 0) return;
-
 		long now = System.currentTimeMillis();
 		long window = cfg.massGriefWindowSeconds * 1000L;
 		UUID id = player.getUUID();
 
-		BreakBurst burst = bursts.get(id);
-		if (burst == null || now - burst.windowStart() > window) {
-			bursts.put(id, new BreakBurst(now, 1));
-			return;
-		}
+		// Before the real detector, and never instead of it: a test that paused detection
+		// would be two minutes of griefing nobody is told about.
+		noteRehearsal(player, now, window);
 
-		int count = burst.count() + 1;
-		if (count == cfg.massGriefBlocks) {
+		if (cfg.massGriefBlocks <= 0) return;
+
+		BreakBurst burst = BreakBurst.advance(bursts.get(id), now, window);
+		bursts.put(id, burst);
+
+		// Exactly equal, so one burst alerts once rather than on every block after the bar.
+		if (burst.count() == cfg.massGriefBlocks) {
 			MinecraftServer server = Mc.server(player);
 			if (server != null) {
 				Mods.cases().emit(server,
 						io.github.alphain24.staffcore.modules.cases.Signal.Type.MASS_GRIEF,
 						player.getUUID(), Mc.name(player), cfg.massGriefSignalConfidence,
-						"broke %d blocks in %d seconds at %d, %d, %d".formatted(
-								count, cfg.massGriefWindowSeconds,
-								player.getBlockX(), player.getBlockY(), player.getBlockZ()),
+						burstDetail(player, burst.count(), cfg.massGriefWindowSeconds),
 						"grief");
 			}
 		}
-		bursts.put(id, new BreakBurst(burst.windowStart(), count));
+	}
+
+	/** The alert text, shared so a test shows staff exactly what the real one says. */
+	private static String burstDetail(ServerPlayer player, int count, int windowSeconds) {
+		return "broke %d blocks in %d seconds at %d, %d, %d".formatted(count, windowSeconds,
+				player.getBlockX(), player.getBlockY(), player.getBlockZ());
+	}
+
+	// ------------------------------------------------------------ testing the alert
+
+	/**
+	 * Starts a test of the mass-grief alert for {@code staff}, who then breaks real blocks.
+	 * See {@link GriefRehearsal} for what it proves and what it leaves alone.
+	 */
+	public void rehearse(ServerPlayer staff, int blocks) {
+		StaffConfig cfg = StaffConfig.get();
+		GriefRehearsal armed = GriefRehearsal.arm(blocks, System.currentTimeMillis());
+		rehearsals.put(staff.getUUID(), armed);
+
+		staff.sendSystemMessage(Theme.good("Mass-grief test started. You have 2 minutes."));
+		staff.sendSystemMessage(text("  Break " + armed.blocks() + " blocks within "
+				+ cfg.massGriefWindowSeconds + " seconds. Any blocks, any gamemode. "
+				+ "Your action bar counts them."));
+		staff.sendSystemMessage(muted("  Nothing is opened against you and nothing goes to "
+				+ "Discord. The real detector keeps running while you test."));
+
+		if (cfg.massGriefBlocks <= 0) {
+			staff.sendSystemMessage(Theme.warn("  The real detector is off (massGriefBlocks is "
+					+ "0). This still tests the hook and the alert, but nothing will alert "
+					+ "for real."));
+		} else {
+			staff.sendSystemMessage(muted("  For real it takes " + cfg.massGriefBlocks
+					+ " blocks in " + cfg.massGriefWindowSeconds + " seconds."));
+		}
+
+		// The commonest reason an alert "does not work" is that it went to everybody except
+		// the person checking. Said now, rather than after they have dug ten blocks.
+		String deaf = whyNotHearing(staff);
+		if (deaf != null) {
+			staff.sendSystemMessage(Theme.warn("  You will not see the alert yourself: " + deaf));
+		}
+	}
+
+	/** Breaks counted so far in this staff member's test, or -1 when none is running. */
+	public int rehearsalProgress(UUID staff) {
+		GriefRehearsal rehearsal = rehearsals.get(staff);
+		return rehearsal == null ? -1 : rehearsal.counted();
+	}
+
+	private void noteRehearsal(ServerPlayer player, long now, long window) {
+		GriefRehearsal rehearsal = rehearsals.get(player.getUUID());
+		if (rehearsal == null) return;
+
+		GriefRehearsal.Step step = rehearsal.onBreak(now, window);
+		int windowSeconds = StaffConfig.get().massGriefWindowSeconds;
+
+		switch (step.outcome()) {
+			case EXPIRED -> {
+				rehearsals.remove(player.getUUID());
+				player.sendSystemMessage(Theme.warn("Your mass-grief test ran out with "
+						+ rehearsal.counted() + " of " + rehearsal.blocks()
+						+ " blocks. Run /staff grief test again."));
+			}
+			case COUNTING -> {
+				rehearsals.put(player.getUUID(), step.next());
+				player.sendOverlayMessage(text("Grief test: " + step.next().counted() + " / "
+						+ rehearsal.blocks() + " in " + windowSeconds + "s"));
+			}
+			case RESTARTED -> {
+				rehearsals.put(player.getUUID(), step.next());
+				player.sendOverlayMessage(Icon.text("Grief test: 1 / " + rehearsal.blocks()
+						+ " (the " + windowSeconds + "s window ran out, counting again)",
+						Theme.WARN));
+			}
+			case REACHED -> {
+				rehearsals.remove(player.getUUID());
+				reportRehearsal(player, rehearsal.blocks(), windowSeconds);
+			}
+		}
+	}
+
+	private void reportRehearsal(ServerPlayer player, int blocks, int windowSeconds) {
+		MinecraftServer server = Mc.server(player);
+		if (server == null) return;
+		StaffConfig cfg = StaffConfig.get();
+
+		List<String> reached = Mods.alerts().rehearse(server, "Security",
+				("[TEST] %s — %s (%d%%) — a test, no case opened").formatted(
+						Mc.name(player), burstDetail(player, blocks, windowSeconds),
+						cfg.massGriefSignalConfidence),
+				Theme.BAD);
+
+		player.sendSystemMessage(Theme.good("Mass-grief test passed: all " + blocks
+				+ " breaks were counted."));
+
+		if (reached.isEmpty()) {
+			player.sendSystemMessage(Theme.bad("  But the alert reached nobody. Staff need "
+					+ Nodes.ALERTS + " and their alerts turned on (/alerts)."));
+		} else {
+			player.sendSystemMessage(text("  The alert reached " + reached.size() + " staff: "
+					+ String.join(", ", reached) + "."));
+		}
+
+		// What the real thing would have done next, because the test stops short of it.
+		boolean opens = cfg.massGriefSignalConfidence >= cfg.caseAutoOpenSeverity;
+		player.sendSystemMessage(muted(opens
+				? "  For real, " + cfg.massGriefSignalConfidence + "% is at or above the "
+						+ cfg.caseAutoOpenSeverity + "% needed, so it would open a case (or join "
+						+ "one already open about that player)."
+				: "  For real, " + cfg.massGriefSignalConfidence + "% is below the "
+						+ cfg.caseAutoOpenSeverity + "% needed to open a case, so it would be "
+						+ "noted quietly without one."));
+	}
+
+	/** Why this staff member would not see an alert, or {@code null} if they would. */
+	private static String whyNotHearing(ServerPlayer staff) {
+		if (!Permissions.check(staff, Nodes.ALERTS)) {
+			return "you do not have " + Nodes.ALERTS + ".";
+		}
+		if (!Mods.alerts().isSubscribed(staff)) {
+			return "your alerts are turned off. Type /alerts to turn them on.";
+		}
+		return null;
+	}
+
+	private static net.minecraft.network.chat.MutableComponent text(String message) {
+		return Icon.text(message, Theme.TEXT);
+	}
+
+	private static net.minecraft.network.chat.MutableComponent muted(String message) {
+		return Icon.text(message, Theme.MUTED);
 	}
 
 	public void forget(UUID player) {
 		bursts.remove(player);
+		rehearsals.remove(player);
 		containers.forget(player);
 		pendingBreaks.remove(player);
 		// Dropped rather than cleared: the connection is already going away, and the ghost

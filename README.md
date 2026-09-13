@@ -203,6 +203,7 @@ has already logged off.
 | `/staff backup` | `staff.reload` | Write a database backup now |
 | `/staff export [addresses [confirm]]` | `staff.reload` | Dump every table to CSV; addresses are redacted unless asked for |
 | `/staff selftest` | `staff.reload` | Prove the mod works, not just that it started |
+| `/staff grief test [blocks]` | `staff.reload` | Break a few blocks yourself (10 by default) and watch the mass-grief alert arrive, marked TEST; no case, nothing to Discord |
 | `/staff nbt` | `security.invsee` | Read the held item's component data |
 | `/staff panel` | `staff.gui` | Open the panel |
 | `/staff cases [status \| mine]` | `staff.gui` | Open cases, strongest first |

@@ -268,7 +268,23 @@ public final class StaffSections {
 						.lore("/staff inspect toggles it.", Theme.MUTED)
 						.build(),
 						v -> v.sendSystemMessage(Theme.info(
-								"Use /staff inspect, then click a block.")))));
+								"Use /staff inspect, then click a block."))),
+
+				// Here rather than under Server, because the question it answers is "would I
+				// be told if somebody tore a build down", which is a question about the world.
+				SectionMenu.Entry.of(Nodes.RELOAD, Icon.of(Items.TNT)
+						.name("Test the mass-grief alert", Theme.ACCENT)
+						.lore("Break " + io.github.alphain24.staffcore.modules.grief.GriefModule
+								.TEST_BLOCKS + " blocks yourself and see the alert arrive.")
+						.lore("The real bar is too high to reach by hand.", Theme.MUTED)
+						.lore("No case is opened and nothing goes to Discord.", Theme.MUTED)
+						.build(),
+						v -> {
+							v.closeContainer();
+							io.github.alphain24.staffcore.module.Mods.grief().rehearse(v,
+									io.github.alphain24.staffcore.modules.grief.GriefModule
+											.TEST_BLOCKS);
+						})));
 	}
 
 	// ---------------------------------------------------------------------- server

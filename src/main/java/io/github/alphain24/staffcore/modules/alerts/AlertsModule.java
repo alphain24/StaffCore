@@ -1,6 +1,7 @@
 package io.github.alphain24.staffcore.modules.alerts;
 
 import io.github.alphain24.staffcore.StaffCore;
+import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.gui.Icon;
 import io.github.alphain24.staffcore.gui.Sfx;
 import io.github.alphain24.staffcore.gui.Theme;
@@ -13,7 +14,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -91,14 +94,43 @@ public class AlertsModule implements Module {
 				.append(Icon.text(" · ", Theme.MUTED))
 				.append(Icon.text(message, Theme.TEXT));
 
+		deliverInGame(server, line);
+		StaffCore.LOGGER.info("[Alert:{}] {}", category, message);
+		toDiscord(category, message);
+	}
+
+	/**
+	 * A test alert: delivered in game exactly as a real one, to exactly the same staff, and
+	 * never mirrored to Discord.
+	 * <p>
+	 * The same loop, so a test that reaches somebody proves a real alert would. Not Discord,
+	 * because a channel shows the alert without whoever ran the test standing next to it,
+	 * and "[TEST]" is easy to miss in a notification preview.
+	 *
+	 * @return the names of the staff it reached, so the tester can see who that was
+	 */
+	public List<String> rehearse(MinecraftServer server, String category, String message,
+			int color) {
+
+		Component line = Theme.prefix()
+				.append(Icon.text(category, color))
+				.append(Icon.text(" · ", Theme.MUTED))
+				.append(Icon.text(message, Theme.TEXT));
+
+		StaffCore.LOGGER.info("[Alert:{}:test] {}", category, message);
+		return deliverInGame(server, line);
+	}
+
+	private List<String> deliverInGame(MinecraftServer server, Component line) {
+		List<String> reached = new ArrayList<>();
 		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
 			if (isSubscribed(p)) {
 				p.sendSystemMessage(line);
 				Sfx.alertPing(p);
+				reached.add(Mc.name(p));
 			}
 		}
-		StaffCore.LOGGER.info("[Alert:{}] {}", category, message);
-		toDiscord(category, message);
+		return reached;
 	}
 
 	private void discordOnly(String category, String message) {
