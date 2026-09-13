@@ -20,6 +20,7 @@
     "ItemEntityMixin",
     "ItemPickupMixin",
     "PlayerDropMixin",
+    "PrimedTntMixin",
     "SpectatorMenuMixin",
     "VanishJoinMixin",
     "VanishLeaveMixin",

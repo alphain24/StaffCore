@@ -75,6 +75,8 @@ public class GriefModule implements Module {
 	private final Map<UUID, BreakBurst> bursts = new HashMap<>();
 	/** Staff running {@code /staff grief test}, and how far each has got. */
 	private final Map<UUID, GriefRehearsal> rehearsals = new HashMap<>();
+	/** Who set off the explosions vanilla does not attribute. */
+	private final BlastAttribution blasts = new BlastAttribution();
 
 	/** Bounds for {@code /staff grief test [blocks]}; see {@link GriefRehearsal}. */
 	public static final int TEST_BLOCKS = GriefRehearsal.DEFAULT_BLOCKS;
@@ -241,6 +243,18 @@ public class GriefModule implements Module {
 			if (level.isClientSide() || !(player instanceof ServerPlayer sp)) {
 				return InteractionResult.PASS;
 			}
+
+			// Every click, before the container gate: a bed or respawn anchor explodes inside
+			// the click that set it off, with no entity to name, and this is how the blast
+			// gets a name. Kept for this tick only. See BlastAttribution.
+			if (level instanceof ServerLevel serverLevel) {
+				BlockState clicked = level.getBlockState(hit.getBlockPos());
+				blasts.onUse(new BlastAttribution.Use(Mc.dimensionId(level),
+						hit.getBlockPos().immutable(), serverLevel.getServer().getTickCount(),
+						culprit(sp, clicked.getBlock().getName().getString()
+								.toLowerCase(java.util.Locale.ROOT))));
+			}
+
 			if (!StaffConfig.get().logContainerAccess) return InteractionResult.PASS;
 
 			BlockPos pos = hit.getBlockPos();
@@ -350,6 +364,7 @@ public class GriefModule implements Module {
 		}
 		bursts.clear();
 		rehearsals.clear();
+		blasts.clear();
 	}
 
 	/**
@@ -526,48 +541,143 @@ public class GriefModule implements Module {
 	/** Called from the block-place mixin. */
 	public void logPlace(ServerPlayer player, BlockPos pos, BlockState state, String dimension) {
 		log(Mc.name(player), "PLACE", state, pos, dimension);
+		if (state.is(Blocks.TNT)) {
+			blasts.onTntPlaced(dimension, pos, culprit(player, "TNT"), System.currentTimeMillis());
+		}
+	}
+
+	// ---------------------------------------------------------- who set it off
+
+	/**
+	 * A TNT has been primed with no owner — by redstone, fire, or another blast that had
+	 * none. Called from the primed-TNT mixin; see {@link BlastAttribution}.
+	 */
+	public void onTntPrimed(net.minecraft.world.entity.item.PrimedTnt tnt, ServerLevel level) {
+		blasts.onTntPrimed(tnt.getUUID(), Mc.dimensionId(level), tnt.blockPosition(),
+				System.currentTimeMillis());
+	}
+
+	/**
+	 * The player an explosion is on, or {@code null} when it is on nobody.
+	 * <p>
+	 * In order of how directly the game itself says so: the player who lit or fired it, the
+	 * player in the damage source (an end crystal someone hit), the player who placed TNT that
+	 * went off with no owner, and the player whose click this tick was right next to a blast
+	 * with no entity at all (a bed or respawn anchor).
+	 */
+	public BlastAttribution.Culprit blame(net.minecraft.world.level.ServerExplosion explosion) {
+		net.minecraft.world.entity.Entity direct = explosion.getDirectSourceEntity();
+
+		if (explosion.getIndirectSourceEntity() instanceof ServerPlayer player) {
+			return culprit(player, how(direct, "TNT"));
+		}
+		if (direct instanceof ServerPlayer player) {
+			return culprit(player, "explosion");
+		}
+		if (explosion.getDamageSource() != null
+				&& explosion.getDamageSource().getEntity() instanceof ServerPlayer player) {
+			return culprit(player, how(direct, "explosion"));
+		}
+		if (direct instanceof net.minecraft.world.entity.item.PrimedTnt tnt) {
+			return blasts.takePrimed(tnt.getUUID());
+		}
+		if (direct == null) {
+			var centre = explosion.center();
+			return blasts.clickedNear(Mc.dimensionId(explosion.level()), centre.x, centre.y,
+					centre.z, explosion.level().getServer().getTickCount());
+		}
+		return null;
+	}
+
+	/** Test and diagnostic access: who a primed TNT is currently attributed to. */
+	public String primedTntBlame(UUID tnt) {
+		BlastAttribution.Culprit who = blasts.peekPrimed(tnt);
+		return who == null ? null : who.name();
+	}
+
+	private static BlastAttribution.Culprit culprit(ServerPlayer player, String how) {
+		return new BlastAttribution.Culprit(player.getUUID(), Mc.name(player), how);
+	}
+
+	/** "end crystal", "TNT", "fireball" — the thing that went off, in the words staff use. */
+	private static String how(net.minecraft.world.entity.Entity direct, String fallback) {
+		if (direct == null) return fallback;
+		if (direct instanceof net.minecraft.world.entity.item.PrimedTnt) return "TNT";
+		return direct.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT);
 	}
 
 	// ------------------------------------------------------- mass-grief detection
 
 	/**
-	 * Alerts staff when somebody breaks an implausible number of blocks in a short window.
+	 * Alerts staff when somebody destroys an implausible number of blocks in a short window.
 	 * <p>
 	 * Tuned to be quiet: the default threshold is well above what mining produces, because
 	 * a detector that fires on every strip-miner is one staff learn to ignore.
 	 */
 	private void noteBreak(ServerPlayer player) {
+		noteDestroyed(Mc.server(player), player.getUUID(), Mc.name(player), 1,
+				player.blockPosition(), "by hand");
+	}
+
+	/**
+	 * Counts the blocks a blast is about to destroy against the player it is on.
+	 * <p>
+	 * The same counter as breaking by hand, because that is how griefing is done: nobody
+	 * hand-mines 120 blocks of somebody's base in twenty seconds, and four TNT do it easily.
+	 * A detector that only counted hands was measuring the one method griefers do not use.
+	 *
+	 * @param positions the blocks it is about to destroy, read while they are still there
+	 */
+	public void noteBlast(ServerLevel level, net.minecraft.world.level.ServerExplosion explosion,
+			BlastAttribution.Culprit who, List<BlockPos> positions) {
+
+		if (who == null || !StaffConfig.get().massGriefCountsExplosions) return;
+
+		int destroyed = 0;
+		for (BlockPos pos : positions) {
+			if (!level.getBlockState(pos).isAir()) destroyed++;
+		}
+		if (destroyed == 0) return;
+
+		noteDestroyed(level.getServer(), who.id(), who.name(), destroyed,
+				BlockPos.containing(explosion.center()), who.how());
+	}
+
+	private void noteDestroyed(MinecraftServer server, UUID id, String name, int destroyed,
+			BlockPos where, String how) {
+
 		StaffConfig cfg = StaffConfig.get();
 		long now = System.currentTimeMillis();
 		long window = cfg.massGriefWindowSeconds * 1000L;
-		UUID id = player.getUUID();
 
 		// Before the real detector, and never instead of it: a test that paused detection
 		// would be two minutes of griefing nobody is told about.
-		noteRehearsal(player, now, window);
+		noteRehearsal(server, id, now, window, destroyed, where, how);
 
 		if (cfg.massGriefBlocks <= 0) return;
 
-		BreakBurst burst = BreakBurst.advance(bursts.get(id), now, window);
+		BreakBurst burst = BreakBurst.advance(bursts.get(id), now, window, destroyed, how);
 		bursts.put(id, burst);
 
-		// Exactly equal, so one burst alerts once rather than on every block after the bar.
-		if (burst.count() == cfg.massGriefBlocks) {
-			MinecraftServer server = Mc.server(player);
-			if (server != null) {
-				Mods.cases().emit(server,
-						io.github.alphain24.staffcore.modules.cases.Signal.Type.MASS_GRIEF,
-						player.getUUID(), Mc.name(player), cfg.massGriefSignalConfidence,
-						burstDetail(player, burst.count(), cfg.massGriefWindowSeconds),
-						"grief");
-			}
+		// Crossing rather than equal: one blast can carry the count straight past the bar.
+		if (BreakBurst.crossed(burst, destroyed, cfg.massGriefBlocks) && server != null) {
+			Mods.cases().emit(server,
+					io.github.alphain24.staffcore.modules.cases.Signal.Type.MASS_GRIEF,
+					id, name, cfg.massGriefSignalConfidence,
+					burstDetail(burst, cfg.massGriefWindowSeconds, where), "grief");
 		}
 	}
 
-	/** The alert text, shared so a test shows staff exactly what the real one says. */
-	private static String burstDetail(ServerPlayer player, int count, int windowSeconds) {
-		return "broke %d blocks in %d seconds at %d, %d, %d".formatted(count, windowSeconds,
-				player.getBlockX(), player.getBlockY(), player.getBlockZ());
+	/**
+	 * The alert text, shared so a test shows staff exactly what the real one says.
+	 * <p>
+	 * It says what was used, largest first. "Destroyed 130 blocks" is a different claim when
+	 * 120 of them were TNT they placed than when they were broken by hand, and staff should
+	 * not have to open the log to find out which.
+	 */
+	private static String burstDetail(BreakBurst burst, int windowSeconds, BlockPos where) {
+		return "destroyed %d blocks in %d seconds at %d, %d, %d (%s)".formatted(burst.count(),
+				windowSeconds, where.getX(), where.getY(), where.getZ(), burst.describe());
 	}
 
 	// ------------------------------------------------------------ testing the alert
@@ -582,9 +692,13 @@ public class GriefModule implements Module {
 		rehearsals.put(staff.getUUID(), armed);
 
 		staff.sendSystemMessage(Theme.good("Mass-grief test started. You have 2 minutes."));
-		staff.sendSystemMessage(text("  Break " + armed.blocks() + " blocks within "
+		staff.sendSystemMessage(text("  Destroy " + armed.blocks() + " blocks within "
 				+ cfg.massGriefWindowSeconds + " seconds. Any blocks, any gamemode. "
 				+ "Your action bar counts them."));
+		if (cfg.massGriefCountsExplosions) {
+			staff.sendSystemMessage(muted("  TNT, end crystals, beds and respawn anchors you "
+					+ "set off count too."));
+		}
 		staff.sendSystemMessage(muted("  Nothing is opened against you and nothing goes to "
 				+ "Discord. The real detector keeps running while you test."));
 
@@ -605,57 +719,72 @@ public class GriefModule implements Module {
 		}
 	}
 
-	/** Breaks counted so far in this staff member's test, or -1 when none is running. */
+	/** Blocks counted so far in this staff member's test, or -1 when none is running. */
 	public int rehearsalProgress(UUID staff) {
 		GriefRehearsal rehearsal = rehearsals.get(staff);
 		return rehearsal == null ? -1 : rehearsal.counted();
 	}
 
-	private void noteRehearsal(ServerPlayer player, long now, long window) {
-		GriefRehearsal rehearsal = rehearsals.get(player.getUUID());
+	private void noteRehearsal(MinecraftServer server, UUID id, long now, long window,
+			int destroyed, BlockPos where, String how) {
+
+		GriefRehearsal rehearsal = rehearsals.get(id);
 		if (rehearsal == null) return;
 
-		GriefRehearsal.Step step = rehearsal.onBreak(now, window);
+		GriefRehearsal.Step step = rehearsal.onDestroyed(now, window, destroyed, how);
 		int windowSeconds = StaffConfig.get().massGriefWindowSeconds;
+		// Offline is possible: TNT lit by redstone can go off after its placer has left. The
+		// test still moves; there is just nobody to show it to.
+		ServerPlayer player = server == null ? null : server.getPlayerList().getPlayer(id);
 
 		switch (step.outcome()) {
 			case EXPIRED -> {
-				rehearsals.remove(player.getUUID());
-				player.sendSystemMessage(Theme.warn("Your mass-grief test ran out with "
-						+ rehearsal.counted() + " of " + rehearsal.blocks()
-						+ " blocks. Run /staff grief test again."));
+				rehearsals.remove(id);
+				if (player != null) {
+					player.sendSystemMessage(Theme.warn("Your mass-grief test ran out with "
+							+ rehearsal.counted() + " of " + rehearsal.blocks()
+							+ " blocks. Run /staff grief test again."));
+				}
 			}
 			case COUNTING -> {
-				rehearsals.put(player.getUUID(), step.next());
-				player.sendOverlayMessage(text("Grief test: " + step.next().counted() + " / "
-						+ rehearsal.blocks() + " in " + windowSeconds + "s"));
+				rehearsals.put(id, step.next());
+				if (player != null) {
+					player.sendOverlayMessage(text("Grief test: " + step.next().counted()
+							+ " / " + rehearsal.blocks() + " in " + windowSeconds + "s"));
+				}
 			}
 			case RESTARTED -> {
-				rehearsals.put(player.getUUID(), step.next());
-				player.sendOverlayMessage(Icon.text("Grief test: 1 / " + rehearsal.blocks()
-						+ " (the " + windowSeconds + "s window ran out, counting again)",
-						Theme.WARN));
+				rehearsals.put(id, step.next());
+				if (player != null) {
+					player.sendOverlayMessage(Icon.text("Grief test: " + step.next().counted()
+							+ " / " + rehearsal.blocks() + " (the " + windowSeconds
+							+ "s window ran out, counting again)", Theme.WARN));
+				}
 			}
 			case REACHED -> {
-				rehearsals.remove(player.getUUID());
-				reportRehearsal(player, rehearsal.blocks(), windowSeconds);
+				rehearsals.remove(id);
+				if (player != null) {
+					reportRehearsal(player, step.burst(), windowSeconds, where);
+				}
 			}
 		}
 	}
 
-	private void reportRehearsal(ServerPlayer player, int blocks, int windowSeconds) {
+	private void reportRehearsal(ServerPlayer player, BreakBurst burst, int windowSeconds,
+			BlockPos where) {
+
 		MinecraftServer server = Mc.server(player);
 		if (server == null) return;
 		StaffConfig cfg = StaffConfig.get();
 
 		List<String> reached = Mods.alerts().rehearse(server, "Security",
 				("[TEST] %s — %s (%d%%) — a test, no case opened").formatted(
-						Mc.name(player), burstDetail(player, blocks, windowSeconds),
+						Mc.name(player), burstDetail(burst, windowSeconds, where),
 						cfg.massGriefSignalConfidence),
 				Theme.BAD);
 
-		player.sendSystemMessage(Theme.good("Mass-grief test passed: all " + blocks
-				+ " breaks were counted."));
+		player.sendSystemMessage(Theme.good("Mass-grief test passed: " + burst.count()
+				+ " blocks were counted (" + burst.describe() + ")."));
 
 		if (reached.isEmpty()) {
 			player.sendSystemMessage(Theme.bad("  But the alert reached nobody. Staff need "
@@ -698,6 +827,7 @@ public class GriefModule implements Module {
 	public void forget(UUID player) {
 		bursts.remove(player);
 		rehearsals.remove(player);
+		blasts.forget(player);
 		containers.forget(player);
 		pendingBreaks.remove(player);
 		// Dropped rather than cleared: the connection is already going away, and the ghost

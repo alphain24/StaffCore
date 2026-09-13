@@ -51,27 +51,42 @@ record GriefRehearsal(int blocks, long expiresAt, BreakBurst burst) {
 		REACHED
 	}
 
-	record Step(Outcome outcome, GriefRehearsal next) {}
+	/**
+	 * @param next  the test after this change, or null once it is over
+	 * @param burst the count after this change, for saying what reached the bar
+	 */
+	record Step(Outcome outcome, GriefRehearsal next, BreakBurst burst) {}
 
 	static GriefRehearsal arm(int blocks, long now) {
 		return new GriefRehearsal(Math.clamp(blocks, MIN_BLOCKS, MAX_BLOCKS),
 				now + DURATION_MS, null);
 	}
 
-	/** What one break does to this test. {@code next} is null once the test is over. */
+	/** What one block broken by hand does to this test. */
 	Step onBreak(long now, long windowMs) {
+		return onDestroyed(now, windowMs, 1, "by hand");
+	}
+
+	/**
+	 * What {@code destroyed} blocks at once does to this test — one for a break, dozens for a
+	 * blast. {@code next} is null once the test is over.
+	 * <p>
+	 * Not called {@code blocks}: that is this record's bar, and a parameter of the same name
+	 * would quietly compare the count against itself.
+	 */
+	Step onDestroyed(long now, long windowMs, int destroyed, String how) {
 		if (now > expiresAt) {
-			return new Step(Outcome.EXPIRED, null);
+			return new Step(Outcome.EXPIRED, null, burst);
 		}
 
-		BreakBurst advanced = BreakBurst.advance(burst, now, windowMs);
+		BreakBurst advanced = BreakBurst.advance(burst, now, windowMs, destroyed, how);
 		if (advanced.count() >= blocks) {
-			return new Step(Outcome.REACHED, null);
+			return new Step(Outcome.REACHED, null, advanced);
 		}
 
 		GriefRehearsal next = new GriefRehearsal(blocks, expiresAt, advanced);
-		boolean restarted = burst != null && advanced.count() == 1;
-		return new Step(restarted ? Outcome.RESTARTED : Outcome.COUNTING, next);
+		boolean restarted = burst != null && advanced.windowStart() != burst.windowStart();
+		return new Step(restarted ? Outcome.RESTARTED : Outcome.COUNTING, next, advanced);
 	}
 
 	int counted() {

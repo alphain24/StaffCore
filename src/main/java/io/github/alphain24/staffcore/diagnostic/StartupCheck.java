@@ -144,6 +144,14 @@ public final class StartupCheck {
 			new Target(Tier.IMPORTANT, "Explosion damage log", "net.minecraft.world.level.ServerExplosion",
 					"interactWithBlocks", "staffcore$recordExplosion", MIXIN_PKG + "ExplosionMixin",
 					"java.util.List"),
+			// TNT lit by redstone or fire names nobody, and redstone is how TNT griefing is
+			// done. Without this those blasts are still logged and still roll back — they are
+			// just on nobody, so they cannot count toward a mass-grief alert.
+			new Target(Tier.OPTIONAL, "Mass grief — who placed redstone-lit TNT",
+					"net.minecraft.world.entity.item.PrimedTnt",
+					"<init>", "staffcore$rememberUnownedTnt", MIXIN_PKG + "PrimedTntMixin",
+					"net.minecraft.world.level.Level", "double", "double", "double",
+					"net.minecraft.world.entity.LivingEntity"),
 			// Fire is the classic griefing tool, and without this the blocks it eats are
 			// never recorded - only the flint-and-steel that started it.
 			new Target(Tier.IMPORTANT, "Fire damage log", "net.minecraft.world.level.block.FireBlock",
@@ -428,6 +436,14 @@ public final class StartupCheck {
 			if (target.paramTypes().length == 0 && hasField(owner, target.method())) {
 				return true;
 			}
+			// A constructor is not a method to reflection, so a hook on one needs its own
+			// lookup or it reads as missing on every boot.
+			if (target.method().equals("<init>")) {
+				for (java.lang.reflect.Constructor<?> c : owner.getDeclaredConstructors()) {
+					if (matches(c.getParameterTypes(), target.paramTypes())) return true;
+				}
+				return false;
+			}
 			for (java.lang.reflect.Method m : owner.getDeclaredMethods()) {
 				if (m.getName().equals(target.method()) && matches(m, target.paramTypes())) return true;
 			}
@@ -449,7 +465,10 @@ public final class StartupCheck {
 	}
 
 	private static boolean matches(java.lang.reflect.Method m, String[] paramTypes) {
-		Class<?>[] actual = m.getParameterTypes();
+		return matches(m.getParameterTypes(), paramTypes);
+	}
+
+	private static boolean matches(Class<?>[] actual, String[] paramTypes) {
 		if (actual.length != paramTypes.length) return false;
 		for (int i = 0; i < actual.length; i++) {
 			if (!actual[i].getName().equals(paramTypes[i])

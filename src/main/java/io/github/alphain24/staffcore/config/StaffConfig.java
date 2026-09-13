@@ -125,9 +125,19 @@ public final class StaffConfig {
 	 * window are touched, and only up to what is actually owed.
 	 */
 	public boolean rollbackChasesBankedLoot = false;
-	/** Blocks broken inside the window before staff are alerted. 0 disables. */
+	/** Blocks destroyed inside the window before staff are alerted. 0 disables. */
 	public int massGriefBlocks = 120;
 	public int massGriefWindowSeconds = 20;
+	/**
+	 * Count blocks destroyed by explosions a player set off toward {@code massGriefBlocks}:
+	 * TNT they lit or placed, end crystals they hit, beds and respawn anchors they used.
+	 * <p>
+	 * On, because that is how griefing is actually done — four TNT clear 120 blocks in a
+	 * second, and a detector that only counted hands was measuring the method griefers do not
+	 * use. Turn it off on a server where TNT quarrying is normal and every quarry would
+	 * otherwise open a case. Hand breaking is counted either way.
+	 */
+	public boolean massGriefCountsExplosions = true;
 
 	// ---- vanish --------------------------------------------------------------
 	/** Stop vanished staff picking up items they walk over. */

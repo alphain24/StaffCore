@@ -1,9 +1,11 @@
 package io.github.alphain24.staffcore.mixin;
 
 import io.github.alphain24.staffcore.StaffCore;
+import io.github.alphain24.staffcore.modules.grief.BlastAttribution;
 import io.github.alphain24.staffcore.modules.grief.GriefModule;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ServerExplosion;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -44,11 +46,23 @@ public class ExplosionMixin {
 
 		ServerExplosion self = (ServerExplosion) (Object) this;
 
-		// A player wherever one is behind it: lighting TNT is griefing done with a tool, and
-		// belongs on their record like any other damage they caused.
-		String source = GriefModule.explosionSource(
-				self.getDirectSourceEntity(), self.getIndirectSourceEntity());
+		// A wind charge comes through here too, with a list of blocks it pushes against and
+		// destroys none of. Recording those as broken wrote rows for damage that never
+		// happened — a rollback "restored" blocks still standing and billed whoever fired it —
+		// and counting them would open a mass-grief case over a breeze rod fight.
+		if (self.getBlockInteraction() == Explosion.BlockInteraction.TRIGGER_BLOCK) return;
 
+		// A player wherever one is behind it, including the ones vanilla does not name: TNT
+		// they placed and lit with redstone, a crystal they hit, a bed they slept in in the
+		// Nether. See BlastAttribution.
+		BlastAttribution.Culprit who = grief.blame(self);
+		String source = who != null
+				? who.name()
+				: GriefModule.explosionSource(self.getDirectSourceEntity(),
+						self.getIndirectSourceEntity());
+
+		// Both read the blocks, so both run here at HEAD, while the blocks are still there.
+		grief.noteBlast(level, self, who, positions);
 		grief.logExplosion(level, positions, source);
 	}
 }
