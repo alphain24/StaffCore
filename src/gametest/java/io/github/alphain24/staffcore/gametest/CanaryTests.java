@@ -12,31 +12,26 @@ import net.minecraft.world.level.block.Blocks;
 import java.util.List;
 
 /**
- * Decoy ores, and the rule that stops them accusing honest miners.
+ * Decoy veins: what counts as uncovering one, and who it counts against.
  * <p>
- * The whole risk here is a false positive, and it has a specific shape: a decoy sits in solid
- * rock, an ordinary player tunnels past and breaks the block beside it, the decoy is now
- * exposed, and they mine the diamond they can suddenly see. Nothing about that is cheating and
- * everything about it looks like a canary hit.
+ * The old rule counted only a decoy broken while all six of its neighbours stood, and retired it
+ * silently the moment anybody broke a neighbour. Since a decoy is sealed in rock, every route to
+ * one goes through a neighbour — so the rule that protected honest miners also made a hit
+ * impossible for cheaters, and breaking a decoy in-game did nothing at all. These tests hold the
+ * replacement: the break that opens a face onto a vein is the find, once per vein, and only for
+ * the player the vein was shown to. Whether a find is suspicious is {@link XrayScoreTests}' job.
  * <p>
- * So the retirement rule is what these mostly test. It needs a real world — encasing a block,
- * breaking its neighbour, and asking what happened is not a thing that can be done headlessly,
- * and the failure mode if it goes wrong is silent: hits accumulate against people who did
- * nothing.
- * <p>
- * <b>What these cannot see.</b> A mock player is not in the player list, so a resync that has
- * to find its target by UUID reaches nobody here. The hit path is covered, because the player
- * is passed in rather than looked up; the retirement-by-somebody-else path sends its packet
- * into a lookup that returns null in this harness. That the packet is <em>constructed</em> for
- * the right position is checked; that it arrives is one of the manual checks.
+ * <b>What these cannot see.</b> A mock player's resync packet is constructed and sent into an
+ * embedded channel; that a real client draws and then removes the ore is one of the manual
+ * checks.
  */
 public class CanaryTests {
 
-	/** A three-by-three-by-three block of stone with one at the centre to lie about. */
-	private static BlockPos encasedStone(GameTestHelper helper, int x, int y, int z) {
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dy = -1; dy <= 1; dy++) {
-				for (int dz = -1; dz <= 1; dz++) {
+	/** A five-by-five-by-five block of stone, so a three-block vein in the middle is sealed. */
+	private static BlockPos stoneBlock(GameTestHelper helper, int x, int y, int z) {
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dy = -2; dy <= 2; dy++) {
+				for (int dz = -2; dz <= 2; dz++) {
 					helper.setBlock(new BlockPos(x + dx, y + dy, z + dz), Blocks.STONE);
 				}
 			}
@@ -44,95 +39,79 @@ public class CanaryTests {
 		return helper.absolutePos(new BlockPos(x, y, z));
 	}
 
-	@GameTest
-	public void breakingTheDecoyItselfIsAHit(GameTestHelper helper) {
-		ServerLevel level = helper.getLevel();
-		ServerPlayer player = Harness.mockPlayer(helper);
-		BlockPos centre = encasedStone(helper, 1, 2, 1);
-
-		Canaries.placeAt(player, level, centre);
-		Harness.checkEquals(helper, 1, Canaries.liveFor(player.getUUID()),
-				"the decoy was not placed");
-
-		var contact = Canaries.onBreak(level, player, centre);
-		Harness.check(helper, contact == Canaries.Contact.HIT,
-				"breaking a decoy while every neighbour was still standing was not recorded "
-						+ "as a hit — that is the one case there is no honest route to");
-		Harness.checkEquals(helper, 1, Canaries.hitsFor(player.getUUID()), "the hit was not counted");
-
-		helper.succeed();
+	/** Breaks a block the way the break event leaves it: gone, then reported. */
+	private static Canaries.Contact breakAt(ServerLevel level, ServerPlayer breaker, BlockPos pos) {
+		level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
+		return Canaries.onBreak(level, breaker, pos);
 	}
 
 	@GameTest
-	public void breakingANeighbourRetiresItInstead(GameTestHelper helper) {
-		// The false positive this exists to prevent. An ordinary miner exposes the decoy on
-		// their way past; without this rule the next swing is logged as x-ray.
+	public void uncoveringAVeinCountsOnceForTheWholeVein(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
-		BlockPos centre = encasedStone(helper, 1, 2, 1);
+		BlockPos centre = stoneBlock(helper, 3, 3, 3);
+		List<BlockPos> vein = List.of(centre, centre.east(), centre.east().above());
 
-		Canaries.placeAt(player, level, centre);
-		var contact = Canaries.onBreak(level, player, centre.relative(Direction.NORTH));
+		Harness.checkEquals(helper, 3, Canaries.placeVein(player, level, vein),
+				"the three-block vein was not placed whole");
 
-		Harness.check(helper, contact == Canaries.Contact.RETIRED,
-				"breaking the block beside a decoy did not retire it");
+		var first = breakAt(level, player, centre.west());
+		Harness.checkEquals(helper, 1, first.uncovered(),
+				"breaking into the side of a decoy vein was not counted as uncovering it — "
+						+ "this is the in-game \"I broke a canary and nothing happened\"");
 		Harness.checkEquals(helper, 0, Canaries.liveFor(player.getUUID()),
-				"the decoy is still live after being exposed");
-		Harness.checkEquals(helper, 0, Canaries.hitsFor(player.getUUID()),
-				"exposing a decoy counted as a hit, which is the false positive itself");
+				"only the touched block was retired; the rest of the vein is still on screen");
+		Harness.checkEquals(helper, 1, Canaries.hitsFor(player.getUUID()), "the find was not counted");
 
+		// Mining on along where the vein was must not count it again.
+		var second = breakAt(level, player, centre);
+		Harness.checkEquals(helper, 0, second.uncovered(), "one vein was counted twice");
+		Harness.checkEquals(helper, 1, Canaries.hitsFor(player.getUUID()), "one vein was counted twice");
 		helper.succeed();
 	}
 
 	@GameTest
-	public void aDecoyExposedThenMinedIsNotAHit(GameTestHelper helper) {
-		// The full sequence, in order, because the two rules above are only worth anything
-		// together: expose, then mine. This is what an honest tunnel actually looks like.
+	public void breakingTheDecoyBlockItselfCountsToo(GameTestHelper helper) {
+		// Only a client that can target a block it cannot see manages this, but it is still the
+		// vein being reached.
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
-		BlockPos centre = encasedStone(helper, 1, 2, 1);
+		BlockPos centre = stoneBlock(helper, 3, 3, 3);
 
 		Canaries.placeAt(player, level, centre);
-		Canaries.onBreak(level, player, centre.relative(Direction.NORTH));
-		var second = Canaries.onBreak(level, player, centre);
-
-		Harness.check(helper, second == Canaries.Contact.NOTHING,
-				"mining a decoy that had already been exposed counted against the player. "
-						+ "That is an ordinary miner being reported for x-ray.");
-		Harness.checkEquals(helper, 0, Canaries.hitsFor(player.getUUID()), "and it was counted");
-
+		Harness.checkEquals(helper, 1, breakAt(level, player, centre).uncovered(),
+				"breaking a sealed decoy directly was not counted");
 		helper.succeed();
 	}
 
 	@GameTest
-	public void somebodyElseBreakingItIsNotEvidenceAgainstThem(GameTestHelper helper) {
-		// Only the owner was told the block was there. Another player reaching it is a
-		// coincidence, and recording that as evidence would be the worst thing here.
+	public void somebodyElseUncoveringItCountsAgainstNobody(GameTestHelper helper) {
+		// Only the owner was told the vein was there. Another player reaching it is a
+		// coincidence, and the owner did nothing.
 		ServerLevel level = helper.getLevel();
 		ServerPlayer owner = Harness.mockPlayer(helper);
 		ServerPlayer stranger = Harness.mockPlayer(helper);
-		BlockPos centre = encasedStone(helper, 1, 2, 1);
+		BlockPos centre = stoneBlock(helper, 3, 3, 3);
 
-		Canaries.placeAt(owner, level, centre);
-		Canaries.onBreak(level, stranger, centre);
+		Canaries.placeVein(owner, level, List.of(centre, centre.north()));
+		var contact = breakAt(level, stranger, centre.south());
 
+		Harness.checkEquals(helper, 0, contact.uncovered(), "a stranger was credited with a find");
+		Harness.checkEquals(helper, 1, contact.retired(), "the vein was not retired");
 		Harness.checkEquals(helper, 0, Canaries.hitsFor(stranger.getUUID()),
 				"a player who was never told about the decoy was charged with finding it");
 		Harness.checkEquals(helper, 0, Canaries.hitsFor(owner.getUUID()),
-				"and the owner was charged for somebody else's break");
+				"the owner was charged for somebody else's break");
 		Harness.checkEquals(helper, 0, Canaries.liveFor(owner.getUUID()),
-				"the decoy should still be gone — the block it described no longer exists");
-
+				"the vein is still out, though it is now open to the air");
 		helper.succeed();
 	}
 
 	@GameTest
-	public void anExplosionRetiresWhatItUncovers(GameTestHelper helper) {
-		// Explosions destroy blocks with no break event at all. Missing this leaves a decoy
-		// standing in a crater, visible to anybody walking past.
+	public void anExplosionRetiresWhatItUncoversWithoutAFind(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
-		BlockPos centre = encasedStone(helper, 1, 2, 1);
+		BlockPos centre = stoneBlock(helper, 3, 3, 3);
 
 		Canaries.placeAt(player, level, centre);
 		Canaries.onExplosion(level, List.of(centre.relative(Direction.UP)));
@@ -141,7 +120,35 @@ public class CanaryTests {
 				"a decoy survived the explosion that uncovered it");
 		Harness.checkEquals(helper, 0, Canaries.hitsFor(player.getUUID()),
 				"an explosion was recorded as somebody finding the decoy");
+		helper.succeed();
+	}
 
+	@GameTest
+	public void aGrownVeinIsOneConnectedClusterInSealedRock(GameTestHelper helper) {
+		ServerLevel level = helper.getLevel();
+		ServerPlayer player = Harness.mockPlayer(helper);
+		BlockPos centre = stoneBlock(helper, 3, 3, 3);
+
+		int size = Canaries.growVein(player, level, centre, 6, new java.util.Random(7));
+		List<Canaries.Canary> mine = Canaries.all().stream()
+				.filter(c -> c.owner().equals(player.getUUID()))
+				.toList();
+
+		Harness.check(helper, size >= 2 && size <= 6,
+				"a vein asked to grow to 6 in solid stone came out at " + size);
+		Harness.checkEquals(helper, size, mine.size(), "the vein's blocks are not all live");
+		Harness.checkEquals(helper, 1L, mine.stream().mapToLong(Canaries.Canary::vein).distinct().count(),
+				"one grown vein was recorded as several");
+		for (Canaries.Canary canary : mine) {
+			Harness.check(helper, canary.shown().is(Blocks.DIAMOND_ORE),
+					"a decoy in stone was shown as " + canary.shown());
+			boolean touches = mine.stream().anyMatch(other -> other != canary
+					&& Math.abs(other.pos().getX() - canary.pos().getX()) <= 1
+					&& Math.abs(other.pos().getY() - canary.pos().getY()) <= 1
+					&& Math.abs(other.pos().getZ() - canary.pos().getZ()) <= 1);
+			Harness.check(helper, size == 1 || touches,
+					"a vein block at " + canary.pos().toShortString() + " touches no other");
+		}
 		helper.succeed();
 	}
 
@@ -149,35 +156,41 @@ public class CanaryTests {
 	public void placementRefusesRockThatIsNotSealed(GameTestHelper helper) {
 		// A decoy in a wall somebody can see is not a question, it is bait — and the answer it
 		// produces is meaningless because the honest explanation is "I looked at it".
-		ServerPlayer player = Harness.mockPlayer(helper);
-
-		BlockPos exposed = encasedStone(helper, 1, 2, 1);
-		helper.setBlock(new BlockPos(1, 3, 1), Blocks.AIR);
+		BlockPos exposed = stoneBlock(helper, 3, 3, 3);
+		helper.setBlock(new BlockPos(3, 4, 3), Blocks.AIR);
 
 		Harness.check(helper, !Canaries.wouldPlaceAt(helper.getLevel(), exposed),
 				"a position with a face open to air was accepted");
 
-		helper.setBlock(new BlockPos(1, 3, 1), Blocks.STONE);
+		helper.setBlock(new BlockPos(3, 4, 3), Blocks.STONE);
 		Harness.check(helper, Canaries.wouldPlaceAt(helper.getLevel(), exposed),
 				"sealing it back up did not make it acceptable, so the check is refusing "
 						+ "everything and would place nothing at all");
+		helper.succeed();
+	}
 
+	@GameTest
+	public void placementRefusesRockTouchingARealDiamond(GameTestHelper helper) {
+		// A decoy merged into a real vein would blur which of the two a player uncovered.
+		BlockPos centre = stoneBlock(helper, 3, 3, 3);
+		helper.setBlock(new BlockPos(4, 3, 3), Blocks.DEEPSLATE_DIAMOND_ORE);
+
+		Harness.check(helper, !Canaries.wouldPlaceAt(helper.getLevel(), centre),
+				"a decoy would have been placed against a real diamond");
 		helper.succeed();
 	}
 
 	@GameTest
 	public void placementRefusesAnythingThatIsNotPlainStone(GameTestHelper helper) {
 		// Overwriting a real ore would hide it; overwriting anything with a block entity
-		// would show the client a chest that is not there. The whitelist is the safe
-		// direction, so an unknown modded block is skipped rather than lied about.
-		BlockPos centre = encasedStone(helper, 1, 2, 1);
+		// would show the client a chest that is not there.
+		BlockPos centre = stoneBlock(helper, 3, 3, 3);
 
 		for (var block : List.of(Blocks.DIAMOND_ORE, Blocks.CHEST, Blocks.OAK_PLANKS)) {
-			helper.setBlock(new BlockPos(1, 2, 1), block);
+			helper.setBlock(new BlockPos(3, 3, 3), block);
 			Harness.check(helper, !Canaries.wouldPlaceAt(helper.getLevel(), centre),
 					"a decoy would have been placed over " + block.getName().getString());
 		}
-
 		helper.succeed();
 	}
 }

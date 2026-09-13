@@ -37,7 +37,7 @@ public final class StaffConfig {
 	public int configVersion = 0;
 
 	/** The version this build writes. Raise it when a default changes and should propagate. */
-	private static final int CURRENT_VERSION = 3;
+	private static final int CURRENT_VERSION = 4;
 
 	// ---- discord -------------------------------------------------------------
 	public String discordWebhookUrl = "";
@@ -425,14 +425,16 @@ public final class StaffConfig {
 	public boolean canaryBlocks = true;
 
 	/**
-	 * How many decoys one player has out at a time. 0 disables.
+	 * How many decoy veins one player has out at a time, each one to ten blocks. 0 disables.
 	 * <p>
-	 * Deliberately tiny, and far below the density a bulk anti-xray uses. That mod is hiding
-	 * ore, so it wants fakes everywhere; this is asking a question, so each one has to stay
-	 * rare enough that walking into it means something. Raise it and the odds of a legitimate
-	 * miner meeting one by chance stop being negligible.
+	 * Raising it gives an x-ray user more to walk into, so a cheater is caught in fewer finds;
+	 * it also means an honest tunnel uncovers one more often. That does not make honest miners
+	 * look worse — the score expects decoys in proportion to how many are out — but it does
+	 * cost block-update packets and a few block reads every five seconds per decoy block.
+	 * Far below the density a bulk anti-xray uses either way: that mod is hiding ore, this is
+	 * asking a question. Checked at startup to be between 0 and 64.
 	 */
-	public int canaryDensity = 6;
+	public int canaryDensity = 12;
 
 	/**
 	 * The highest Y a canary is placed at.
@@ -452,17 +454,6 @@ public final class StaffConfig {
 	 */
 	public int canaryRadius = 48;
 
-	/**
-	 * Canary hits in one session before a case is opened automatically.
-	 * <p>
-	 * One is noise: a decoy can end up in the path of a tunnel somebody was digging anyway,
-	 * and a single unlucky hit should never be the thing that opens an investigation. Three
-	 * separate ones is not luck.
-	 * <p>
-	 * Below the threshold the hits are still recorded and still visible in the player's
-	 * context — quiet, not discarded.
-	 */
-	public int canaryCaseThreshold = 3;
 
 	/**
 	 * Place decoys even when a bulk anti-xray mod is installed.
@@ -657,6 +648,32 @@ public final class StaffConfig {
 	public int xraySweepMinutes = XrayTuning.SWEEP_MINUTES;
 	/** Skip staff who are clocked on. Staff mining off-duty are still scored. */
 	public boolean xraySkipStaffOnDuty = true;
+
+	/**
+	 * Hidden veins and decoy veins a mining session must uncover before its score is said out
+	 * loud at all, however unlikely it looks.
+	 * <p>
+	 * A floor on the evidence, not on the odds. With one or two finds the arithmetic can call
+	 * an early lucky strike a one-in-a-thousand event, and that is true and useless — it
+	 * happens to somebody on every server every week. Lowering it catches a cheater a vein or
+	 * two sooner and lets luck through; raising it asks for more before anybody is told.
+	 * Checked at startup to be at least 1.
+	 */
+	public int xrayMinimumFinds = 3;
+
+	/**
+	 * How many sealed diamond veins honest mining uncovers per thousand opened rock faces, at
+	 * the bottom of the world. Shallower bands start from a share of this.
+	 * <p>
+	 * The expectation every session is scored against, and only the starting point: the
+	 * server's own honest mining refines it per depth band, within a factor of three either
+	 * way. Worked out from vanilla's diamond placement — simulated branch mining at the bottom
+	 * of the world finds about 1.2 — and set well above that on purpose.
+	 * Raise it on a server with a datapack that adds diamonds, or if honest deep miners are
+	 * being noticed; lowering it makes every find count for more and flags honest luck sooner.
+	 * Checked at startup to be above 0 and at most 50.
+	 */
+	public double xrayNaturalVeinsPer1000Faces = 2.0;
 
 	/**
 	 * How long an unpaid rollback debt stands before it is written off, in days. 0 keeps it
@@ -998,6 +1015,28 @@ public final class StaffConfig {
 					+ "https://discord.gg/abc123.");
 		}
 
+		if (cfg.canaryDensity < 0 || cfg.canaryDensity > 64) {
+			int was = cfg.canaryDensity;
+			cfg.canaryDensity = Math.max(0, Math.min(64, cfg.canaryDensity));
+			problems.add("canaryDensity is " + was + ", which is outside 0-64. Using "
+					+ cfg.canaryDensity + ". It is decoy veins per player; past a few dozen the "
+					+ "packets and block reads cost more than the extra decoys are worth.");
+		}
+
+		if (cfg.xrayMinimumFinds < 1) {
+			problems.add("xrayMinimumFinds is " + cfg.xrayMinimumFinds + ", which would let a "
+					+ "session with no finds at all be reported. Using 1.");
+			cfg.xrayMinimumFinds = 1;
+		}
+
+		if (!(cfg.xrayNaturalVeinsPer1000Faces > 0) || cfg.xrayNaturalVeinsPer1000Faces > 50) {
+			double was = cfg.xrayNaturalVeinsPer1000Faces;
+			cfg.xrayNaturalVeinsPer1000Faces = 2.0;
+			problems.add("xrayNaturalVeinsPer1000Faces is " + was + ", which is not a rate "
+					+ "between 0 and 50. Using 2.0. At 0 every find would look impossible; "
+					+ "above 50 nothing short of standing in a diamond field would.");
+		}
+
 		for (String problem : problems) {
 			StaffCore.LOGGER.error("[StaffCore] Config: {}", problem);
 		}
@@ -1057,6 +1096,16 @@ public final class StaffConfig {
 							+ "rollbackReclaimsFromStaff are now off by default for new servers. "
 							+ "Yours keep their current behaviour. Set them to false in "
 							+ "config/staffcore.json if you would rather take the new default.");
+		}
+
+		// v4: decoys became veins and their count became the number of veins. A server still on
+		// the old default of six single blocks moves to the new twelve veins; a number somebody
+		// chose is left exactly as it was, and now means veins.
+		if (from < 4 && cfg.canaryDensity == 6) {
+			cfg.canaryDensity = 12;
+			StaffCore.LOGGER.info(
+					"[StaffCore] Config upgrade: canaryDensity 6 -> 12. Decoys are veins now, "
+							+ "and more of them catch an x-ray user in fewer finds.");
 		}
 
 		cfg.configVersion = CURRENT_VERSION;

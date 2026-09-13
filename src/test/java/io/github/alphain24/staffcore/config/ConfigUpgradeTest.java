@@ -122,6 +122,29 @@ class ConfigUpgradeTest {
 	}
 
 	@Test
+	@DisplayName("the old decoy count moves to the new default; a chosen one does not")
+	void decoyDensityMigration() throws IOException {
+		Path file = write("""
+				{
+				  "configVersion": 3,
+				  "canaryDensity": 6
+				}
+				""");
+		StaffConfig.loadFrom(file);
+		assertEquals(12, StaffConfig.get().canaryDensity,
+				"a server still on the old default of six decoys was not moved to twelve veins");
+
+		Path chosen = write("""
+				{
+				  "configVersion": 3,
+				  "canaryDensity": 8
+				}
+				""");
+		StaffConfig.loadFrom(chosen);
+		assertEquals(8, StaffConfig.get().canaryDensity, "a density somebody chose was changed");
+	}
+
+	@Test
 	@DisplayName("an already-complete config is left alone")
 	void completeFilesAreNotRewritten() throws IOException {
 		// Rewriting on every boot would work and would be wrong: it would churn the file
@@ -174,7 +197,7 @@ class ConfigUpgradeTest {
 
 		StaffConfig.loadFrom(file);
 
-		assertEquals(6, StaffConfig.get().canaryDensity,
+		assertEquals(12, StaffConfig.get().canaryDensity,
 				"an unreadable config should fall back to defaults in memory rather than "
 						+ "throwing during boot");
 	}

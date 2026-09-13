@@ -38,7 +38,8 @@ Nineteen modules behind one `/staff` command:
   permission, with snapshots taken automatically before a death, a logout, a staff edit or a
   rollback. Restoring a death snapshot does not duplicate the drops.
 - **Anti-cheat support** — contraband detection covering every item that cannot be obtained
-  in survival, an x-ray heuristic that reads ore type and mining pattern, alt detection, and
+  in survival, an x-ray heuristic that reads ore type and mining pattern, a live score of how
+  many sealed diamond veins and decoy veins each player uncovers, alt detection, and
   a bridge for findings from an anti-cheat you already run.
 - **Staff tools** — vanish that actually hides you, staff mode with an inventory stash,
   freeze, teleport, staff chat, command spy, and per-person activity records.
@@ -276,7 +277,7 @@ Changing a default in the code alone would never reach a server that has already
 
 ```jsonc
 {
-  "configVersion": 3,                 // managed by StaffCore; don't edit
+  "configVersion": 4,                 // managed by StaffCore; don't edit
   "discordWebhookUrl": "",            // empty = bridge off
   "requireReason": true,
   "publicPunishmentBroadcast": true,  // false = staff-only announcements
@@ -288,11 +289,10 @@ Changing a default in the code alone would never reach a server that has already
   "rollbackWarnBlocks": 500,          // preview says so loudly above this; 0 = never
   "xrayMinimumVolume": 512,           // smallest dig worth scoring; below this is noise
   "canaryBlocks": true,               // decoy ores; forced off by a bulk anti-xray mod
-  "canaryDensity": 6,                 // decoys per player at once; 0 disables
+  "canaryDensity": 12,                // decoy veins (1-10 blocks) per player at once; 0 disables
   "canaryMaxY": 16,                   // below the depth where people build
-  "canaryRadius": 48,
-  "canaryForceWithBulkAntiXray": false, // NOT a supported mode - see the handbook before using                 // must be inside their render distance
-  "canaryCaseThreshold": 3,           // hits in a session before a case opens
+  "canaryRadius": 48,                 // must be inside their render distance
+  "canaryForceWithBulkAntiXray": false, // NOT a supported mode - see the handbook before using
   "rootAliases": false,               // /ban, /vanish etc. at the root, if free
   "tpsAlertFloor": 17.0,
   "defaultRollbackMinutes": 60,
@@ -349,7 +349,9 @@ Changing a default in the code alone would never reach a server that has already
   "xrayAlertConfidence": 65,          // no single signal can reach this on its own
   "xrayNoticeConfidence": 55,         // quiet heads-up below the alert line; 0 disables
   "xraySweepMinutes": 5,
-  "xraySkipStaffOnDuty": true         // off-duty staff are still scored
+  "xraySkipStaffOnDuty": true,        // off-duty staff are still scored
+  "xrayMinimumFinds": 3,              // veins a session must uncover before its score is said
+  "xrayNaturalVeinsPer1000Faces": 2.0 // what honest mining finds; refined by the server's own
 }
 ```
 
@@ -466,13 +468,12 @@ known gap — not a bug list.
 
 **Detection**
 
-- **Decoy blocks are packet-verified, not client-verified.** The server is checked to choose the
-  right fake ore for the surrounding rock, to send it at the right position, and to send the
-  real block back when the decoy is retired. What has **not** been confirmed by anybody watching
-  a screen is that an x-ray client actually draws it. That matters more than it sounds: a decoy
-  that never reaches a client produces a false-positive rate of zero *and* a true-positive rate
-  of zero, and only the first shows up in the corpus — so the measured zero in
-  [decisions.md](docs/decisions.md) says the retirement rule holds, not that decoys work. The check that closes this is written out step by step in
+- **Decoy blocks are packet-verified, not client-verified.** The server is checked to grow
+  decoy veins in sealed rock, choose the right fake ore for the surrounding rock, send it at the
+  right position, count the break that uncovers one, and send the real block back. What has
+  **not** been confirmed by anybody watching a screen is that an x-ray client actually draws
+  it. That matters more than it sounds: a decoy that never reaches a client is never uncovered
+  by a cheater, and silence from it looks exactly like a server with nobody cheating. The check that closes this is written out step by step in
   [docs/manual-checks/](docs/manual-checks/) — one sitting covers this and the vanish claims
   together, and each script says what to change in this file when it passes. **If only one
   check is ever run, it should be this one:** a decoy that never reaches a client makes the
@@ -496,6 +497,13 @@ known gap — not a bug list.
   themselves, but it is still inference from a block log. The thresholds are measured
   against generated mining patterns rather than real player data — see
   [decisions.md](docs/decisions.md), which records what that does and does not establish.
+- **The live vein score starts from worked-out numbers, not measured ones.** How many sealed
+  veins an honest miner uncovers per thousand opened faces (`xrayNaturalVeinsPer1000Faces`) is
+  derived from vanilla's diamond placement settings and set on the high side; it is checked
+  against simulated branch mining and simulated x-ray mining, not against real players. Each
+  server refines it from its own honest mining while it runs, within a factor of three, and
+  forgets that on restart. A datapack that changes diamond generation needs the value
+  changed by hand.
 - **Analytics cannot read judgement.** It now shows follow-through, response time and
   overturn rate beside the raw counts, so it is no longer only a volume ranking — but a
   number still cannot tell you whether a ban was the right call. Read the leaderboard as a
@@ -518,7 +526,10 @@ known gap — not a bug list.
   the rock immediately around the dig, it skips unloaded chunks rather than loading them, and
   it is timed: roughly 3 ms of a 50 ms tick per scored session, once every `xraySweepMinutes`.
   The database read — the largest part, and the part that grows with history — runs on a
-  worker. Measurements are in [decisions.md](docs/decisions.md).
+  worker. Measurements are in [decisions.md](docs/decisions.md). The live vein score has the
+  same split for the same reason: what a break uncovered is read inside the break event, about
+  thirty-six block reads below y 16 (more only when a diamond is actually touched), and the
+  scoring runs on the worker.
 - **A permission node written by hand, rather than taken from `Nodes`, fails in a shape that
   looks like success.** `Actor` resolves permissions by walking the nodes declared in `Nodes`,
   so a string that is not one of them is in nobody's resolved set — denied to every player, and

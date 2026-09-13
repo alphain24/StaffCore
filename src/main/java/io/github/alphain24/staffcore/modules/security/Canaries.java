@@ -14,60 +14,83 @@ import net.minecraft.world.level.block.state.BlockState;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * A handful of ores that are not there, shown to one player, in rock nothing can see into.
+ * Veins of ore that are not there, shown to one player, in rock nothing can see into.
  *
  * <h2>Why this is worth having when the detector already exists</h2>
- * {@link XraySweep} reads the break log and works out how unlikely somebody's mining is
- * cheating. It is inference: good inference, with the evidence attached, and still a judgement
- * about a pattern. A canary is not a judgement. The block was never there, only this player was
- * told about it, and no legitimate route to it exists — so walking to it is not evidence that
- * somebody probably cheated, it is somebody acting on information they could only have had one
- * way.
+ * {@link XraySweep} reads the break log and works out how unlikely somebody's mining is.
+ * {@link OreSense} watches what each break uncovers. Both are inference about real ore, and
+ * real ore has an honest explanation: people do find diamonds. A decoy vein has none. It was
+ * never there, only this player was told about it, and the only way to know where it is was to
+ * see through rock — so uncovering one is a find that only x-ray explains.
+ *
+ * <h2>What changed, and why the old rule caught nobody</h2>
+ * A decoy used to count only when the player broke the decoy block itself while all six of its
+ * neighbours were still standing, and breaking any neighbour retired it silently. That rule was
+ * built to protect honest miners and it did — by making a hit impossible for everybody. A decoy
+ * is sealed in rock, so the only way any client reaches it is by breaking a neighbour first,
+ * which retired it. Staff broke decoys to test the feature and nothing happened, because nothing
+ * could.
  * <p>
- * That is why the threshold is three and not thirty. The detector needs volume before it can
- * say anything; this needs almost none.
+ * The event that means something is <em>uncovering</em>: the break that opens a face onto the
+ * vein. That is counted now, once per vein, and the whole vein goes back to rock on the owner's
+ * screen at that moment. It is no longer a verdict on its own — an honest tunnel uncovers a
+ * decoy now and then, exactly as it uncovers real diamonds now and then — so the count goes to
+ * {@link OreSense}, which knows how many faces the player has opened and how likely a decoy was
+ * to be behind any of them, and decides whether the number is unusual.
+ *
+ * <h2>Why veins</h2>
+ * A single ore block floating in stone is not how diamonds generate, and an x-ray user looking
+ * at a screen full of real two-to-eight block veins learns to skip the lonely single blocks.
+ * Decoy veins are grown the way ore blobs are: a random cluster of one to ten blocks, touching by
+ * faces and edges, each block matched to the rock it replaces.
  *
  * <h2>Why there is no chunk mixin</h2>
  * The obvious implementation rewrites the block palette as a chunk is serialised, which is what
- * a bulk anti-xray does because it has to change thousands of blocks at once. For six blocks
- * per player, a plain {@link ClientboundBlockUpdatePacket} does the same job: the chunk arrives
- * honestly, and one packet afterwards tells the client that one position is something else.
- * <p>
- * Worth being explicit about, because the mixin version was the plan. It would have been this
- * mod's most version-fragile hook, sitting in the middle of chunk serialisation, for no gain
- * over a packet that has existed unchanged for years.
- *
- * <h2>The false positive this is built around</h2>
- * A decoy is placed in fully encased rock, so reaching it means breaking a neighbour first.
- * The moment anybody breaks a neighbour — the owner, another player, an explosion — the decoy
- * is retired and the real block sent back. Without that rule, an ordinary miner tunnels past,
- * exposes a diamond ore that is not there, mines it, and gets reported for x-ray. It also
- * removes the ghost block, which is the same fix for a different reason.
- * <p>
- * What is left is a player who breaks a decoy while every one of its six neighbours is still
- * standing. There is no way to see that block, and no reason to dig at it.
+ * a bulk anti-xray does because it has to change thousands of blocks at once. For a few dozen
+ * blocks per player, a plain {@link ClientboundBlockUpdatePacket} does the same job: the chunk
+ * arrives honestly, and one packet afterwards tells the client that one position is something
+ * else.
  */
 public final class Canaries {
 	private Canaries() {}
 
 	/**
-	 * One decoy.
+	 * One decoy block.
 	 *
-	 * @param shown       what the client was told is there, kept so a hit can say what they
-	 *                    went for
+	 * @param vein   which vein it belongs to; uncovering any block of a vein uncovers all of it
+	 * @param shown  what the client was told is there, kept so a find can say what they went for
 	 * @param sentAt when the decoy was placed and the client first told about it
 	 */
-	public record Canary(UUID owner, String world, BlockPos pos, BlockState shown, long sentAt) {}
+	public record Canary(UUID owner, String world, BlockPos pos, BlockState shown, long sentAt,
+			long vein) {}
 
 	/**
-	 * Decoys per player. Small, bounded by {@code canaryDensity}, and dropped on disconnect.
+	 * What one break did to decoys.
+	 *
+	 * @param uncovered veins of the breaker's own that this break opened a face onto
+	 * @param retired   veins of anybody's that went back to rock because of it, uncovered ones
+	 *                  included
+	 */
+	public record Contact(int uncovered, int retired) {
+		public static final Contact NOTHING = new Contact(0, 0);
+
+		public boolean foundOne() {
+			return uncovered > 0;
+		}
+	}
+
+	/**
+	 * Decoys per player. Bounded by {@code canaryDensity} veins, and dropped on disconnect.
 	 * <p>
 	 * In memory rather than in the database on purpose. A decoy is only real while the client
 	 * believes it, and a client that reconnects has been sent the honest chunk again — so a
@@ -76,8 +99,23 @@ public final class Canaries {
 	 */
 	private static final Map<UUID, Map<BlockPos, Canary>> LIVE = new ConcurrentHashMap<>();
 
-	/** Hits this session, per player. Reset on disconnect, like the decoys themselves. */
+	/** Veins uncovered this session, per player. Reset on disconnect, like the decoys themselves. */
 	private static final Map<UUID, Integer> HITS = new ConcurrentHashMap<>();
+
+	private static final AtomicLong VEINS = new AtomicLong();
+
+	/** The largest decoy vein. Vanilla's biggest diamond blob is size 12, rarely all of it. */
+	static final int MAX_VEIN = 10;
+
+	/**
+	 * How far below the player decoys may go. Above them it is eight blocks, as before: an x-ray
+	 * pack shows ore in every direction, but people strip-mine at one level and dig down to veins
+	 * far more readily than up.
+	 */
+	static final int BELOW_PLAYER = 24;
+
+	/** Blocks between separate decoy veins, so uncovering one never uncovers its neighbour. */
+	private static final int VEIN_SPACING = 3;
 
 	// ------------------------------------------------------------------ placement
 
@@ -102,11 +140,11 @@ public final class Canaries {
 	}
 
 	/**
-	 * Tops a player up to the configured number of decoys.
+	 * Tops a player up to the configured number of decoy veins.
 	 * <p>
 	 * Called on a slow timer rather than per tick. Every candidate position costs seven block
 	 * reads and the answer is usually no, so this is bounded twice: a fixed number of attempts
-	 * per call, and a cap on how many decoys can exist.
+	 * per call, and a cap on how many veins can exist.
 	 */
 	public static void maintain(ServerPlayer player) {
 		if (!enabled() || player == null) return;
@@ -120,16 +158,29 @@ public final class Canaries {
 		validate(player, level, mine);
 
 		int wanted = StaffConfig.get().canaryDensity;
-		if (mine.size() >= wanted) return;
-
-		// Ten attempts, not "until we have enough". A player standing in a cave or above the
+		// Twenty attempts, not "until we have enough". A player standing in a cave or above the
 		// depth limit has no valid positions at all, and a loop that kept looking would spend
 		// the whole tick discovering that every time it ran.
-		for (int attempt = 0; attempt < 10 && mine.size() < wanted; attempt++) {
-			BlockPos candidate = pick(level, player);
-			if (candidate == null || mine.containsKey(candidate)) continue;
-			placeAt(player, level, candidate);
+		ThreadLocalRandom random = ThreadLocalRandom.current();
+		for (int attempt = 0; attempt < 20 && veinsIn(mine) < wanted; attempt++) {
+			BlockPos seed = pick(level, player);
+			if (seed == null || tooCloseToAnother(mine, seed)) continue;
+			growVein(player, level, seed, veinSize(random), random);
 		}
+	}
+
+	/**
+	 * How big a vein to grow, shaped like vanilla's diamond blobs rather than uniform.
+	 * <p>
+	 * Most real veins are the small feature — a size-4 blob, which comes out as one to four
+	 * blocks. The medium and buried features give three to eight, and a size-12 blob is rare.
+	 * A decoy layer of uniform sizes would have a signature of its own.
+	 */
+	static int veinSize(java.util.random.RandomGenerator random) {
+		int roll = random.nextInt(100);
+		if (roll < 50) return 1 + random.nextInt(4);          // 1-4
+		if (roll < 90) return 3 + random.nextInt(6);          // 3-8
+		return 6 + random.nextInt(MAX_VEIN - 5);              // 6-10
 	}
 
 	/**
@@ -138,24 +189,18 @@ public final class Canaries {
 	 * <h2>This used to re-send them, and that was the wrong shape</h2>
 	 * A {@code ClientboundBlockUpdatePacket} is a delta against the chunk the client is holding
 	 * at that moment, so a chunk resend erases it while the server goes on counting the decoy
-	 * as live. The first fix for that was to re-send everything from here, every five seconds.
-	 * <p>
-	 * It worked and it was wrong four times over: it polled a problem that has an exact event,
-	 * it cost packets proportional to decoys times players forever, it left up to five seconds
-	 * in which the client saw the truth, and — worst — <b>it made the ore flicker</b>. An x-ray
-	 * user who notices that some ores blink and others do not learns to distrust the ones that
-	 * blink, which loses precisely the users worth catching. A decoy that is occasionally wrong
-	 * is worse than no decoy, because it teaches the lesson.
-	 * <p>
-	 * Re-asserting now happens in {@link io.github.alphain24.staffcore.illusion.BlockIllusions}, driven by a hook
-	 * on the chunk-send path, in the same call that erased them.
+	 * as live. Re-asserting now happens in
+	 * {@link io.github.alphain24.staffcore.illusion.BlockIllusions}, driven by a hook on the
+	 * chunk-send path, in the same call that erased them — re-sending from a timer made the ore
+	 * flicker, and an x-ray user who notices that some ores blink learns to distrust them.
 	 *
 	 * <h2>What is left here, and why it still belongs on a timer</h2>
 	 * Validation. A decoy describes a position that was plain stone when it was placed, and
 	 * blocks change without a break event — a rollback putting things back, a piston, flowing
 	 * water, an admin with WorldEdit. A decoy over a position that is now air is a diamond
-	 * floating in a tunnel, and nothing else would ever notice. That genuinely has no event to
-	 * hang off, so a slow poll is the right answer for it.
+	 * floating in a tunnel, and nothing else would ever notice. Six block reads per decoy block
+	 * every five seconds, on the server thread because that is the only place the world can be
+	 * read.
 	 */
 	private static void validate(ServerPlayer player, ServerLevel level,
 			Map<BlockPos, Canary> mine) {
@@ -163,34 +208,77 @@ public final class Canaries {
 		if (mine.isEmpty() || player.connection == null) return;
 
 		String here = Mc.dimensionId(level);
-		for (Map.Entry<BlockPos, Canary> entry : Map.copyOf(mine).entrySet()) {
-			Canary canary = entry.getValue();
-
+		for (Canary canary : List.copyOf(mine.values())) {
 			// A decoy in a world the player is not in. Their client does not hold that chunk
-			// at all, so there is nothing to check against — it is picked up again when they
-			// go back, and the chunk-send hook redraws it when that chunk arrives.
+			// at all, so there is nothing to check against.
 			if (!canary.world().equals(here)) continue;
 			if (!level.isLoaded(canary.pos())) continue;
+			if (!mine.containsKey(canary.pos())) continue;   // retired with its vein already
 
-			if (decoyFor(level.getBlockState(canary.pos())) == null) {
-				mine.remove(entry.getKey());
-				resync(level, player.getUUID(), canary, player);
+			// Sealed as well as still stone. A neighbour can open without a break event — a
+			// piston, a rollback, water — and a decoy with a face open to air is one the player
+			// can simply see, so uncovering it later would count something they looked at.
+			if (!wouldPlaceAt(level, canary.pos())) {
+				retireVein(level, player.getUUID(), mine, canary.vein(), player);
 			}
 		}
 	}
 
 	/**
-	 * Places one decoy at a known position, and tells the client about it.
+	 * Places a one-block decoy at a known position, and tells the client about it.
 	 * <p>
 	 * The same path {@link #maintain} uses once it has chosen somewhere, exposed so a test can
 	 * put a decoy in a place it built rather than waiting for the random search to find one.
-	 * Separating the choosing from the placing is what lets the tests exercise the real
-	 * placement instead of a copy of it that can drift.
 	 *
 	 * @return true when a decoy now exists there
 	 */
 	public static boolean placeAt(ServerPlayer player, ServerLevel level, BlockPos pos) {
-		if (player == null || level == null || pos == null) return false;
+		return placeVein(player, level, List.of(pos)) == 1;
+	}
+
+	/**
+	 * Places one vein over exactly these positions, as far as each of them is acceptable.
+	 *
+	 * @return how many blocks of the vein now exist
+	 */
+	public static int placeVein(ServerPlayer player, ServerLevel level, List<BlockPos> positions) {
+		if (player == null || level == null || positions == null || positions.isEmpty()) return 0;
+
+		long vein = VEINS.incrementAndGet();
+		int placed = 0;
+		for (BlockPos pos : positions) {
+			if (place(player, level, pos, vein)) placed++;
+		}
+		return placed;
+	}
+
+	/** Grows a vein from a seed the way an ore blob spreads: to random face and edge neighbours. */
+	public static int growVein(ServerPlayer player, ServerLevel level, BlockPos seed, int size,
+			java.util.random.RandomGenerator random) {
+
+		long vein = VEINS.incrementAndGet();
+		if (!place(player, level, seed, vein)) return 0;
+
+		List<BlockPos> members = new ArrayList<>();
+		members.add(seed.immutable());
+		for (int attempt = 0; attempt < size * 4 && members.size() < size; attempt++) {
+			BlockPos from = members.get(random.nextInt(members.size()));
+			int dx = random.nextInt(3) - 1;
+			int dy = random.nextInt(3) - 1;
+			int dz = random.nextInt(3) - 1;
+			// Faces and edges, not corners: a blob touching only at a corner reads as two.
+			if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) == 0
+					|| Math.abs(dx) + Math.abs(dy) + Math.abs(dz) == 3) continue;
+
+			BlockPos next = from.offset(dx, dy, dz);
+			if (members.contains(next)) continue;
+			if (place(player, level, next, vein)) members.add(next.immutable());
+		}
+		return members.size();
+	}
+
+	private static boolean place(ServerPlayer player, ServerLevel level, BlockPos pos, long vein) {
+		if (pos == null || !wouldPlaceAt(level, pos)) return false;
 
 		BlockState shown = decoyFor(level.getBlockState(pos));
 		if (shown == null) return false;
@@ -198,7 +286,7 @@ public final class Canaries {
 		BlockPos fixed = pos.immutable();
 		LIVE.computeIfAbsent(player.getUUID(), k -> new LinkedHashMap<>())
 				.put(fixed, new Canary(player.getUUID(), Mc.dimensionId(level), fixed, shown,
-						System.currentTimeMillis()));
+						System.currentTimeMillis(), vein));
 
 		// Through BlockIllusions rather than straight down the connection. The packet is the
 		// easy part; what matters is that something now remembers this client is being lied
@@ -220,25 +308,54 @@ public final class Canaries {
 	}
 
 	/**
-	 * A position that is worth lying about, or null.
+	 * A seed worth growing a vein from, or null.
 	 * <p>
 	 * Random within the radius rather than swept, because a sweep produces decoys in a
-	 * pattern, and a pattern is something somebody eventually notices and avoids.
+	 * pattern, and a pattern is something somebody eventually notices and avoids. The height is
+	 * around the player's own rather than anywhere down to bedrock: a decoy sixty blocks below
+	 * somebody strip-mining at y 10 is one they will never dig towards, cheating or not.
 	 */
 	private static BlockPos pick(ServerLevel level, ServerPlayer player) {
 		StaffConfig cfg = StaffConfig.get();
 		ThreadLocalRandom random = ThreadLocalRandom.current();
 		BlockPos from = player.blockPosition();
 
+		int[] band = heightBand(level, from.getY(), cfg);
+		if (band == null) return null;
+
 		int x = from.getX() + random.nextInt(-cfg.canaryRadius, cfg.canaryRadius + 1);
 		int z = from.getZ() + random.nextInt(-cfg.canaryRadius, cfg.canaryRadius + 1);
-		int y = random.nextInt(level.getMinY() + 8, Math.min(cfg.canaryMaxY, from.getY() + 8) + 1);
+		int y = random.nextInt(band[0], band[1] + 1);
 		BlockPos pos = new BlockPos(x, y, z);
 
 		// Never touch a chunk that is not already loaded. Loading one to place a decoy would
 		// make this feature a source of chunk loading, which is the last thing a server needs
 		// from something whose whole point is to be unnoticeable.
 		return wouldPlaceAt(level, pos) ? pos : null;
+	}
+
+	/**
+	 * The lowest and highest Y decoys go at for a player standing at this height, or null when
+	 * there is nowhere.
+	 * <p>
+	 * Five above the bottom of the world, not eight: people strip-mine at the diamond layer,
+	 * which is a few blocks above bedrock, and a floor of eight put every decoy above them.
+	 */
+	static int[] heightBand(ServerLevel level, int playerY, StaffConfig cfg) {
+		int low = Math.max(level.getMinY() + 5, playerY - BELOW_PLAYER);
+		int high = Math.min(cfg.canaryMaxY, playerY + 8);
+		return high < low ? null : new int[] {low, high};
+	}
+
+	private static boolean tooCloseToAnother(Map<BlockPos, Canary> mine, BlockPos seed) {
+		for (BlockPos placed : mine.keySet()) {
+			if (Math.abs(placed.getX() - seed.getX()) <= VEIN_SPACING
+					&& Math.abs(placed.getY() - seed.getY()) <= VEIN_SPACING
+					&& Math.abs(placed.getZ() - seed.getZ()) <= VEIN_SPACING) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -254,7 +371,13 @@ public final class Canaries {
 				|| state.is(Blocks.DIORITE) || state.is(Blocks.GRANITE);
 	}
 
-	/** Six solid neighbours: no face this could be seen through, and no way in but through one. */
+	/**
+	 * Six solid neighbours and no real diamond beside it: no face this could be seen through, no
+	 * way in but through one, and no real vein for it to merge into.
+	 * <p>
+	 * The last part matters to {@link OreSense}. A decoy touching a real vein would make the
+	 * real vein look sealed where the player sees ore, and the two counts would blur.
+	 */
 	private static boolean fullyEncased(ServerLevel level, BlockPos pos) {
 		for (Direction face : Direction.values()) {
 			BlockPos next = pos.relative(face);
@@ -262,6 +385,7 @@ public final class Canaries {
 
 			BlockState neighbour = level.getBlockState(next);
 			if (neighbour.isAir() || !neighbour.canOcclude()) return false;
+			if (OreSense.isDiamond(neighbour)) return false;
 		}
 		return true;
 	}
@@ -274,7 +398,9 @@ public final class Canaries {
 	 * looks, which defeats it for exactly the players it is aimed at.
 	 */
 	private static BlockState decoyFor(BlockState real) {
-		if (real.is(Blocks.DEEPSLATE)) return Blocks.DEEPSLATE_DIAMOND_ORE.defaultBlockState();
+		if (real.is(Blocks.DEEPSLATE) || real.is(Blocks.TUFF)) {
+			return Blocks.DEEPSLATE_DIAMOND_ORE.defaultBlockState();
+		}
 		if (real.is(Blocks.NETHERRACK)) return Blocks.ANCIENT_DEBRIS.defaultBlockState();
 		if (isPlainStone(real)) return Blocks.DIAMOND_ORE.defaultBlockState();
 		return null;
@@ -282,66 +408,77 @@ public final class Canaries {
 
 	// ------------------------------------------------------------------- contact
 
-	/** What a break turned out to be. */
-	public enum Contact { NOTHING, HIT, RETIRED }
-
 	/**
-	 * Called for every block break, by anybody.
+	 * Called for every block break, by anybody, after the block is gone.
 	 * <p>
-	 * Two questions in one pass, and the order matters. Breaking a decoy is a hit. Breaking
-	 * anything <em>next to</em> a decoy retires it — whoever did it, including another player
-	 * and including the owner mining honestly nearby, because after that break the position is
-	 * reachable and the next person to touch it has a reason to.
+	 * A break opens a face onto each of its six neighbours. Any decoy among them — or the
+	 * broken block itself, which only a client that can target blocks it cannot see manages —
+	 * has been uncovered, and its whole vein goes back to rock on the owner's screen. If the
+	 * breaker is the owner, that is a find. If anybody else is, or an explosion, it is only a
+	 * retirement: nobody else was ever told the vein was there.
 	 */
 	public static Contact onBreak(ServerLevel level, ServerPlayer breaker, BlockPos pos) {
-		if (LIVE.isEmpty() || level == null) return Contact.NOTHING;
+		if (LIVE.isEmpty() || level == null || pos == null) return Contact.NOTHING;
 
 		String world = Mc.dimensionId(level);
-		Contact result = Contact.NOTHING;
+		int uncovered = 0;
+		int retired = 0;
 
 		for (Map.Entry<UUID, Map<BlockPos, Canary>> owned : LIVE.entrySet()) {
-			Canary hit = owned.getValue().get(pos);
+			Map<BlockPos, Canary> mine = owned.getValue();
+			if (mine.isEmpty()) continue;
 
-			if (hit != null && hit.world().equals(world)) {
-				owned.getValue().remove(pos);
-				// Only the owner can have acted on it: nobody else was told it was there.
-				// Another player breaking it is a coincidence, and recording that as evidence
-				// against them would be the worst thing this class could do.
-				if (breaker != null && breaker.getUUID().equals(owned.getKey())) {
-					record(level, breaker, hit);
-					result = Contact.HIT;
-				} else {
-					// Somebody else broke it. No hit, and the owner's client still has to be
-					// told, because it is holding a block that no longer exists either way.
-					resync(level, owned.getKey(), hit, null);
-				}
-				continue;
+			Set<Long> veins = new LinkedHashSet<>();
+			Canary first = null;
+			for (BlockPos at : touched(pos)) {
+				Canary canary = mine.get(at);
+				if (canary == null || !canary.world().equals(world)) continue;
+				if (veins.add(canary.vein()) && first == null) first = canary;
 			}
+			if (veins.isEmpty()) continue;
 
-			// Retirement, in every direction. The resync goes to the owner rather than to
-			// whoever broke the neighbour — they are the only client holding the lie.
-			for (Direction face : Direction.values()) {
-				Canary near = owned.getValue().get(pos.relative(face));
-				if (near == null || !near.world().equals(world)) continue;
-
-				owned.getValue().remove(near.pos());
-				resync(level, owned.getKey(), near, breaker);
-				if (result == Contact.NOTHING) result = Contact.RETIRED;
+			boolean owner = breaker != null && breaker.getUUID().equals(owned.getKey());
+			ServerPlayer known = owner ? breaker : null;
+			for (long vein : veins) {
+				retireVein(level, owned.getKey(), mine, vein, known);
+				retired++;
+			}
+			if (owner) {
+				uncovered += veins.size();
+				record(breaker, first, veins.size());
 			}
 		}
-		return result;
+		return uncovered == 0 && retired == 0 ? Contact.NOTHING : new Contact(uncovered, retired);
+	}
+
+	/** The broken position and its six neighbours. */
+	private static List<BlockPos> touched(BlockPos pos) {
+		List<BlockPos> out = new ArrayList<>(7);
+		out.add(pos);
+		for (Direction face : Direction.values()) out.add(pos.relative(face));
+		return out;
 	}
 
 	/**
 	 * Explosions destroy blocks without any break event, so they are handled separately.
 	 * <p>
 	 * Missing this would leave decoys standing in the middle of a crater with nothing solid
-	 * around them — visible to anybody who walked past, and a false positive for whoever mined
-	 * the obvious diamond in the rubble.
+	 * around them — visible to anybody who walked past. Never a find: nobody aimed the blast.
 	 */
 	public static void onExplosion(ServerLevel level, Collection<BlockPos> destroyed) {
 		if (LIVE.isEmpty() || level == null || destroyed == null) return;
 		for (BlockPos pos : destroyed) onBreak(level, null, pos);
+	}
+
+	/** Takes every block of one vein back, on the owner's screen and in the bookkeeping. */
+	private static void retireVein(ServerLevel level, UUID owner, Map<BlockPos, Canary> mine,
+			long vein, ServerPlayer known) {
+
+		for (Canary canary : List.copyOf(mine.values())) {
+			if (canary.vein() != vein) continue;
+			mine.remove(canary.pos());
+			resync(level, owner, canary, known);
+		}
 	}
 
 	/**
@@ -362,50 +499,48 @@ public final class Canaries {
 		if (player != null && player.connection != null) {
 			// Forgets the illusion as well as correcting it. A resync that only sent the
 			// packet would leave the chunk-send hook re-asserting a decoy that has been
-			// retired — putting the fake ore back on the screen of somebody who has already
-			// been cleared of finding it.
-			io.github.alphain24.staffcore.illusion.BlockIllusions.hide(player, level, io.github.alphain24.staffcore.illusion.BlockIllusions.Source.CANARY, canary.pos());
+			// retired.
+			io.github.alphain24.staffcore.illusion.BlockIllusions.hide(player, level,
+					io.github.alphain24.staffcore.illusion.BlockIllusions.Source.CANARY,
+					canary.pos());
 		}
 	}
 
 	/**
-	 * Records a hit, and opens a case at the threshold.
-	 * <p>
-	 * The resync goes first. Whatever else happens, the client is holding a block that does
-	 * not exist, and leaving it there while a database write happens is how a player ends up
-	 * swinging at air.
+	 * Counts a find. The judgement is not made here — see {@link OreSense}, which is handed
+	 * the count by the break hook along with everything else that break uncovered.
 	 */
-	private static void record(ServerLevel level, ServerPlayer player, Canary canary) {
-		resync(level, player.getUUID(), canary, player);
-
-		int count = HITS.merge(player.getUUID(), 1, Integer::sum);
-		StaffCore.LOGGER.info("[Canary] {} broke a decoy at {} ({} this session)",
+	private static void record(ServerPlayer player, Canary canary, int veins) {
+		int count = HITS.merge(player.getUUID(), veins, Integer::sum);
+		StaffCore.LOGGER.info("[Canary] {} uncovered a decoy vein at {} ({} this session)",
 				Mc.name(player), canary.pos().toShortString(), count);
+	}
 
-		// Severity scales with the count, and stays below the auto-open threshold until the
-		// configured number. One hit is a thing to have on file; three is an investigation.
-		int threshold = Math.max(1, StaffConfig.get().canaryCaseThreshold);
-		int confidence = count >= threshold
-				? Math.min(99, 80 + (count - threshold) * 5)
-				: Math.max(10, (100 / threshold) * count / 2);
+	/**
+	 * How likely one newly opened rock face is to be onto one of this player's decoys, where
+	 * they are standing now.
+	 * <p>
+	 * The decoy blocks they have out, over the rock they could be in: the placement box around
+	 * them, less a fifth for caves and anything else that is not plain stone. That counts every
+	 * block of a vein although a vein is found once, and ignores that a decoy is never placed
+	 * against a tunnel the player already dug — both make it err high, which is the safe way:
+	 * simulated branch mining meets about two fifths of the decoys this expects.
+	 */
+	public static double chancePerFace(ServerLevel level, ServerPlayer player) {
+		if (level == null || player == null) return 0;
+		Map<BlockPos, Canary> mine = LIVE.get(player.getUUID());
+		if (mine == null || mine.isEmpty()) return 0;
 
-		long now = System.currentTimeMillis();
-		io.github.alphain24.staffcore.module.Mods.cases().emit(level.getServer(),
-				io.github.alphain24.staffcore.modules.cases.Signal.Type.XRAY,
-				player.getUUID(), Mc.name(player), confidence,
-				"broke a decoy ore that was never there, at " + canary.pos().toShortString()
-						+ " (" + count + " this session)", "canary",
-				java.util.List.of(
-						io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.location(
-								player.getUUID(), Mc.name(player), Mc.dimensionId(level),
-								canary.pos(), "where the decoy was"),
-						io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.replay(
-								player.getUUID(), Mc.name(player), Mc.dimensionId(level),
-								canary.pos(), now - 10 * 60_000L, now + 60_000L,
-								"how they found their way to it")));
+		String world = Mc.dimensionId(level);
+		long blocks = mine.values().stream().filter(c -> c.world().equals(world)).count();
+		if (blocks == 0) return 0;
 
-		// Nothing here punishes. A canary is about as conclusive as this mod gets, which is
-		// exactly why a human confirming it costs nothing worth saving.
+		StaffConfig cfg = StaffConfig.get();
+		int[] band = heightBand(level, player.blockPosition().getY(), cfg);
+		int height = band == null ? 1 : band[1] - band[0] + 1;
+		double side = 2.0 * cfg.canaryRadius + 1;
+		double rock = side * side * height * 0.8;
+		return Math.min(0.05, blocks / rock);
 	}
 
 	// ------------------------------------------------------------------ lifecycle
@@ -421,13 +556,23 @@ public final class Canaries {
 		HITS.remove(player);
 	}
 
-	/** How many decoys this player currently has out. For the diagnostic. */
+	/** How many decoy blocks this player currently has out. For the diagnostic. */
 	public static int liveFor(UUID player) {
 		Map<BlockPos, Canary> mine = LIVE.get(player);
 		return mine == null ? 0 : mine.size();
 	}
 
-	/** Hits this session. For the player context panel. */
+	/** How many separate veins this player currently has out. */
+	public static int veinsFor(UUID player) {
+		Map<BlockPos, Canary> mine = LIVE.get(player);
+		return mine == null ? 0 : veinsIn(mine);
+	}
+
+	private static int veinsIn(Map<BlockPos, Canary> mine) {
+		return (int) mine.values().stream().mapToLong(Canary::vein).distinct().count();
+	}
+
+	/** Decoy veins this player has uncovered this session. For the player context panel. */
 	public static int hitsFor(UUID player) {
 		return HITS.getOrDefault(player, 0);
 	}

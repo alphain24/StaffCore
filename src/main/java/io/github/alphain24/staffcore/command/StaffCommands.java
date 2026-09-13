@@ -3477,9 +3477,18 @@ public final class StaffCommands {
 				.filter(c -> c.owner().equals(self.getUUID()))
 				.toList();
 
-		src.sendSuccess(() -> Theme.info(mine.size() + " decoy(s) out for you, "
+		src.sendSuccess(() -> Theme.info(
+				io.github.alphain24.staffcore.modules.security.Canaries.veinsFor(self.getUUID())
+				+ " decoy vein(s), " + mine.size() + " block(s), out for you; "
 				+ io.github.alphain24.staffcore.modules.security.Canaries.hitsFor(self.getUUID())
-				+ " hit(s) this session."), false);
+				+ " uncovered this session."), false);
+		var session = io.github.alphain24.staffcore.module.Mods.security().oreSense()
+				.sessionFor(self.getUUID());
+		if (session != null) {
+			src.sendSuccess(() -> Icon.text("  Your score: " + session.confidence() + " — "
+					+ io.github.alphain24.staffcore.modules.security.OreSense.describe(session)
+					+ ".", Theme.MUTED), false);
+		}
 
 		if (mine.isEmpty()) {
 			// The commonest reason, and it is not a fault. Placement needs fully encased plain

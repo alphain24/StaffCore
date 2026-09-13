@@ -6,7 +6,9 @@ import io.github.alphain24.staffcore.gui.Guis;
 import io.github.alphain24.staffcore.gui.Icon;
 import io.github.alphain24.staffcore.gui.Theme;
 import io.github.alphain24.staffcore.modules.security.AntiXrayCompanion;
+import io.github.alphain24.staffcore.module.Mods;
 import io.github.alphain24.staffcore.modules.security.Canaries;
+import io.github.alphain24.staffcore.modules.security.OreSense;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Items;
@@ -14,7 +16,7 @@ import net.minecraft.world.item.Items;
 import java.util.List;
 
 /**
- * The decoys currently out for you, and what breaking one actually does.
+ * The decoy veins currently out for you, and what uncovering one actually does.
  *
  * <h2>Why this screen exists</h2>
  * A decoy is a block only your client has been told about, in rock that is really rock. There
@@ -27,10 +29,11 @@ import java.util.List;
  * cheat on their own server has a much shorter route than this. Being unable to confirm the
  * feature works at all was the larger risk.
  *
- * <h2>The thresholds are on the screen because nobody remembers them</h2>
- * "Does breaking one alert me?" has a three-part answer that depends on a config value, and
- * the honest place for it is next to the count of how many you have broken. The alternative is
- * a staff member assuming one hit opened a case, or assuming three did nothing.
+ * <h2>The score is on the screen because "nothing happened" is the usual complaint</h2>
+ * Uncovering a decoy is counted, not alerted: it goes into the same score as the real diamond
+ * veins a player uncovers, and only an unlikely score says anything. A staff member testing by
+ * digging to one decoy and hearing nothing needs to see that it was counted and why it was not
+ * enough — which is their own session score, next to the count.
  */
 public final class CanaryMenu extends Gui {
 
@@ -39,7 +42,7 @@ public final class CanaryMenu extends Gui {
 	private static final int WHAT_HAPPENS = 22;
 	private static final int YOUR_HITS = 24;
 
-	/** Where the positions go. Two rows is plenty: density is six by default. */
+	/** Where the veins go, one icon each. Two rows hold the default of twelve with room. */
 	private static final int[] SLOTS = {
 			28, 29, 30, 31, 32, 33, 34,
 			37, 38, 39, 40, 41, 42, 43};
@@ -64,7 +67,7 @@ public final class CanaryMenu extends Gui {
 
 		set(TITLE, Icon.of(Items.SCULK_SENSOR)
 				.name("Decoy blocks", Theme.ACCENT)
-				.lore("Fake ore in solid rock that only your client is told about.")
+				.lore("Fake ore veins in solid rock that only your client is told about.")
 				.lore("Nothing an honest player can see, so nothing they dig to.", Theme.MUTED)
 				.build());
 
@@ -86,7 +89,7 @@ public final class CanaryMenu extends Gui {
 				.name(on ? "Running" : "Off", on ? Theme.GOOD : Theme.WARN);
 
 		if (on) {
-			return icon.lore("Topping up to " + cfg.canaryDensity + " per player.")
+			return icon.lore("Topping up to " + cfg.canaryDensity + " veins per player.")
 					.gap()
 					.field("Below y", String.valueOf(cfg.canaryMaxY))
 					.field("Within", cfg.canaryRadius + " blocks")
@@ -109,37 +112,47 @@ public final class CanaryMenu extends Gui {
 				.build();
 	}
 
-	/** The three-part answer to "does breaking one alert me". */
+	/** The answer to "does uncovering one alert me". */
 	private net.minecraft.world.item.ItemStack whatHappens(StaffConfig cfg) {
-		int threshold = Math.max(1, cfg.canaryCaseThreshold);
-
 		return Icon.of(Items.PAPER)
-				.name("What breaking one does", Theme.ACCENT)
-				.lore("Only breaking counts. Walking past does nothing.")
+				.name("What uncovering one does", Theme.ACCENT)
+				.lore("Breaking any block touching a decoy vein counts")
+				.lore("as uncovering it, once for the whole vein.")
 				.gap()
-				.field("1st and 2nd", "noted quietly, no case")
-				.field("At " + threshold, "opens a case, alerts staff")
-				.field("After that", "added to the same case")
+				.lore("It goes into the player's session score, with", Theme.MUTED)
+				.lore("every sealed real diamond vein they uncover.", Theme.MUTED)
 				.gap()
-				.lore("Breaking a block NEXT to a decoy retires it", Theme.MUTED)
-				.lore("silently — that is the honest-miner rule, and it", Theme.MUTED)
-				.lore("is why a tunnel through one is not a hit.", Theme.MUTED)
+				.field("Under " + Math.max(1, cfg.xrayMinimumFinds) + " finds", "nothing said")
+				.field("Score " + cfg.xrayNoticeConfidence + "+", "quiet line to staff")
+				.field("Score " + cfg.xrayAlertConfidence + "+", "alert, cheating signal")
+				.field("Score " + cfg.caseAutoOpenSeverity + "+", "opens a case with replay")
 				.gap()
-				.lore("Nothing here ever punishes anybody.", Theme.MUTED)
+				.lore("An honest tunnel meets one now and then; the", Theme.MUTED)
+				.lore("score expects that. Nothing here ever punishes.", Theme.MUTED)
 				.build();
 	}
 
-	/** How many this viewer has broken, which is nearly always zero and should say so. */
+	/** What this viewer has uncovered, and the score it adds up to. */
 	private net.minecraft.world.item.ItemStack hits() {
 		int mine = Canaries.hitsFor(viewer.getUUID());
+		OreSense.Session session = Mods.security().oreSense().sessionFor(viewer.getUUID());
 
-		return Icon.of(mine > 0 ? Items.REDSTONE : Items.GLASS_PANE)
-				.name("Your hits this session", mine > 0 ? Theme.WARN : Theme.MUTED)
-				.field("Broken", String.valueOf(mine))
-				.gap()
-				.lore(mine > 0
-						? "You have broken a decoy. Expected while testing."
-						: "Counted per player, and reset when the server restarts.",
+		Icon icon = Icon.of(mine > 0 ? Items.REDSTONE : Items.GLASS_PANE)
+				.name("Your mining this session", mine > 0 ? Theme.WARN : Theme.MUTED)
+				.field("Decoy veins uncovered", String.valueOf(mine));
+		if (session != null) {
+			icon.field("Sealed diamond veins", String.valueOf(session.hiddenVeins()))
+					.field("Faces opened", String.valueOf(session.faces()))
+					.field("Blind digging finds", String.format(java.util.Locale.ROOT, "%.1f",
+							session.expected()))
+					.field("Score", session.confidence() + " / 99");
+		}
+		return icon.gap()
+				.lore(StaffConfig.get().xraySkipStaffOnDuty && Mods.staffMode().isActive(viewer)
+						? "Not scored while you are in staff mode."
+						: viewer.isCreative() || viewer.isSpectator()
+								? "Not scored in creative. Test in survival."
+								: "A session ends after 20 minutes without mining.",
 						Theme.MUTED)
 				.build();
 	}
@@ -152,9 +165,11 @@ public final class CanaryMenu extends Gui {
 	 * mean less.
 	 */
 	private void placePositions() {
-		List<Canaries.Canary> mine = Canaries.all().stream()
-				.filter(c -> c.owner().equals(viewer.getUUID()))
-				.toList();
+		java.util.Map<Long, List<Canaries.Canary>> mine = new java.util.LinkedHashMap<>();
+		for (Canaries.Canary canary : Canaries.all()) {
+			if (!canary.owner().equals(viewer.getUUID())) continue;
+			mine.computeIfAbsent(canary.vein(), k -> new java.util.ArrayList<>()).add(canary);
+		}
 
 		if (mine.isEmpty()) {
 			set(SLOTS[0], Icon.of(Items.GLASS_PANE)
@@ -167,11 +182,14 @@ public final class CanaryMenu extends Gui {
 			return;
 		}
 
-		for (int i = 0; i < mine.size() && i < SLOTS.length; i++) {
-			Canaries.Canary canary = mine.get(i);
-			set(SLOTS[i], Icon.of(Items.DIAMOND_ORE)
+		int i = 0;
+		for (List<Canaries.Canary> vein : mine.values()) {
+			if (i >= SLOTS.length) break;
+			Canaries.Canary canary = vein.get(0);
+			set(SLOTS[i++], Icon.of(canary.shown().getBlock().asItem())
 					.name(canary.pos().toShortString(), Theme.ACCENT)
 					.field("World", canary.world())
+					.field("Blocks in vein", String.valueOf(vein.size()))
 					.field("Shown as", canary.shown().getBlock().getName().getString())
 					.gap()
 					.lore("The world really has ordinary rock here.", Theme.MUTED)

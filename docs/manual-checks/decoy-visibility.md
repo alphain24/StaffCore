@@ -25,9 +25,9 @@ not drawn, then:
 - nobody ever walks into one, so the **false-positive rate is zero**, and
 - nobody is ever caught by one, so the **true-positive rate is zero**.
 
-The automated corpus measures the first and cannot see the second. A completely broken decoy
+The automated tests measure the first and cannot see the second. A completely broken decoy
 layer and a perfect one produce the same clean measurement. Until this check is run, the
-measured zero in `docs/decisions.md` means "the retirement rule holds", not "decoys work".
+automated results mean "the server counts and scores decoys correctly", not "decoys work".
 
 **Time needed: about five minutes**, plus however long it takes to get an x-ray resource pack.
 
@@ -61,7 +61,7 @@ Stop the server. In `config/staffcore.json`, set:
 
 ```jsonc
 "canaryBlocks": true,
-"canaryDensity": 20,      // normally 6 — raised so several appear quickly
+"canaryDensity": 20,      // normally 12 veins — raised so several appear quickly
 "canaryMaxY": 60,         // normally 16 — raised so you can dig a test chamber near the surface
 "canaryRadius": 24        // normally 48 — tightened so they land near you
 ```
@@ -144,9 +144,9 @@ being drawn. **The decoy feature does not work**, and the measured false-positiv
 
 ## CHECK 2 — Does the real block come back when the decoy is retired?
 
-A decoy is retired the moment anybody breaks a block next to it. The client must be told, or a
-diamond ore that does not exist stays on their screen forever — and they will eventually swing
-at it.
+A decoy vein is retired the moment anybody breaks a block next to any block of it. The client
+must be told, or a diamond ore that does not exist stays on their screen forever — and they
+will eventually swing at it.
 
 1. Switch to survival or creative (not spectator — you need to break blocks).
 2. Mine toward D and **break the block immediately next to it**, not D itself.
@@ -154,14 +154,15 @@ at it.
 
 ### Pass
 
-The ore at D is gone. You now see ordinary stone. Running `/staff canary` shows one fewer decoy.
+The ore at D is gone, and so is every other block of the same vein. You now see ordinary
+stone. Running `/staff canary` shows that vein gone and one uncovered this session — breaking
+next to your own decoy counts as uncovering it, which is what the score is built on.
 
 ### Fail
 
 The ore is still shown at D after its neighbour was broken. The resync is not arriving. This is
-the ghost-block failure: an honest player will eventually mine at that block, and although
-StaffCore will not record a hit for it (the decoy was retired server-side), they have been shown
-something that does not exist.
+the ghost-block failure: the decoy was retired server-side, so nothing more is counted, but the
+player has been shown something that does not exist and will eventually swing at it.
 
 **Result of check 2:** ☐ pass ☐ fail
 **Notes:** _______________________________________________
@@ -184,8 +185,8 @@ miner meeting one stops being negligible.
    "Canary false-positive rate" section in `docs/decisions.md` to say the visibility check was
    run, by whom, and when.
 3. If **either check failed**: leave Known limits exactly as it is. Open an issue with the
-   result and the notes above. Do not change the false-positive figures — they are still
-   correct about the retirement rule, and still say nothing about whether decoys work.
+   result and the notes above. Do not change the automated figures — they are still correct
+   about how decoys are counted, and still say nothing about whether decoys work.
 
 ---
 

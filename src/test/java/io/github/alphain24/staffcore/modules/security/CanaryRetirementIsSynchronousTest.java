@@ -18,15 +18,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>The failure this exists to stop somebody reintroducing</h2>
  * A player with efficiency and haste breaks about one block a tick. If retirement were handed
- * to an executor, a scheduled task, or the next tick, the sequence "break the neighbour, break
- * the decoy" would land the second break while the decoy was still live — and an honest miner
- * would be recorded as having walked to a block that was never there.
+ * to an executor, a scheduled task, or the next tick, two breaks along one decoy vein would both
+ * land while the vein was still live — and it would be counted as two finds, which is one
+ * decoy's worth of evidence recorded twice against the player.
  * <p>
- * The gametest corpus proves this behaviourally: sixty-two decoys across five honest mining
- * shapes, no hits, with a control that fires. But a behavioural test passes right up until
- * somebody moves the work off-thread for a good reason, and then it keeps passing because the
- * test's own two calls are still ordered. This checks the property that makes the corpus mean
- * something — that there is nowhere for the work to be deferred to.
+ * {@code CanaryTests} proves this behaviourally: mining on along an uncovered vein counts
+ * nothing. But a behavioural test passes right up until somebody moves the work off-thread for
+ * a good reason, and then it keeps passing because the test's own calls are still ordered. This
+ * checks the property that makes it mean something — that there is nowhere for the work to be
+ * deferred to. The score built from the count is deliberately off-thread; see {@code OreSense}.
  */
 class CanaryRetirementIsSynchronousTest {
 

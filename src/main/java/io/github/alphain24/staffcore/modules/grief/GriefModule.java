@@ -200,11 +200,19 @@ public class GriefModule implements Module {
 		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, entity) -> {
 			// Before the ServerPlayer check, because a decoy has to be retired by any break
 			// next to it whoever made it — the position is reachable now regardless.
+			io.github.alphain24.staffcore.modules.security.Canaries.Contact contact =
+					io.github.alphain24.staffcore.modules.security.Canaries.Contact.NOTHING;
 			if (level instanceof ServerLevel server) {
-				io.github.alphain24.staffcore.modules.security.Canaries.onBreak(server,
+				contact = io.github.alphain24.staffcore.modules.security.Canaries.onBreak(server,
 						player instanceof ServerPlayer breaker ? breaker : null, pos);
 			}
 			if (!(player instanceof ServerPlayer sp)) return;
+
+			// What the break uncovered, read now while the world still looks the way it did
+			// the moment the face opened; scored on the worker.
+			if (level instanceof ServerLevel server) {
+				Mods.security().oreSense().onBreak(server, sp, pos, contact);
+			}
 
 			long now = System.currentTimeMillis();
 			// Recorded here rather than inferred later: a rollback runs long after the fact,

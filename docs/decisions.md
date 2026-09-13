@@ -481,6 +481,10 @@ is how a panel misleads the person who trusts it.
 
 **Date:** 2026-09-08
 
+> **Superseded on 2026-09-13** by [Decoys count when uncovered](#decoys-count-when-uncovered).
+> The zero below was real, and so was the reason for it: the rule it measured made a hit
+> impossible for everybody, cheaters included.
+
 Gate 3 asks for this measured against a synthetic legit-mining corpus. Run by
 `CanaryFalsePositiveTests` on a real server, against real decoy placement and the real
 retirement path.
@@ -1702,6 +1706,69 @@ does not repeat its author's guess.
   now the screen's section rather than the panel.
 - **Shift-click checks `staff.gui`.** Some sub-screens can be opened without it, so reaching one
   does not prove the viewer is allowed the panel.
+
+---
+
+<a id="decoys-count-when-uncovered"></a>
+
+## Decoys count when uncovered
+
+**Date:** 2026-09-13
+
+Breaking a decoy in-game did nothing. That was the design working. A decoy sits in sealed rock,
+a hit needed the decoy broken while all six neighbours stood, and breaking any neighbour
+retired the decoy silently. Every client, honest or not, reaches a sealed block through a
+neighbour. The canary false-positive corpus measured zero because nothing could ever hit.
+
+So the event changed from "broke the decoy" to "uncovered it": the break that opens a face onto
+any block of a decoy vein. That counts once for the whole vein, and the vein goes back to rock
+on the owner's screen. An honest tunnel now uncovers decoys too, so an uncovering is no longer a
+verdict. It is a count, and it goes into a score.
+
+**The score (`OreSense`).** Every break is checked for what it uncovered: rock faces that were
+sealed until now, and sealed diamond veins among them. Honest mining finds hidden veins in
+proportion to the faces it opens. X-ray mining finds far more per face, because it digs towards
+ore it can see. The expected count is a Poisson rate (faces times a per-face chance, scaled by
+depth band). Hidden veins and decoy veins are tested separately and the smaller tail kept, then
+doubled for the two tests. Pooled, three decoys would drown in a dozen ordinary veins. The
+result goes on the same 0-99 scale as the sweep, through the same notice and alert lines. A
+floor of `xrayMinimumFinds` (3) stops one lucky strike being reported as one in a thousand.
+
+**Decoys became veins.** Grown like ore blobs, one to ten blocks, mostly small, matched to the
+rock. Twelve veins per player by default instead of six single blocks; configs still on six are
+migrated (v4). They are placed from 24 below the player to 8 above, not down to eight above
+bedrock, which put every decoy above the diamond layer where people strip-mine.
+
+**The rates.** `xrayNaturalVeinsPer1000Faces` comes from vanilla's placed features: the small,
+buried and large diamond features on a triangle peaking at y -64, the medium one uniform below
+y -4. That gives about 2.8 ore blocks per 1000 at the bottom of the world. Each band's rate is
+refined from that server's mining below the notice line, within a factor of three of the
+configured value.
+
+**Measured by `OreSenseSimulationTest`**, which runs the real `uncover` and `score` against a
+simulated world at that density, no caves (every vein sealed, the luckiest case for honest
+miners), decoys topped up the way `Canaries` does it:
+
+| Miner | Sessions | Result |
+|---|---|---|
+| Honest branch mining, 3000 breaks | 150 | 0 alerts, 0 notices, worst score 3; 1.19 sealed veins per 1000 faces; 3.5 decoys against 8.7 expected |
+| Honest, world with 1.5× the diamonds | 60 | 0 alerts, worst score 9 |
+| X-ray, straight to the nearest visible vein or decoy | 60 | 60 alerted, median 9 finds at the alert; 10.1 sealed veins per 1000 faces |
+
+The first cut used 3.0 per 1000 and doubled the decoy expectation. It caught every cheat, but at
+a median of 13 finds. The table is at 2.0 per 1000 and decoy blocks over rock volume. The honest
+rate it would take to reach 2.0 is 1.7 times what the simulation finds at the densest depth.
+
+What this does not establish: how real players mine. Honest players explore caves, and ore seen
+from a cave is never counted. Careful cheaters mix in branch mining. Nobody has watched an x-ray
+client draw a decoy vein, which is still the manual check in `docs/manual-checks/`.
+
+**Threads.** Reading what a break uncovered stays in the break event, because the world can
+only be read on the server thread and the next break changes it: about thirty-six block reads
+below y 16, plus a vein walk when a diamond is touched. Scoring, sessions and calibration run on
+the grief worker. Raising the signal comes back to the server thread, because announcing reads
+the player list. Decoy retirement stays synchronous (`CanaryRetirementIsSynchronousTest`): a
+deferred retirement would let one vein be counted twice.
 
 ---
 

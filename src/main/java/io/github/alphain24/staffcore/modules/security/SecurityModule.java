@@ -52,6 +52,13 @@ public class SecurityModule implements Module {
 	/** Confiscated items are held here rather than destroyed. */
 	private final ContrabandVault vault = new ContrabandVault();
 
+	/** What each player's breaks uncover, scored as they happen. */
+	private final OreSense oreSense = new OreSense();
+
+	public OreSense oreSense() {
+		return oreSense;
+	}
+
 	public ContrabandVault vault() {
 		return vault;
 	}
