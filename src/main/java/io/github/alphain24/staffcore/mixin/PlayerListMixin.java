@@ -40,6 +40,17 @@ public class PlayerListMixin {
 				cir.setReturnValue(punish.disconnectScreen(ban));
 				return;
 			}
+
+			// The connection, for accounts that are not banned themselves. Operators are let
+			// through, as maintenance lets them through: an owner locked out of their own
+			// server by a ban on a connection they share cannot come in to lift it.
+			var addressBan = punish.addressBans().matching(address);
+			if (addressBan != null && !StaffCore.isOperator(profile)) {
+				punish.addressBans().noteRefused(((PlayerList) (Object) this).getServer(),
+						addressBan, profile);
+				cir.setReturnValue(punish.addressBans().screen(addressBan));
+				return;
+			}
 		}
 
 		ControlModule control = StaffCore.modules()

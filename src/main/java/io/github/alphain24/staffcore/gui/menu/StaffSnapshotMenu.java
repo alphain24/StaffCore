@@ -87,10 +87,12 @@ public final class StaffSnapshotMenu extends Gui {
 				.lore("Commands counts every staff command logged.", Theme.MUTED)
 				.build());
 
-		set(SLOT_PUNISH, breakdown(Items.NETHERITE_AXE, "What they issue", snap.byPunishment(),
+		button(SLOT_PUNISH, Icon.of(breakdown(Items.NETHERITE_AXE, "What they issue", snap.byPunishment(),
 				"No punishments on file.",
 				"Forty warnings and forty bans are both forty",
-				"actions. They are not the same record."));
+				"actions. They are not the same record."))
+				.action("Click", "every punishment, with whom and the case")
+				.build(), click -> IssuedPunishmentsMenu.open(viewer, staffName));
 
 		// The qualifying numbers, deliberately beside the flattering ones rather than on a
 		// screen somebody has to go looking for.

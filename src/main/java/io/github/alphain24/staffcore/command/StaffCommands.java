@@ -336,6 +336,101 @@ public final class StaffCommands {
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
 						.suggests(KNOWN_PLAYERS)
 						.executes(ctx -> revoke(ctx, false))));
+
+		// The account and the address it last joined from. Staged for a second person when
+		// requireTwoPersonApproval is on; see AddressBans for why.
+		staff.then(Commands.literal("ipban")
+				.requires(src -> Permissions.check(src, Nodes.IP_BAN))
+				.executes(ctx -> needTarget(ctx, "ipban"))
+				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
+						.then(Commands.argument("reason", StringArgumentType.greedyString())
+								.executes(ctx -> addressBan(ctx, null,
+										StringArgumentType.getString(ctx, "reason"))))));
+
+		staff.then(Commands.literal("tempipban")
+				.requires(src -> Permissions.check(src, Nodes.IP_BAN))
+				.executes(ctx -> needTarget(ctx, "tempipban"))
+				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
+						.then(Commands.argument("duration", StringArgumentType.word())
+								.then(Commands.argument("reason", StringArgumentType.greedyString())
+										.executes(ctx -> {
+											var length = DurationParser.of(
+													StringArgumentType.getString(ctx, "duration"));
+											if (!length.valid()) return fail(ctx, length.problem());
+											if (length.isPermanent()) {
+												return fail(ctx, "For no end, use /staff ipban.");
+											}
+											return addressBan(ctx, length.millis(),
+													StringArgumentType.getString(ctx, "reason"));
+										})))));
+
+		// The address only. For somebody who shares a banned connection: the person the ban
+		// was aimed at stays banned. /staff unban lifts both.
+		staff.then(Commands.literal("unipban")
+				.requires(src -> Permissions.check(src, Nodes.UNPUNISH))
+				.executes(ctx -> needTarget(ctx, "unipban"))
+				.then(Commands.argument("target", GameProfileArgument.gameProfile())
+						.suggests(KNOWN_PLAYERS)
+						.executes(StaffCommands::liftAddressBan)));
+
+		staff.then(Commands.literal("ipbans")
+				.requires(src -> Permissions.check(src, Nodes.HISTORY))
+				.executes(StaffCommands::listAddressBans));
+	}
+
+	private static int addressBan(CommandContext<CommandSourceStack> ctx, Long durationMs,
+			String reason) throws CommandSyntaxException {
+
+		NameAndId target = singleProfile(ctx, "target");
+		if (target == null) return 0;
+		if (StaffConfig.get().requireReason && (reason == null || reason.isBlank())) {
+			return fail(ctx, "This server requires a reason.");
+		}
+
+		audit(ctx, "/staff " + (durationMs == null ? "ipban " : "tempipban ") + target.name()
+				+ " " + reason);
+		var outcome = Mods.punish().addressBans().request(ctx.getSource().getServer(),
+				Actor.of(ctx.getSource()), target, durationMs, reason, null);
+
+		return switch (outcome.kind()) {
+			case REFUSED -> fail(ctx, outcome.message());
+			case STAGED -> ok(ctx, outcome.message());
+			case BANNED -> ok(ctx, outcome.message());
+		};
+	}
+
+	private static int liftAddressBan(CommandContext<CommandSourceStack> ctx)
+			throws CommandSyntaxException {
+		NameAndId target = singleProfile(ctx, "target");
+		if (target == null) return 0;
+
+		audit(ctx, "/staff unipban " + target.name());
+		int n = Mods.punish().addressBans().liftFor(target.id(), ctx.getSource().getTextName(),
+				null);
+		if (n == 0) return fail(ctx, "No IP ban was taken from " + target.name() + ".");
+		return ok(ctx, "Lifted " + n + " IP ban(s) taken from " + target.name() + ". Their own "
+				+ "account ban, if any, is unchanged — /staff unban lifts that.");
+	}
+
+	private static int listAddressBans(CommandContext<CommandSourceStack> ctx) {
+		var bans = Mods.punish().addressBans().inForce(50);
+		if (bans.isEmpty()) return ok(ctx, "No IP bans are in force.");
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text(bans.size() + " IP ban(s) in force", Theme.ACCENT)), false);
+		for (var ban : bans) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  #" + ban.id() + " ", Theme.MUTED)
+					.append(Link.subject(ban.sourceName(), ban.sourceId()))
+					.append(Icon.text("  by " + ban.staffName()
+							+ (ban.approvedBy() == null ? "" : ", approved by " + ban.approvedBy())
+							+ "  " + TimeFormat.ago(ban.createdAt())
+							+ (ban.isPermanent() ? "" : "  ends " + TimeFormat.stamp(ban.expiresAt()))
+							+ (ban.refused() == 0 ? "" : "  refused " + ban.refused() + " login(s)")
+							+ "  — " + ban.reasonOr("no reason"), Theme.MUTED)), false);
+		}
+		return 1;
 	}
 
 	/** Registers the permanent and temporary forms of one rung. */
@@ -2982,6 +3077,9 @@ public final class StaffCommands {
 		if (!outcome.approved()) return fail(ctx, outcome.refusal());
 
 		audit(ctx, "/staff approve " + id);
+		// The staged action runs now, as the approver. An action staged without one has
+		// nothing to run, and saying "approved" for it is still the truth.
+		Mods.accountability().approvals().run(outcome, Actor.of(ctx.getSource()));
 		ctx.getSource().sendSuccess(() -> Theme.good(
 				"Approved " + outcome.staged().action().label() + " staged by "
 						+ outcome.staged().stagedByName() + "."), true);

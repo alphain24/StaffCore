@@ -165,7 +165,10 @@ has already logged off.
 | `/staff kick <player> <reason…>` | `staff.punish.kick` | Disconnect once |
 | `/staff mute` · `/staff tempmute <player> <dur> <reason…>` | `staff.punish.mute` | Silence |
 | `/staff ban` · `/staff tempban <player> <dur> <reason…>` | `staff.punish.ban` | Refuse at login |
-| `/staff unban <player>` · `/staff unmute <player>` | `staff.punish.revoke` | Lift it |
+| `/staff unban <player>` · `/staff unmute <player>` | `staff.punish.revoke` | Lift it; unbanning also lifts any IP ban taken from them |
+| `/staff ipban` · `/staff tempipban <player> [dur] <reason…>` | `security.ipban` | Ban the account and the connection it last joined from. Needs a second person to `/staff approve` while `requireTwoPersonApproval` is on. Refused for loopback or private addresses and for a connection 10 or more other accounts have used |
+| `/staff unipban <player>` | `staff.punish.revoke` | Lift only the connection ban, for somebody who shares it |
+| `/staff ipbans` | `staff.history` | IP bans in force, with who issued, who approved and refused logins |
 | `/staff history <player> [clear]` | `staff.history`, `staff.history.clear` | Their record |
 | `/staff notes <player> [add \| list \| remove <n>]` | `staff.notes[.view\|.remove]` | Sticky records |
 | `/staff chat` · `/staff say <msg>` | `staff.chat` | Toggle channel, one-off line |
@@ -199,7 +202,7 @@ has already logged off.
 | `/staff note <player> <text>` | `staff.notes` | Attributed, timestamped, never deleted |
 | `/staff audit <staff> [days]` | `staff.audit` | Everything a staff member did, with case links |
 | `/staff audit <staff> origins` | `staff.audit.addresses` | Where they acted from — admin-only, hashed |
-| `/staff approve [id]` | `staff.approve` | Confirm somebody else's staged mass rollback, IP ban or inventory edit |
+| `/staff approve [id]` | `staff.approve` | Confirm, and carry out, somebody else's staged IP ban |
 | `/staff perms [list \| set \| unset \| explain]` | `staff.perms` | Built-in groups, when no permissions mod is installed; `explain <player>` prints their resolved nodes |
 | `/staff backup` | `staff.reload` | Write a database backup now |
 | `/staff export [addresses [confirm]]` | `staff.reload` | Dump every table to CSV; addresses are redacted unless asked for |
@@ -431,11 +434,16 @@ known gap — not a bug list.
   the same case: each holds every permission or none, and none of them belongs to an account
   anybody could ask about it afterwards. An approval granted by nobody satisfies the letter of
   the check and none of its purpose.
-- Proposing is a different matter, and still allowed — an automated job that stages a mass
-  rollback for a human to confirm is a perfectly good arrangement.
-- **The practical cost:** on a server with one admin online, a mass rollback, an IP ban and an
-  inventory edit wait until somebody else signs in. Turn it off with
-  `requireTwoPersonApproval` if that trade is wrong for you.
+- Proposing is a different matter, and still allowed — the console can stage an IP ban for a
+  person to confirm.
+- **The practical cost:** on a server with one admin online, an IP ban waits until somebody
+  else signs in. Turn it off with `requireTwoPersonApproval` if that trade is wrong for you.
+- **Only IP bans go through it so far.** Mass rollbacks and inventory edits were meant to as
+  well, and are named in the approval code, but nothing stages them yet: a staff member with
+  the node runs them alone, behind the usual preview, confirm, rate limit and region lock.
+- **IP bans let operators through.** An owner whose own connection is caught by a ban cannot
+  otherwise come in to lift it. Every other account on a banned connection is refused, staff
+  are told who tried, and nothing more is done to that account.
 - **Staff cannot punish sideways or upwards, and the console can.** Rank is not a field
   anywhere — it is the set of StaffCore nodes somebody holds, so it cannot drift from the
   permissions actually granted. You may punish someone whose nodes are a strict subset of

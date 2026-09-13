@@ -298,7 +298,17 @@ public class IdentityModule implements Module {
 	 * would make every session look like a different address and defeat the whole table.
 	 */
 	private static String addressOf(ServerPlayer player) {
-		String raw = player.getIpAddress();
+		return normalise(player.getIpAddress());
+	}
+
+	/**
+	 * An address as the game reports it, reduced to the form every stored address is in.
+	 * <p>
+	 * Public because anything comparing a live connection against stored ones — the IP ban at
+	 * the login gate — has to reduce it the same way, character for character, or a hash of
+	 * "::1" and a hash of "0:0:0:0:0:0:0:1" silently never match.
+	 */
+	public static String normalise(String raw) {
 		if (raw == null) return "unknown";
 		raw = raw.replace("/", "");
 		int slash = raw.lastIndexOf(':');

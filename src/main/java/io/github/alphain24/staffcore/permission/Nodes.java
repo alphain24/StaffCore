@@ -20,6 +20,14 @@ public final class Nodes {
 	public static final String KICK            = "staff.punish.kick";
 	public static final String WARN            = "staff.punish.warn";
 	public static final String UNPUNISH        = "staff.punish.revoke";
+	/**
+	 * Ban the address a player joins from, as well as the account.
+	 * <p>
+	 * Under security rather than {@code staff.punish}, so the moderator group's
+	 * {@code staff.punish.*} does not grant it and the admin group's {@code security.*} does.
+	 * An address is a household, sometimes a town; it is not a moderator's call by default.
+	 */
+	public static final String IP_BAN          = "security.ipban";
 	public static final String HISTORY         = "staff.history";
 	public static final String HISTORY_CLEAR   = "staff.history.clear";
 

@@ -42,6 +42,7 @@ public class PlayerActionsMenu extends Gui {
 	private static final int BRING = 21;
 	private static final int REVOKE_BAN = 23;
 	private static final int REVOKE_MUTE = 24;
+	private static final int IP_BAN = 25;
 
 	private static final int ENDERCHEST = 17;
 	private static final int LOGS = 28;
@@ -192,6 +193,7 @@ public class PlayerActionsMenu extends Gui {
 		action(REVOKE_BAN, Nodes.UNPUNISH, Icon.of(Items.TOTEM_OF_UNDYING)
 				.name("Lift Ban", ban != null ? Theme.GOOD : Theme.MUTED)
 				.lore(ban != null ? "They are banned right now." : "They are not banned.")
+				.lore("Also lifts any IP ban taken from them.", Theme.MUTED)
 				.gap()
 				.action("Click", "lift it")
 				.build(), ban != null, click -> confirmRevoke(true));
@@ -202,6 +204,17 @@ public class PlayerActionsMenu extends Gui {
 				.gap()
 				.action("Click", "lift it")
 				.build(), mute != null, click -> confirmRevoke(false));
+
+		long ipBans = Mods.punish().addressBans().forSource(target.id()).stream()
+				.filter(io.github.alphain24.staffcore.modules.punish.AddressBans.AddressBan::inForce)
+				.count();
+		action(IP_BAN, Nodes.IP_BAN, Icon.of(Items.IRON_BARS)
+				.name("IP Ban", ipBans > 0 ? Theme.WARN : Theme.BAD)
+				.lore(ipBans > 0 ? "Their connection is banned right now."
+						: "Ban the account and the connection it uses.")
+				.gap()
+				.action("Click", ipBans > 0 ? "see or lift it" : "choose a reason")
+				.build(), true, click -> AddressBanMenu.open(viewer, target));
 	}
 
 	private void confirmRevoke(boolean ban) {

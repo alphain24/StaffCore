@@ -34,7 +34,9 @@
 			"io.github.alphain24.staffcore.gametest.AppealTests",
 			"io.github.alphain24.staffcore.gametest.IllegalEnchantTests",
 			"io.github.alphain24.staffcore.gametest.ReplayCameraTests",
-			"io.github.alphain24.staffcore.gametest.CaseBoardTests"
+			"io.github.alphain24.staffcore.gametest.CaseBoardTests",
+			"io.github.alphain24.staffcore.gametest.AddressBanTests",
+			"io.github.alphain24.staffcore.gametest.PunishmentListTests"
 		]
 	},
 	"depends": {

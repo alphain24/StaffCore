@@ -65,10 +65,10 @@ public final class Approvals {
 	}
 
 	/** Why an approval was refused, or the staged action it unlocked. */
-	public record Outcome(boolean approved, Staged staged, String refusal) {
+	public record Outcome(boolean approved, Staged staged, String refusal, OnApproval action) {
 
 		static Outcome refused(String why) {
-			return new Outcome(false, null, why);
+			return new Outcome(false, null, why, null);
 		}
 	}
 
@@ -84,6 +84,21 @@ public final class Approvals {
 	 */
 	private final Map<String, Staged> pending = new ConcurrentHashMap<>();
 
+	/**
+	 * What a staged action does once somebody approves it.
+	 * <p>
+	 * It is handed the approver when it runs and must not hold an Actor of its own: whatever it
+	 * captures is kept until approval, and an Actor kept that long is a permission snapshot
+	 * from before anybody signed. Capture names and ids; act as the approver.
+	 */
+	@FunctionalInterface
+	public interface OnApproval {
+		void run(Actor approver);
+	}
+
+	/** What each staged action does once approved. In memory for the same reason. */
+	private final Map<String, OnApproval> actions = new ConcurrentHashMap<>();
+
 	/** Whether this action needs a second person at all. */
 	public boolean required(Action action) {
 		return StaffConfig.get().requireTwoPersonApproval;
@@ -96,12 +111,28 @@ public final class Approvals {
 	 * @param detail  everything else, for the audit row
 	 */
 	public Staged stage(Actor staff, Action action, String summary, String detail) {
+		return stage(staff, action, summary, detail, null);
+	}
+
+	/**
+	 * As above, with what to do once somebody approves it.
+	 * <p>
+	 * Without this an approval was a signature on nothing: {@code /staff approve} said
+	 * "approved" and no code anywhere went on to do the thing. The action is held beside the
+	 * staged entry and handed to {@link #run} with the approver, so the approver is who the
+	 * record names as having confirmed it.
+	 *
+	 * @param onApproved run with the approver once a second person confirms; may be null
+	 */
+	public Staged stage(Actor staff, Action action, String summary, String detail,
+			OnApproval onApproved) {
 		expireOld();
 
 		String id = newId();
 		Staged staged = new Staged(id, action, staff.id(), staff.name(), summary, detail,
 				System.currentTimeMillis());
 		pending.put(id, staged);
+		if (onApproved != null) actions.put(id, onApproved);
 
 		StaffCore.LOGGER.info("[Approvals] {} staged a {} ({}): {}",
 				staff.name(), action.label(), id, summary);
@@ -151,7 +182,7 @@ public final class Approvals {
 		pending.remove(id);
 		StaffCore.LOGGER.info("[Approvals] {} approved {}'s {} ({})",
 				approver.name(), staged.stagedByName(), staged.action().label(), id);
-		return new Outcome(true, staged, null);
+		return new Outcome(true, staged, null, actions.remove(id));
 	}
 
 	/** Drops a staged action without running it. */
@@ -162,6 +193,7 @@ public final class Approvals {
 		// Anybody can cancel: refusing to let a second person stop something dangerous would
 		// be a strange reading of a two-person rule.
 		pending.remove(id);
+		actions.remove(id);
 		return true;
 	}
 
@@ -178,6 +210,19 @@ public final class Approvals {
 
 	private void expireOld() {
 		pending.values().removeIf(Staged::isExpired);
+		actions.keySet().removeIf(id -> !pending.containsKey(id));
+	}
+
+	/**
+	 * Carries out an approved action as the approver.
+	 *
+	 * @return false when there was nothing to run, which for an action staged without one is
+	 *         the honest answer to "did approving it do anything"
+	 */
+	public boolean run(Outcome outcome, Actor approver) {
+		if (outcome == null || !outcome.approved() || outcome.action() == null) return false;
+		outcome.action().run(approver);
+		return true;
 	}
 
 	/**

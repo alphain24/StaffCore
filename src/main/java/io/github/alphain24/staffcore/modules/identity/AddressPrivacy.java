@@ -14,6 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HexFormat;
+import java.util.List;
 
 /**
  * Stores addresses as one-way hashes, so alt detection keeps working and the addresses stop
@@ -115,6 +116,20 @@ public final class AddressPrivacy {
 		if (prefix == null || prefix.isBlank()) return prefix;
 		if (!enabled() || prefix.startsWith(PREFIX)) return prefix;
 		return PREFIX + digest(salt(conn), prefix);
+	}
+
+	/**
+	 * Every form an address might have been stored in: as it is, and hashed.
+	 * <p>
+	 * For matching a live address against rows that may have been written on either side of
+	 * {@code hashConnectionAddresses} being switched — an IP ban recorded before hashing was
+	 * turned on must still refuse the address it was taken from.
+	 */
+	public static List<String> candidates(Connection conn, String address) {
+		if (address == null || address.isBlank()) return List.of();
+		if (address.startsWith(PREFIX)) return List.of(address);
+		String hashed = PREFIX + digest(salt(conn), address);
+		return List.of(address, hashed);
 	}
 
 	/** True when a stored value is a hash rather than an address. */

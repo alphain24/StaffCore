@@ -554,6 +554,13 @@ public class PunishmentModule implements Module {
 								+ (reason == null || reason.isBlank() ? "" : ": " + reason));
 			}
 
+			// Unbanning a person unbans the connection that was banned because of them. The
+			// reverse is not true: /staff unipban lifts only the address, for somebody who
+			// shares it, and leaves the person's own ban where it was.
+			if (bans) {
+				n += addressBans.liftFor(target, staffName, reason);
+			}
+
 			if (n > 0 && !bans) {
 				ServerPlayer online = server.getPlayerList().getPlayer(target);
 				if (online != null) {
@@ -571,6 +578,13 @@ public class PunishmentModule implements Module {
 	// -------------------------------------------------------------------- querying
 
 	/** Active ban for this uuid, or null. Expired rows are retired as a side effect. */
+	private final AddressBans addressBans = new AddressBans();
+
+	/** Bans on the address a player joins from. */
+	public AddressBans addressBans() {
+		return addressBans;
+	}
+
 	public Punishment activeBan(UUID target) {
 		return activeOfTypes(target, PunishmentType.BAN, PunishmentType.TEMPBAN);
 	}
@@ -619,6 +633,93 @@ public class PunishmentModule implements Module {
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Punish] history failed", e);
 		}
+		return out;
+	}
+
+	/** Everything one staff member issued, newest first. Null for everybody's. */
+	public List<Punishment> issuedBy(String staffName, int limit) {
+		List<Punishment> out = new ArrayList<>();
+		Connection c = conn();
+		if (c == null) return out;
+
+		String sql = staffName == null
+				? "SELECT * FROM punishments ORDER BY created_at DESC LIMIT ?"
+				: "SELECT * FROM punishments WHERE staff_name = ? COLLATE NOCASE "
+						+ "ORDER BY created_at DESC LIMIT ?";
+		try (PreparedStatement ps = c.prepareStatement(sql)) {
+			int i = 1;
+			if (staffName != null) ps.setString(i++, staffName);
+			ps.setInt(i, Math.max(1, limit));
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) out.add(map(rs));
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] could not list punishments issued by {}", staffName, e);
+		}
+		return out;
+	}
+
+	/** One staff member who has issued punishments: how many, how many still in force, and when last. */
+	public record Issuer(String staffName, int issued, int inForce, long lastAt) {}
+
+	/** Everybody who has issued a punishment, most recently active first. */
+	public List<Issuer> issuers() {
+		List<Issuer> out = new ArrayList<>();
+		Connection c = conn();
+		if (c == null) return out;
+
+		long now = System.currentTimeMillis();
+		try (PreparedStatement ps = c.prepareStatement("""
+				SELECT staff_name, COUNT(*),
+				       SUM(CASE WHEN active = 1 AND (expires_at IS NULL OR expires_at > ?)
+				                 AND type IN ('BAN','TEMPBAN','MUTE','TEMPMUTE') THEN 1 ELSE 0 END),
+				       MAX(created_at)
+				FROM punishments WHERE staff_name IS NOT NULL
+				GROUP BY staff_name COLLATE NOCASE
+				ORDER BY MAX(created_at) DESC
+				""")) {
+			ps.setLong(1, now);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) {
+					out.add(new Issuer(rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getLong(4)));
+				}
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] could not list who issued punishments", e);
+		}
+		return out;
+	}
+
+	/**
+	 * Every ban in force, newest first, optionally only one staff member's.
+	 * <p>
+	 * Expired rows are retired on the way past, as {@link #activeBan} does, so a temp-ban that
+	 * ran out an hour ago is not listed as somebody still banned.
+	 */
+	public List<Punishment> bansInForce(String staffName, int limit) {
+		List<Punishment> out = new ArrayList<>();
+		Connection c = conn();
+		if (c == null) return out;
+
+		String sql = "SELECT * FROM punishments WHERE active = 1 AND type IN ('BAN','TEMPBAN')"
+				+ (staffName == null ? "" : " AND staff_name = ? COLLATE NOCASE")
+				+ " ORDER BY created_at DESC LIMIT ?";
+		List<Punishment> expired = new ArrayList<>();
+		try (PreparedStatement ps = c.prepareStatement(sql)) {
+			int i = 1;
+			if (staffName != null) ps.setString(i++, staffName);
+			ps.setInt(i, Math.max(1, limit));
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) {
+					Punishment p = map(rs);
+					if (p.isExpired()) expired.add(p);
+					else out.add(p);
+				}
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] could not list bans in force", e);
+		}
+		for (Punishment p : expired) deactivate(p.id());
 		return out;
 	}
 

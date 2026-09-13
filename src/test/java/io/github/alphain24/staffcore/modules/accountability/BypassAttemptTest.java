@@ -302,7 +302,8 @@ class BypassAttemptTest {
 				Matcher m = call.matcher(body);
 				while (m.find()) {
 					String args = arguments(body, m.end() - 1);
-					if (args != null && !args.contains("Actor.of")) {
+					if (args != null && !args.contains("Actor.of")
+							&& !passesDeclaredActor(body, args)) {
 						anonymous.add(relative + "  " + condense(args));
 					}
 				}
@@ -333,6 +334,18 @@ class BypassAttemptTest {
 	}
 
 	/** The argument list of a call, given the index of its opening bracket. */
+	/**
+	 * Whether the last argument is a variable the same file declares as an {@code Actor} — a
+	 * parameter handed down from whoever resolved it. A literal null, a name string or a
+	 * field are still flagged; an identity that was resolved one call up is not anonymous.
+	 */
+	private static boolean passesDeclaredActor(String body, String args) {
+		int comma = args.lastIndexOf(',');
+		String last = (comma < 0 ? args : args.substring(comma + 1)).trim();
+		if (!last.matches("[A-Za-z_]\\w*") || last.equals("null")) return false;
+		return Pattern.compile("\\bActor\\s+" + last + "\\b").matcher(body).find();
+	}
+
 	private static String arguments(String body, int openIndex) {
 		int depth = 0;
 		boolean inString = false;

@@ -1292,6 +1292,10 @@ final class Schema {
 	 * for databases that already exist; this is how a new one gets it.
 	 */
 	private static final String[] REQUIRED_TABLES = {
+			// Bans on the address a player joins from. See AddressBans.
+			io.github.alphain24.staffcore.modules.punish.AddressBans.TABLE,
+			io.github.alphain24.staffcore.modules.punish.AddressBans.INDEX,
+
 			// What a case can point at and open. See CaseEvidence.
 			io.github.alphain24.staffcore.modules.cases.CaseEvidence.TABLE,
 			io.github.alphain24.staffcore.modules.cases.CaseEvidence.INDEX,

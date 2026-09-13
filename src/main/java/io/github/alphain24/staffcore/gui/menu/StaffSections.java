@@ -139,7 +139,23 @@ public final class StaffSections {
 						.name("History", Theme.ACCENT)
 						.lore("Look up what a player has already had.")
 						.build(),
-						v -> PlayerListMenu.open(v, PlayerListMenu.Purpose.HISTORY))));
+						v -> PlayerListMenu.open(v, PlayerListMenu.Purpose.HISTORY)),
+
+				SectionMenu.Entry.of(Nodes.HISTORY, Icon.of(Items.IRON_BARS)
+						.name("Banned players", Theme.ACCENT)
+						.lore("Everybody banned right now, and who banned them.")
+						.lore("Open somebody's file to lift it.", Theme.MUTED)
+						.gap()
+						.field("In force", String.valueOf(Mods.punish().bansInForce(null, 1000).size()))
+						.build(),
+						BannedPlayersMenu::open),
+
+				SectionMenu.Entry.of(Nodes.HISTORY, Icon.of(Items.NETHERITE_AXE)
+						.name("Punishments by staff", Theme.ACCENT)
+						.lore("What each staff member issued, against whom,")
+						.lore("with the case and its evidence.", Theme.MUTED)
+						.build(),
+						StaffPunishmentsMenu::open)));
 	}
 
 	// -------------------------------------------------------------------- security
