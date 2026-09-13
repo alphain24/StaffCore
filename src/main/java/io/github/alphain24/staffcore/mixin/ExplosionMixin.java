@@ -63,6 +63,7 @@ public class ExplosionMixin {
 
 		// Both read the blocks, so both run here at HEAD, while the blocks are still there.
 		grief.noteBlast(level, self, who, positions);
-		grief.logExplosion(level, positions, source);
+		grief.logExplosion(level, positions, source,
+				self.getBlockInteraction() == Explosion.BlockInteraction.DESTROY);
 	}
 }

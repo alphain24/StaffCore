@@ -120,6 +120,7 @@ final class Schema {
 				    block       TEXT    NOT NULL,
 				    state       TEXT,
 				    gamemode    TEXT,
+				    drops       INTEGER,
 				    world       TEXT    NOT NULL,
 				    x INTEGER, y INTEGER, z INTEGER,
 				    created_at  INTEGER NOT NULL,
@@ -1139,7 +1140,18 @@ final class Schema {
 							) WITHOUT ROWID
 							""");
 				}
-			}
+			},
+
+			// 25 - whether a destroyed block actually came out as an item.
+			//
+			//      A rollback bills whoever broke a block for the item it dropped, and it used
+			//      to decide that from the gamemode alone. An explosion has no gamemode, so
+			//      every block a blast took was billed - but crystals, beds, respawn anchors
+			//      and creepers only drop a fraction of what they destroy, and which fraction
+			//      is random. Charging for all of it took real items off players for blocks
+			//      that never existed. 1 means it dropped, 0 means it did not, and null means
+			//      nobody recorded it, which keeps every older row on the gamemode rule.
+			conn -> addColumn(conn, "block_log", "drops", "INTEGER")
 	);
 
 	/**
@@ -1168,6 +1180,7 @@ final class Schema {
 			{"block_log", "rolled_back", "INTEGER NOT NULL DEFAULT 0"},
 			{"block_log", "state", "TEXT"},
 			{"block_log", "gamemode", "TEXT"},
+			{"block_log", "drops", "INTEGER"},
 			{"rollback_change", "prior_state", "TEXT"},
 			{"pending_actions", "ref_kind", "TEXT"},
 			{"inventory_audit", "items_data", "TEXT"},

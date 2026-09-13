@@ -379,10 +379,15 @@ public class GriefModule implements Module {
 	 * halves are recorded in one pass — the block itself and anything inside it — since an
 	 * exploded chest loses its contents just as surely as a broken one.
 	 *
-	 * @param source what to record as responsible; see {@link #explosionSource}
+	 * @param source     what to record as responsible; see {@link #explosionSource}
+	 * @param dropsItems whether every block this blast destroys comes out as an item. True for
+	 *                   TNT, false for a blast with drop decay — crystals, beds, anchors,
+	 *                   creepers — which drops a random few. Recorded per row so a rollback
+	 *                   bills only for items that could exist
 	 * @return how many positions were recorded
 	 */
-	public int logExplosion(ServerLevel level, List<BlockPos> positions, String source) {
+	public int logExplosion(ServerLevel level, List<BlockPos> positions, String source,
+			boolean dropsItems) {
 		// Retired before the config gate. Whether explosions are logged is a preference;
 		// whether a decoy is left standing in a crater is a correctness question, and tying
 		// the second to the first would make a logging setting quietly cause false positives.
@@ -422,7 +427,7 @@ public class GriefModule implements Module {
 			// Gamemode is left unset: nothing here was in one. It stays null rather than
 			// being borrowed to mean "explosion", because the source name already says that
 			// and a column that means two things is a column nobody can query.
-			log(source, "BREAK", state, pos, world, now, null);
+			log(source, "BREAK", state, pos, world, now, null, dropsItems ? 1 : 0);
 			recorded++;
 		}
 		return recorded;
@@ -860,6 +865,15 @@ public class GriefModule implements Module {
 	 */
 	private void log(String player, String action, BlockState state, BlockPos pos, String world,
 			long now, String gamemode) {
+		log(player, action, state, pos, world, now, gamemode, null);
+	}
+
+	/**
+	 * @param drops whether this change produced an item: {@code 1}, {@code 0}, or {@code null}
+	 *              when nothing better than the gamemode is known — see migration 25
+	 */
+	private void log(String player, String action, BlockState state, BlockPos pos, String world,
+			long now, String gamemode, Integer drops) {
 
 		eventsSeen.incrementAndGet();
 
@@ -881,8 +895,8 @@ public class GriefModule implements Module {
 
 		worker.execute(() -> {
 			String sql = """
-					INSERT INTO block_log (player_name, action, block, state, gamemode, world, x, y, z, created_at)
-					VALUES (?,?,?,?,?,?,?,?,?,?)
+					INSERT INTO block_log (player_name, action, block, state, gamemode, world, x, y, z, created_at, drops)
+					VALUES (?,?,?,?,?,?,?,?,?,?,?)
 					""";
 			try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(sql)) {
 				ps.setString(1, player);
@@ -895,6 +909,8 @@ public class GriefModule implements Module {
 				ps.setInt(8, y);
 				ps.setInt(9, z);
 				ps.setLong(10, now);
+				if (drops == null) ps.setNull(11, java.sql.Types.INTEGER);
+				else ps.setInt(11, drops);
 				ps.executeUpdate();
 				rowsWritten.incrementAndGet();
 			} catch (SQLException | RuntimeException e) {
@@ -996,18 +1012,37 @@ public class GriefModule implements Module {
 
 	/** One logged change a rollback intends to undo, read out before any of it is acted on. */
 	private record Planned(long id, BlockPos pos, String action, String blockId, String state,
-			String gamemode, long at) {
+			String gamemode, Integer drops, long at) {
 
-		/**
-		 * Whether breaking this block actually produced an item for whoever broke it.
-		 * <p>
-		 * A null gamemode is a row from before the column existed. Those are treated as
-		 * survival, which is what every one of them was assumed to be anyway — the safer
-		 * reading, since under-charging a griefer is a smaller wrong than charging a builder
-		 * for a block that never dropped.
-		 */
 		boolean droppedAnything() {
-			return !"creative".equalsIgnoreCase(gamemode) && !"spectator".equalsIgnoreCase(gamemode);
+			return GriefModule.droppedAnything(drops, gamemode);
+		}
+	}
+
+	/**
+	 * Whether a logged break produced an item for whoever it is on — and so whether a rollback
+	 * that puts the block back may bill them for it.
+	 * <p>
+	 * What the row recorded wins when it recorded anything: a blast with drop decay says 0,
+	 * because it drops a random few of the blocks it takes and there is no telling which. The
+	 * few that did drop go unbilled. That is the smaller wrong, next to taking real items off
+	 * somebody for the many that never existed.
+	 * <p>
+	 * Otherwise the gamemode decides. A null gamemode is a row from before the column existed;
+	 * those are treated as survival, which is what every one of them was assumed to be.
+	 */
+	static boolean droppedAnything(Integer drops, String gamemode) {
+		if (drops != null) return drops != 0;
+		return !"creative".equalsIgnoreCase(gamemode) && !"spectator".equalsIgnoreCase(gamemode);
+	}
+
+	/** Blocks until the log writer has caught up. For self-checks and tests. */
+	public void awaitWrites() {
+		if (worker == null) return;
+		try {
+			worker.submit(() -> { }).get(5, java.util.concurrent.TimeUnit.SECONDS);
+		} catch (Exception e) {
+			StaffCore.LOGGER.warn("[Grief] log writer did not catch up: {}", e.toString());
 		}
 	}
 
@@ -1877,6 +1912,7 @@ public class GriefModule implements Module {
 							rs.getString("block"),
 							rs.getString("state"),
 							rs.getString("gamemode"),
+							nullableInt(rs, "drops"),
 							rs.getLong("created_at")));
 				}
 			}
@@ -2085,6 +2121,11 @@ public class GriefModule implements Module {
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Grief] could not retire rolled-back entries", e);
 		}
+	}
+
+	private static Integer nullableInt(ResultSet rs, String column) throws SQLException {
+		int value = rs.getInt(column);
+		return rs.wasNull() ? null : value;
 	}
 
 	private Entry map(ResultSet rs) throws SQLException {

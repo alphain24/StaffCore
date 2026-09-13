@@ -58,6 +58,52 @@ public class ExplosionGriefTests {
 		helper.succeed();
 	}
 
+	/**
+	 * A blast pinned on a player, then a rollback preview of that player's damage here.
+	 * {@code interaction} picks the drop rule: BLOCK decays by default (crystals, beds,
+	 * anchors), TNT drops everything by default.
+	 */
+	private static io.github.alphain24.staffcore.modules.grief.GriefModule.RollbackResult
+			blastAndPreview(GameTestHelper helper, Level.ExplosionInteraction interaction) {
+
+		ServerPlayer player = Harness.mockPlayer(helper);
+		ServerLevel level = helper.getLevel();
+		Vec3 centre = dirtCube(helper);
+
+		level.explode(null, level.damageSources().explosion(null, player), null,
+				centre.x, centre.y, centre.z, 2.0F, false, interaction);
+		Mods.grief().awaitWrites();
+
+		return Mods.grief().rollback(level, Harness.name(player), BlockPos.containing(centre), 3,
+				60_000L, true);
+	}
+
+	@GameTest
+	public void aDecayBlastIsNotBilledOnRollback(GameTestHelper helper) {
+		var preview = blastAndPreview(helper, Level.ExplosionInteraction.BLOCK);
+
+		Harness.check(helper, preview.reverted() > 0,
+				"the blast was not logged against the player, so the billing proves nothing");
+		// Before, every block here was billed although only a random few came out as items.
+		Harness.check(helper, preview.charges().isEmpty(),
+				"a crystal-style blast was billed for blocks it never dropped: "
+						+ preview.charges());
+		helper.succeed();
+	}
+
+	@GameTest
+	public void aTntBlastIsStillBilledOnRollback(GameTestHelper helper) {
+		var preview = blastAndPreview(helper, Level.ExplosionInteraction.TNT);
+
+		Harness.check(helper, preview.reverted() > 0,
+				"the blast was not logged against the player, so the billing proves nothing");
+		// TNT drops every block it takes. Not billing it would let a griefer keep the lot
+		// while the wall goes back up.
+		Harness.check(helper, !preview.charges().isEmpty(),
+				"a TNT blast, which drops everything, was not billed at all");
+		helper.succeed();
+	}
+
 	@GameTest
 	public void aWindChargeBlastCountsNothing(GameTestHelper helper) {
 		// Same cube, same power, the player as the direct source — everything that would get
