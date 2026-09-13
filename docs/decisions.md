@@ -1650,6 +1650,35 @@ there is nothing to run and nothing that needed running.
 
 ---
 
+## The appeal window, and why the ban is checked twice
+
+Banned players asked for the Discord link to be clickable and the appeal code to be copyable.
+The ban screen cannot do either. The 26.2 client draws the disconnect reason with a text widget
+whose click handler is never set, so nothing on that screen can be clicked, whatever the server
+sends. That was checked in the client bytecode rather than assumed.
+
+A dialog can do both, and the client accepts one while the connection is still being set up. So
+a banned player now gets a window with "Open our Discord", "Copy appeal code" and "Leave", and
+the ordinary ban screen after it.
+
+Vanilla asks "may this profile in?" twice: at login, and again at the end of setup. The login
+gate answers both, and only the first may defer a ban. `BanNoticeLoginMixin` marks that call in
+a try/finally, so a check that throws cannot leave the mark set for the second. The window is
+queued after the registries are sent and before the spawn is prepared, as a setup task that never
+finishes while the ban stands. The end-of-setup check is unchanged and still refuses. Each new
+hook can fail on its own, and the result is the plain ban screen one step later. None of them
+decides whether a banned player gets in, which is why all three are optional and the login gate
+is still the only required hook.
+
+`BanNoticeTests` issues a real ban and checks three things: the ordinary check refuses, only the
+marked call defers, and the next check on the same thread refuses again, including after a
+marked check that threw. It also round-trips the window through the setup-stage packet codec,
+because a dialog the codec rejects is a client kick with no reason. What it cannot do is drive a
+real client through setup. Whether the window actually appears and its buttons work is a manual
+check in a real client, and it had not been done when this was written.
+
+---
+
 ## Back follows the path you took
 
 Every back arrow used to name its own destination, and most named the staff panel. That was

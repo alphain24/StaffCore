@@ -75,6 +75,18 @@ public final class StartupCheck {
 			new Target(Tier.REQUIRED, "Bans and maintenance login gate", "net.minecraft.server.players.PlayerList",
 					"canPlayerLogin", "staffcore$gateLogin", MIXIN_PKG + "PlayerListMixin",
 					"java.net.SocketAddress", "net.minecraft.server.players.NameAndId"),
+			// The appeal window. All three optional, and not because they are unimportant:
+			// each one failing leaves a banned player refused with the ordinary ban screen,
+			// which is what happened before any of them existed. The login gate above is the
+			// only hook that decides whether a banned player gets in.
+			new Target(Tier.OPTIONAL, "Ban appeal window — login stage", "net.minecraft.server.network.ServerLoginPacketListenerImpl",
+					"verifyLoginAndFinishConnectionSetup", "staffcore$markLoginStage",
+					MIXIN_PKG + "BanNoticeLoginMixin", "com.mojang.authlib.GameProfile"),
+			new Target(Tier.OPTIONAL, "Ban appeal window — shown during setup", "net.minecraft.server.network.ServerConfigurationPacketListenerImpl",
+					"addOptionalTasks", "staffcore$queueBanNotice", MIXIN_PKG + "BanNoticeSetupMixin"),
+			new Target(Tier.OPTIONAL, "Ban appeal window — Leave button", "net.minecraft.server.network.ServerCommonPacketListenerImpl",
+					"handleCustomClickAction", "staffcore$hearLeave", MIXIN_PKG + "BanNoticeClickMixin",
+					"net.minecraft.network.protocol.common.ServerboundCustomClickActionPacket"),
 			new Target(Tier.OPTIONAL, "Vanish — join suppression and tab list", "net.minecraft.server.players.PlayerList",
 					"placeNewPlayer", "staffcore$restoreVanishEarly", MIXIN_PKG + "VanishJoinMixin",
 					"net.minecraft.network.Connection",

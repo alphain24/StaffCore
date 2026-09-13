@@ -9,6 +9,9 @@
   "required": false,
   "package": "io.github.alphain24.staffcore.mixin",
   "mixins": [
+    "BanNoticeClickMixin",
+    "BanNoticeLoginMixin",
+    "BanNoticeSetupMixin",
     "BlockItemMixin",
     "ChunkSendMixin",
     "DisplayInterpolationAccessor",

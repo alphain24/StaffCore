@@ -348,6 +348,24 @@ public final class StaffConfig {
 	// ---- appeals -------------------------------------------------------------
 	/** Shown on the ban screen. Empty hides the appeal line entirely. */
 	public String discordInvite = "";
+	/**
+	 * When a banned player tries to join, show them a window with an "Open our Discord" button
+	 * and a "Copy appeal code" button before refusing them.
+	 * <p>
+	 * The ban screen cannot do either: the Minecraft client does not let anything on its
+	 * disconnect screen be clicked. The window appears while the connection is still being set
+	 * up, before the player is placed in the world, and the ban is checked again after it — so
+	 * this changes what a banned player sees, never whether they get in. Off shows the plain
+	 * ban screen straight away, as before. Needs a discordInvite link or an appeal code to
+	 * have anything to show.
+	 */
+	public boolean banAppealWindow = true;
+	/**
+	 * How long the appeal window stays up before the player is shown the ban screen anyway,
+	 * in seconds, 15-600. The connection stays open that long, so keep it about as long as
+	 * reading takes.
+	 */
+	public int banAppealWindowSeconds = 120;
 	public boolean allowInGameAppeals = true;
 
 	// ---- reports -------------------------------------------------------------
@@ -986,6 +1004,24 @@ public final class StaffConfig {
 					+ "would purge the whole table on every sweep. Treating it as 0 (keep "
 					+ "forever). Set a positive number of days, or 0 deliberately.");
 			cfg.positionRetentionDays = 0;
+		}
+
+		if (cfg.banAppealWindowSeconds < 15 || cfg.banAppealWindowSeconds > 600) {
+			int was = cfg.banAppealWindowSeconds;
+			cfg.banAppealWindowSeconds = Math.max(15, Math.min(600, cfg.banAppealWindowSeconds));
+			problems.add("banAppealWindowSeconds is " + was + ", which is outside 15-600. Using "
+					+ cfg.banAppealWindowSeconds + ". Shorter and nobody can read it; longer "
+					+ "and a banned player holds a connection open for no reason.");
+		}
+
+		// Reported, not changed: the text still shows on the ban screen, it just cannot be a
+		// button — and a server owner who typed it deserves to know why nothing is clickable.
+		if (cfg.discordInvite != null && !cfg.discordInvite.isBlank()
+				&& io.github.alphain24.staffcore.modules.appeal.BanNotice
+						.inviteLink(cfg.discordInvite) == null) {
+			problems.add("discordInvite is \"" + cfg.discordInvite + "\", which is not a web "
+					+ "link, so it is shown as text and cannot be clicked. Use an invite such as "
+					+ "https://discord.gg/abc123.");
 		}
 
 		for (String problem : problems) {

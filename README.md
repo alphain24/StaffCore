@@ -299,7 +299,9 @@ Changing a default in the code alone would never reach a server that has already
 
   "staffModeGameMode": "survival",     // creative | survival | spectator while on duty
   "offences": [ ... ],                 // the punish menu is built from this
-  "discordInvite": "",                 // shown on the ban screen so people can appeal
+  "discordInvite": "",                 // e.g. https://discord.gg/abc123 - shown on the ban screen so people can appeal
+  "banAppealWindow": true,             // banned players get "Open our Discord" and "Copy appeal code" buttons
+  "banAppealWindowSeconds": 120,       // how long that window stays up, 15-600
   "allowInGameAppeals": true,
   "detectBanEvasion": true,
   "altSubnetMatching": true,           // also link accounts sharing an address *range*

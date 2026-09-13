@@ -301,6 +301,12 @@ public class StaffCore implements ModInitializer {
 			greetStaff(player);
 		});
 
+		// A banned player who closes the game on the appeal window leaves during setup, which the
+		// play-stage disconnect below never sees.
+		net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents.DISCONNECT.register(
+				(handler, mc) -> io.github.alphain24.staffcore.modules.appeal.BanNotice.forget(
+						handler.getOwner().id()));
+
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, mc) -> {
 			ServerPlayer player = handler.player;
 

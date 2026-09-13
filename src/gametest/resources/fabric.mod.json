@@ -27,6 +27,7 @@
 			"io.github.alphain24.staffcore.gametest.NavigationTests",
 			"io.github.alphain24.staffcore.gametest.GriefRehearsalTests",
 			"io.github.alphain24.staffcore.gametest.ExplosionGriefTests",
+			"io.github.alphain24.staffcore.gametest.BanNoticeTests",
 			"io.github.alphain24.staffcore.gametest.ReplayCameraTests"
 		]
 	},

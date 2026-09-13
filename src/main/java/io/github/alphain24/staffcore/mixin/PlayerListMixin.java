@@ -37,6 +37,12 @@ public class PlayerListMixin {
 		if (punish != null) {
 			Punishment ban = punish.activeBan(profile.id());
 			if (ban != null) {
+				// At the login-stage check only, a ban can be let through to setup so the
+				// player sees the appeal window. The end-of-setup check comes back here, is
+				// never deferred, and refuses. See BanNotice.
+				if (io.github.alphain24.staffcore.modules.appeal.BanNotice.defer(profile.id(), ban)) {
+					return;
+				}
 				cir.setReturnValue(punish.disconnectScreen(ban));
 				return;
 			}
