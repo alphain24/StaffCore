@@ -35,8 +35,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * Everything else — the delta encoding, the decision to start a new run, the transaction — runs
  * on the grief log's writer thread. That thread is shared rather than new on purpose: this
- * database's entire concurrency story is one connection and one writer, and a second pool
- * would be a second thread contending for the same lock.
+ * database takes one writer at a time, and a second pool would be a second thread waiting for
+ * the same write lock.
  *
  * <h2>The encoder state has exactly one owner</h2>
  * Everything in {@link Encoder} is touched only by the writer thread. The tick thread owns

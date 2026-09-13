@@ -314,19 +314,23 @@ public final class PositionLog {
 		if (!StaffCore.storage().isReady()) return 0;
 
 		int[] deleted = {0};
-		// One transaction. A run row without its samples is a hole in a query result; samples
-		// without their run are bytes nothing can ever read or delete again.
-		StaffCore.storage().inTransaction(conn -> {
+		// A run and its samples go in the same transaction: a run row without its samples is a
+		// hole in a query result; samples without their run are bytes nothing can ever read or
+		// delete again. Runs are taken a slice at a time, because at ten samples a second a
+		// week of them is millions of rows, and one transaction that size holds the write lock
+		// long enough for the server thread to notice.
+		StaffCore.storage().purgeInSlices("position_run", "started_at", cutoff, 200,
+				(conn, before) -> {
 			try (PreparedStatement ps = conn.prepareStatement(
 					"DELETE FROM position_log WHERE run IN "
 							+ "(SELECT id FROM position_run WHERE started_at < ?)")) {
-				ps.setLong(1, cutoff);
+				ps.setLong(1, before);
 				ps.executeUpdate();
 			}
 			try (PreparedStatement ps = conn.prepareStatement(
 					"DELETE FROM position_run WHERE started_at < ?")) {
-				ps.setLong(1, cutoff);
-				deleted[0] = ps.executeUpdate();
+				ps.setLong(1, before);
+				deleted[0] += ps.executeUpdate();
 			}
 		});
 

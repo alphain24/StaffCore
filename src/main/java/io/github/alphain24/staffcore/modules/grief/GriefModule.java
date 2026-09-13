@@ -146,9 +146,9 @@ public class GriefModule implements Module {
 			});
 		}
 		pickups.attach(worker);
-		// Position sampling shares this thread rather than starting one of its own. The whole
-		// concurrency story of this database is a single connection and a single writer, so a
-		// second pool would be a second thread contending for the same lock to no benefit.
+		// Position sampling shares this thread rather than starting one of its own. SQLite
+		// takes one writer at a time however many threads ask, so a second pool would be a
+		// second thread waiting for the same write lock, to no benefit.
 		io.github.alphain24.staffcore.modules.replay.PositionSampler.attach(worker);
 
 		if (listenerRegistered) return;
@@ -294,52 +294,61 @@ public class GriefModule implements Module {
 		if (days <= 0 || !StaffCore.storage().isReady() || worker == null) return;
 
 		long cutoff = System.currentTimeMillis() - days * 86_400_000L;
-		// Both deletes in one transaction. A block-log row and the container snapshot taken
-		// with it are one record split across two tables, and a crash between the two deletes
-		// would leave the half that answers nothing without the half that answers something.
-		worker.execute(() -> StaffCore.storage().inTransaction(conn -> {
-			try (PreparedStatement ps = conn.prepareStatement(
-					"DELETE FROM block_log WHERE created_at < ?")) {
-				ps.setLong(1, cutoff);
-				int gone = ps.executeUpdate();
-				if (gone > 0) {
-					StaffCore.LOGGER.info("[Grief] Purged {} block log entries older than {} days",
-							gone, days);
+		// A slice at a time, each slice one transaction. A block-log row and the container
+		// snapshot taken with it are one record split across two tables, so every slice
+		// deletes both up to the same moment; and between slices the write lock is let go, so
+		// a day's purge on a busy server no longer makes every punishment and case written
+		// meanwhile wait for the whole of it. See Storage#purgeInSlices.
+		worker.execute(() -> {
+			int[] gone = {0, 0};
+			StaffCore.storage().purgeInSlices("block_log", "created_at", cutoff, PURGE_SLICE_ROWS,
+					(conn, before) -> {
+				try (PreparedStatement ps = conn.prepareStatement(
+						"DELETE FROM block_log WHERE created_at < ?")) {
+					ps.setLong(1, before);
+					gone[0] += ps.executeUpdate();
 				}
-			}
 
-			// Teleports are kept as long as the block history they sit beside. See TeleportLog.
-			try (PreparedStatement ps = conn.prepareStatement(
-					"DELETE FROM teleport_log WHERE at < ?")) {
-				ps.setLong(1, cutoff);
-				ps.executeUpdate();
-			}
-
-			// Drops belong to their row the same way, and would be the same unbounded table.
-			try (PreparedStatement ps = conn.prepareStatement(
-					"DELETE FROM block_drops WHERE created_at < ?")) {
-				ps.setLong(1, cutoff);
-				ps.executeUpdate();
-			}
-
-			// Container snapshots outlive their block-log row otherwise, and nothing else
-			// ever deletes them. A chest broken on a busy server writes up to twenty-seven
-			// rows, so an unbounded table of them is not a rounding error — and every one of
-			// them is answering a question the row it belonged to can no longer be asked.
-			//
-			// Rollback restore points keep their own snapshots under their own timestamps,
-			// so those are excluded here and purged on the restore-point schedule instead.
-			try (PreparedStatement ps = conn.prepareStatement(
-					"DELETE FROM container_snapshot WHERE created_at < ? AND created_at NOT IN "
-							+ "(SELECT created_at FROM rollback_point)")) {
-				ps.setLong(1, cutoff);
-				int gone = ps.executeUpdate();
-				if (gone > 0) {
-					StaffCore.LOGGER.info("[Grief] Purged {} container snapshot row(s)", gone);
+				// Drops belong to their row the same way, and would be the same unbounded table.
+				try (PreparedStatement ps = conn.prepareStatement(
+						"DELETE FROM block_drops WHERE created_at < ?")) {
+					ps.setLong(1, before);
+					ps.executeUpdate();
 				}
+
+				// Teleports are kept as long as the block history they sit beside. See
+				// TeleportLog.
+				try (PreparedStatement ps = conn.prepareStatement(
+						"DELETE FROM teleport_log WHERE at < ?")) {
+					ps.setLong(1, before);
+					ps.executeUpdate();
+				}
+
+				// Container snapshots outlive their block-log row otherwise, and nothing else
+				// ever deletes them. A chest broken on a busy server writes up to twenty-seven
+				// rows, so an unbounded table of them is not a rounding error.
+				//
+				// Rollback restore points keep their own snapshots under their own timestamps,
+				// so those are excluded here and purged on the restore-point schedule instead.
+				try (PreparedStatement ps = conn.prepareStatement(
+						"DELETE FROM container_snapshot WHERE created_at < ? AND created_at NOT IN "
+								+ "(SELECT created_at FROM rollback_point)")) {
+					ps.setLong(1, before);
+					gone[1] += ps.executeUpdate();
+				}
+			});
+			if (gone[0] > 0) {
+				StaffCore.LOGGER.info("[Grief] Purged {} block log entries older than {} days",
+						gone[0], days);
 			}
-		}));
+			if (gone[1] > 0) {
+				StaffCore.LOGGER.info("[Grief] Purged {} container snapshot row(s)", gone[1]);
+			}
+		});
 	}
+
+	/** Rows of block history per purge slice: a few milliseconds of write lock each. */
+	static final int PURGE_SLICE_ROWS = 5_000;
 
 	/**
 	 * Drops position history past its retention window.
@@ -1281,12 +1290,6 @@ public class GriefModule implements Module {
 	 * screen next to a logged error is diagnosable; a hung one is not.
 	 */
 	/**
-	 * The same worker, for anything else that needs to read the log without stopping the tick.
-	 * <p>
-	 * Shared rather than duplicated: a second pool would double the connections against a
-	 * database whose whole concurrency story is one connection and a write lock.
-	 */
-	/**
 	 * Runs a write on the log writer thread, for another module's rows. Dropped when the writer
 	 * is not running, which only happens before the module is enabled or after shutdown.
 	 */
@@ -1294,6 +1297,12 @@ public class GriefModule implements Module {
 		if (worker != null && !worker.isShutdown()) worker.execute(work);
 	}
 
+	/**
+	 * The same worker, for anything else that needs to read the log without stopping the tick.
+	 * <p>
+	 * Shared rather than duplicated: SQLite takes one writer at a time, so more threads would
+	 * only be more of them waiting for it.
+	 */
 	public <T> void readOffThread(MinecraftServer server, java.util.function.Supplier<T> read,
 			T onFailure, Consumer<T> onDone) {
 		readAsync(server, read, onFailure, onDone);

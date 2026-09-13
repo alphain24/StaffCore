@@ -18,7 +18,7 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * SQLite-backed storage. One connection, opened when the server starts.
+ * SQLite-backed storage, opened when the server starts.
  * <p>
  * Three things here matter more than the plumbing:
  * <ul>
@@ -51,8 +51,40 @@ public final class Storage {
 	private Path databasePath;
 	private Path worldDir;
 
+	/**
+	 * How long a write waits for another connection's write to finish before giving up, in
+	 * milliseconds.
+	 * <p>
+	 * Only background writes and the occasional rollback hold the write lock for more than a
+	 * moment, and the big background ones are cut into slices (see {@link #purgeInSlices}), so
+	 * a wait of this length means something is wrong rather than busy.
+	 */
+	static final int BUSY_TIMEOUT_MS = 5_000;
+
+	/**
+	 * The thread that opened the database — the server thread, in a running server — and the
+	 * only one that uses {@link #conn}. Every other thread gets a connection of its own.
+	 *
+	 * <h2>Why a connection per thread</h2>
+	 * A JDBC connection has one transaction state. The grief log's writer thread and the server
+	 * thread used to share one connection, so while the writer was inside
+	 * {@link #inTransaction} — autocommit off — a single insert from the server thread became
+	 * part of the writer's transaction: committed with it, or rolled back with it when the
+	 * writer failed. Two transactions at once interleaved their commits. Nothing logged either;
+	 * a punishment row would simply not be there.
+	 * <p>
+	 * SQLite transactions are per connection, and the database runs in WAL mode, where readers
+	 * never wait for a writer and two writers take turns. So each thread having its own
+	 * connection removes the whole class of problem without every one of the mod's statements
+	 * having to take a lock.
+	 */
+	private volatile Thread owner;
+	private final ThreadLocal<Connection> threadConnections = new ThreadLocal<>();
+	private final List<Connection> otherConnections = new java.util.concurrent.CopyOnWriteArrayList<>();
+
 	public void open(Path worldDir) {
 		this.worldDir = worldDir;
+		this.owner = Thread.currentThread();
 		Path db = worldDir.resolve(FILE);
 		this.databasePath = db;
 
@@ -90,11 +122,9 @@ public final class Storage {
 	 */
 	private boolean connect(Path db) {
 		try {
-			conn = DriverManager.getConnection("jdbc:sqlite:" + db);
+			conn = newConnection(db);
 			try (Statement st = conn.createStatement()) {
 				st.executeUpdate("PRAGMA journal_mode=WAL");
-				st.executeUpdate("PRAGMA synchronous=NORMAL");
-				st.executeUpdate("PRAGMA foreign_keys=ON");
 			}
 
 			if (!Files.exists(db) || Files.size(db) == 0) return true;   // brand new
@@ -173,6 +203,37 @@ public final class Storage {
 		return false;
 	}
 
+	/**
+	 * A connection with the settings every connection to this file needs.
+	 * <p>
+	 * {@code transaction_mode=IMMEDIATE} makes {@link #inTransaction} take the write lock when it
+	 * begins rather than at its first write. With a second connection writing, a transaction
+	 * that read first and wrote second could otherwise fail outright at the write — SQLite
+	 * cannot upgrade a read to a write once another connection has committed in between, and
+	 * does not wait when that happens. Waiting at the start is the version that waits.
+	 */
+	private static Connection newConnection(Path db) throws SQLException {
+		java.util.Properties settings = new java.util.Properties();
+		settings.setProperty("transaction_mode", "IMMEDIATE");
+		settings.setProperty("busy_timeout", String.valueOf(BUSY_TIMEOUT_MS));
+		Connection fresh = DriverManager.getConnection("jdbc:sqlite:" + db, settings);
+		try (Statement st = fresh.createStatement()) {
+			st.executeUpdate("PRAGMA synchronous=NORMAL");
+			st.executeUpdate("PRAGMA foreign_keys=ON");
+			st.executeUpdate("PRAGMA busy_timeout=" + BUSY_TIMEOUT_MS);
+		} catch (SQLException e) {
+			// A damaged file fails here. The half-open connection has to go, or it keeps the
+			// file open and the recovery that follows cannot move it aside on Windows.
+			try {
+				fresh.close();
+			} catch (SQLException ignored) {
+				// the original error is the useful one
+			}
+			throw e;
+		}
+		return fresh;
+	}
+
 	// ---------------------------------------------------------------- transactions
 
 	/** Work that writes more than one row, and must not be observed half-done. */
@@ -196,6 +257,7 @@ public final class Storage {
 	 * @return true when the work committed
 	 */
 	public boolean inTransaction(Unit work) {
+		Connection conn = conn();
 		if (conn == null) return false;
 
 		boolean previous;
@@ -205,12 +267,28 @@ public final class Storage {
 			return false;
 		}
 
+		// Already inside one on this thread: join it. Committing here would commit the outer
+		// transaction's first half behind its back, and a failure later in the outer work
+		// could then only roll back the second half.
+		if (!previous) {
+			try {
+				work.run(conn);
+				return true;
+			} catch (SQLException e) {
+				// Up to the outer transaction, which rolls the whole thing back. Swallowing it
+				// here and returning false would let the outer work carry on and commit.
+				throw new NestedFailure(e);
+			}
+		}
+
 		try {
 			conn.setAutoCommit(false);
 			work.run(conn);
 			conn.commit();
 			return true;
-		} catch (SQLException e) {
+		} catch (SQLException | RuntimeException e) {
+			// A runtime exception too. Without this an NPE halfway through the work reached
+			// the finally below, whose setAutoCommit(true) commits whatever had been written.
 			try {
 				conn.rollback();
 			} catch (SQLException rollbackFailed) {
@@ -218,6 +296,7 @@ public final class Storage {
 						rollbackFailed);
 			}
 			StaffCore.LOGGER.error("[StaffCore] Transaction rolled back", e);
+			if (e instanceof RuntimeException runtime && !(e instanceof NestedFailure)) throw runtime;
 			return false;
 		} finally {
 			try {
@@ -226,6 +305,66 @@ public final class Storage {
 				// The connection is already in trouble; the error above is the useful one.
 			}
 		}
+	}
+
+	/** A nested transaction's failure, carried out to the transaction that owns the commit. */
+	private static final class NestedFailure extends RuntimeException {
+		NestedFailure(SQLException cause) {
+			super(cause);
+		}
+	}
+
+	/** Work for one slice of a purge: everything older than {@code before}. */
+	@FunctionalInterface
+	public interface Slice {
+		void run(Connection conn, long before) throws SQLException;
+	}
+
+	/**
+	 * Deletes old rows a slice at a time, each slice its own short transaction.
+	 * <p>
+	 * A day's purge on a busy server is hundreds of thousands of rows. Done as one transaction
+	 * it holds the write lock for as long as that takes, and every write from the server thread
+	 * — a punishment, a case — waits behind it. Cut into slices of about {@code rows} rows, the
+	 * lock is let go between them and a waiting write goes in the gap.
+	 * <p>
+	 * The slice boundary is a timestamp, not a row count, so work that deletes from several
+	 * tables by age keeps them consistent: each slice removes everything older than the same
+	 * moment from all of them, and a crash between slices leaves every table cut at one point.
+	 *
+	 * @param table   the table whose timestamps decide the slices
+	 * @param column  its timestamp column
+	 * @param cutoff  delete everything older than this
+	 * @return how many slices ran
+	 */
+	public int purgeInSlices(String table, String column, long cutoff, int rows, Slice work) {
+		Connection conn = conn();
+		if (conn == null) return 0;
+
+		int slices = 0;
+		long reached = Long.MIN_VALUE;
+		while (reached < cutoff) {
+			long before = cutoff;
+			try (var ps = conn.prepareStatement("SELECT " + column + " FROM " + table
+					+ " WHERE " + column + " < ? ORDER BY " + column + " LIMIT 1 OFFSET ?")) {
+				ps.setLong(1, cutoff);
+				ps.setInt(2, Math.max(1, rows));
+				try (ResultSet rs = ps.executeQuery()) {
+					if (rs.next()) before = Math.min(cutoff, rs.getLong(1) + 1);
+				}
+			} catch (SQLException e) {
+				StaffCore.LOGGER.error("[StaffCore] Could not plan a purge of {}", table, e);
+				return slices;
+			}
+
+			long boundary = before;
+			if (!inTransaction(c -> work.run(c, boundary))) return slices;
+			slices++;
+			// Never loop on the same boundary: a slice that deleted nothing still moves on.
+			if (boundary <= reached) break;
+			reached = boundary;
+		}
+		return slices;
 	}
 
 	// -------------------------------------------------------------------- backups
@@ -268,6 +407,7 @@ public final class Storage {
 	 * @return the file written, or null on failure
 	 */
 	public Path backup(String reason) {
+		Connection conn = conn();
 		if (conn == null) return null;
 
 		Path dir = backupDir();
@@ -346,6 +486,7 @@ public final class Storage {
 	 *                        responsible for having asked a human first.
 	 */
 	public Path export(boolean includePersonal) {
+		Connection conn = conn();
 		if (conn == null || worldDir == null) return null;
 
 		Path dir = worldDir.resolve("staffcore-export")
@@ -401,6 +542,7 @@ public final class Storage {
 		// Identifiers cannot be bound, and this one came from sqlite_master rather than from
 		// a user — but it is quoted anyway so a table with an odd name cannot break the SQL.
 		String sql = "SELECT * FROM \"" + table.replace("\"", "\"\"") + "\"";
+		Connection conn = conn();
 
 		try (Statement st = conn.createStatement();
 				ResultSet rs = st.executeQuery(sql);
@@ -455,8 +597,33 @@ public final class Storage {
 
 	// ------------------------------------------------------------------- lifecycle
 
+	/**
+	 * The connection for the calling thread.
+	 * <p>
+	 * The thread that opened the database gets the original; any other thread gets one of its
+	 * own, opened the first time it asks and closed with the database. See {@link #owner} for
+	 * why. A connection must never be handed from one thread to another — fetch it on the
+	 * thread that uses it.
+	 */
 	public Connection conn() {
-		return conn;
+		Connection main = conn;
+		if (main == null || Thread.currentThread() == owner) return main;
+
+		Connection mine = threadConnections.get();
+		if (mine != null) return mine;
+
+		try {
+			mine = newConnection(databasePath);
+			threadConnections.set(mine);
+			otherConnections.add(mine);
+			return mine;
+		} catch (SQLException e) {
+			// Sharing is how this worked before. It is the less safe way, and still better
+			// than a background thread that can write nothing at all.
+			StaffCore.LOGGER.error("[StaffCore] Could not open a connection for {}; sharing the "
+					+ "server thread's, so its transactions are not isolated", Thread.currentThread().getName(), e);
+			return main;
+		}
 	}
 
 	public boolean isReady() {
@@ -468,6 +635,14 @@ public final class Storage {
 	}
 
 	public void close() {
+		for (Connection other : otherConnections) {
+			try {
+				other.close();
+			} catch (SQLException ignored) {
+				// nothing useful to do during shutdown
+			}
+		}
+		otherConnections.clear();
 		try {
 			if (conn != null) conn.close();
 		} catch (SQLException ignored) {
