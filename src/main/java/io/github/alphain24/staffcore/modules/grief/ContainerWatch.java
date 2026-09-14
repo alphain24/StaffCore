@@ -306,16 +306,6 @@ public final class ContainerWatch {
 		final Map<String, Map<net.minecraft.world.item.Item, Integer>> tookBack = new LinkedHashMap<>();
 		final Map<String, List<ItemStack>> takenOut = new LinkedHashMap<>();
 		final java.util.Set<BlockPos> touched = new java.util.HashSet<>();
-		final Map<net.minecraft.world.item.Item, Integer> alreadyCharged = new HashMap<>();
-
-		/**
-		 * Items taken back out of a rebuilt container that its breaker had put in. They are part
-		 * of the contents the breaker is being charged for as spilled, so the charge shrinks by
-		 * this much instead of the items being handed back and charged for at once.
-		 */
-		public Map<net.minecraft.world.item.Item, Integer> alreadyCharged() {
-			return alreadyCharged;
-		}
 
 		public int restored() {
 			return restored;
@@ -330,13 +320,16 @@ public final class ContainerWatch {
 	 * Undoes logged moves in an area, changing containers but paying nobody yet.
 	 *
 	 * <h2>Containers a block rollback rebuilt</h2>
-	 * A chest broken and rebuilt comes back holding what it held at the moment it broke. Moves
-	 * logged before that moment still have to be undone on top of it: somebody who took five
-	 * diamonds and then broke the chest left it holding everything <em>but</em> the diamonds,
-	 * and skipping the log for rebuilt containers — which is what this used to do — brought the
-	 * chest back without them. What is different about a rebuilt container is only the charge:
-	 * anything its breaker had put in is inside the spilled contents they are already being
-	 * charged for, so taking it back out reduces that charge rather than handing it to them.
+	 * A chest broken and rebuilt comes back holding exactly what it held at the moment it broke,
+	 * and that is what staff asking for the chest back mean. One thing is added on top: whatever
+	 * the player who broke it <em>took</em> out of it first, because help-yourself-then-break is
+	 * the commonest grief there is and the chest otherwise comes back without the loot.
+	 * <p>
+	 * Nothing is taken out. An earlier version also undid every logged put on a rebuilt chest,
+	 * on the reasoning that a rollback goes back to before anybody touched it — and the result
+	 * was that putting diamonds in a chest, breaking it and rolling it back brought the chest
+	 * back empty. Takes by anybody else are left alone too: somebody emptying their own chest an
+	 * hour earlier is not part of the break being undone.
 	 *
 	 * @param rebuilt   containers rebuilt from a break snapshot, by position
 	 * @param include   which container positions this pass covers
@@ -381,9 +374,13 @@ public final class ContainerWatch {
 					for (BlockPos half : halves) {
 						if (rebuilt.containsKey(half)) rebuiltHere = rebuilt.get(half);
 					}
-					// A move after the break was on whatever stood here later, not on the
-					// container that was rebuilt.
-					if (rebuiltHere != null && move.at() >= rebuiltHere.brokenAt()) continue;
+					// On a rebuilt container, only the breaker's own takes from before the break.
+					// A move after it was on whatever stood here later.
+					if (rebuiltHere != null && (move.at() >= rebuiltHere.brokenAt()
+							|| !"TAKE".equals(move.action())
+							|| !move.player().equalsIgnoreCase(rebuiltHere.breaker()))) {
+						continue;
+					}
 
 					Container container = Mc.containerAt(level, pos);
 					if (container == null) continue;
@@ -413,10 +410,7 @@ public final class ContainerWatch {
 					} else {
 						int removed = removeCounted(container, stack);
 						undone = removed > 0;
-						if (undone && rebuiltHere != null
-								&& move.player().equalsIgnoreCase(rebuiltHere.breaker())) {
-							undo.alreadyCharged.merge(stack.getItem(), removed, Integer::sum);
-						} else if (undone) {
+						if (undone) {
 							ItemStack out = stack.copy();
 							out.setCount(removed);
 							undo.takenOut.computeIfAbsent(move.player(), p -> new ArrayList<>()).add(out);

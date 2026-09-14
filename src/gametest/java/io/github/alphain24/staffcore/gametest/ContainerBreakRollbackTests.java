@@ -330,6 +330,41 @@ public class ContainerBreakRollbackTests {
 		helper.succeed();
 	}
 
+	@GameTest(maxTicks = 100)
+	public void puttingItemsInThenBreakingTheChestBringsItBackWithThem(GameTestHelper helper) {
+		// How anybody tests this: a chest already there, put some diamonds in, break it, roll
+		// back. The chest has to come back with the diamonds that were in it when it broke.
+		ServerPlayer player = Harness.namedPlayer(helper);
+		ServerLevel level = helper.getLevel();
+		BlockPos rel = new BlockPos(2, 2, 2);
+		BlockPos pos = helper.absolutePos(rel);
+		String world = Mc.dimensionId(level);
+
+		helper.setBlock(rel, Blocks.CHEST);
+		Container chest = Mc.containerAt(level, pos);
+		Mods.grief().containers().onOpen(player, pos, chest, world);
+		chest.setItem(0, new ItemStack(Items.DIAMOND, 5));
+		Mods.grief().onContainerClosed(player);
+		Mods.grief().awaitWrites();
+		sleepAMillisecond();
+
+		player.snapTo(Vec3.atBottomCenterOf(pos.north()));
+		Harness.check(helper, player.gameMode.destroyBlock(pos), "the game refused the break");
+		Mods.grief().awaitWrites();
+
+		Mods.grief().rollback(level, null, pos, 6, 60_000L, false, Actor.console());
+		Mods.grief().awaitWrites();
+
+		Container back = Mc.containerAt(level, pos);
+		Harness.check(helper, level.getBlockState(pos).is(Blocks.CHEST) && back != null
+						&& count(back, Items.DIAMOND) == 5,
+				"the chest did not come back with the diamonds it held when it broke: "
+						+ describe(level, pos));
+		Harness.checkEquals(helper, 0L, diamondsOnTheGround(level, pos),
+				"the spilled diamonds are still on the ground as well, a duplication");
+		helper.succeed();
+	}
+
 	private static void sleepAMillisecond() {
 		long start = System.currentTimeMillis();
 		while (System.currentTimeMillis() == start) Thread.onSpinWait();

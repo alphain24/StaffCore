@@ -2218,10 +2218,6 @@ public class GriefModule implements Module {
 		ContainerWatch.Result containerResult =
 				containers.settle(level, centre, radius, windowMs, dryRun, containerUndo);
 
-		// What the breaker had put into a rebuilt chest and the undo just took back out is no
-		// longer inside it, so they are not charged for it as spilled contents either.
-		containerUndo.alreadyCharged().forEach((item, count) ->
-				owedContents.computeIfPresent(item, (k, owed) -> owed > count ? owed - count : null));
 
 		if (vaulted > 0 && staff != null && staff.id() != null && level.getServer() != null) {
 			ServerPlayer running = level.getServer().getPlayerList().getPlayer(staff.id());
