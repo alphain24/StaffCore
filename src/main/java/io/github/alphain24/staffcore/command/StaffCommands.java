@@ -1339,6 +1339,22 @@ public final class StaffCommands {
 				.append(Icon.text(name, Theme.ACCENT))
 				.append(Icon.text(" — last " + hours + "h", Theme.MUTED)), false);
 
+		// The live score first: what their mining right now has uncovered, which the block-log
+		// report below cannot see.
+		var online = server.getPlayerList().getPlayerByName(name);
+		var session = online == null ? null
+				: Mods.security().oreSense().sessionFor(online.getUUID());
+		if (session != null) {
+			int decoys = io.github.alphain24.staffcore.modules.security.Canaries.hitsFor(online.getUUID());
+			ctx.getSource().sendSuccess(() -> Icon.text("  Live score " + session.confidence()
+					+ " of 99 — " + io.github.alphain24.staffcore.modules.security.OreSense.describe(session)
+					+ " (" + decoys + " decoy vein(s) this login)", Theme.TEXT), false);
+		} else if (online != null) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  No live score: they have not mined below "
+					+ "y " + io.github.alphain24.staffcore.modules.security.OreSense.BAND_TOP_Y
+					+ " or near their decoys in the last 20 minutes.", Theme.MUTED), false);
+		}
+
 		if (findings.isEmpty()) {
 			ctx.getSource().sendSuccess(() -> Icon.text("  Nothing to report.", Theme.GOOD), false);
 			ctx.getSource().sendSuccess(() -> Icon.text("  "

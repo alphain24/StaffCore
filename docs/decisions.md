@@ -1759,6 +1759,17 @@ The first cut used 3.0 per 1000 and doubled the decoy expectation. It caught eve
 a median of 13 finds. The table is at 2.0 per 1000 and decoy blocks over rock volume. The honest
 rate it would take to reach 2.0 is 1.7 times what the simulation finds at the densest depth.
 
+**Revised 2026-09-14, after testing on a real server showed no alerts.** The pipeline worked in
+tests end to end — real block breaking, the break event, the worker, the case — so the silence
+was the rules, not a bug. Creative players were not scored, and operators test from creative;
+staff mode was skipped by `xraySkipStaffOnDuty` without telling anybody; and nothing was said at
+all below three finds. Creative is now scored (a builder in creative uncovers ore and decoys at
+the rate anybody digging does), staff on duty are told in chat that their mining is not scored,
+and every decoy vein uncovered is a quiet staff line with the current score
+(`canaryNotifyEachFind`). A case still needs the score. Decoys also now look like what the rock
+really holds: one to nine blocks in deepslate, one or two in stone, where they are four times
+rarer.
+
 What this does not establish: how real players mine. Honest players explore caves, and ore seen
 from a cave is never counted. Careful cheaters mix in branch mining. Nobody has watched an x-ray
 client draw a decoy vein, which is still the manual check in `docs/manual-checks/`.

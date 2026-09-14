@@ -339,11 +339,23 @@ public final class OreSense {
 		if (level == null || player == null || pos == null) return null;
 		StaffConfig cfg = StaffConfig.get();
 		// The same rule as the sweep: staff clocked on are not scored, staff mining on their
-		// own time are.
-		if (cfg.xraySkipStaffOnDuty && Mods.staffMode().isActive(player)) return null;
-		// Nobody x-rays for diamonds they could take from the creative menu, and a builder
-		// clearing rock underground in creative is not mining.
-		if (player.isCreative() || player.isSpectator()) return null;
+		// own time are. Said to them when it matters, because staff testing the decoys in
+		// staff mode and hearing nothing is exactly how a working detector looks broken.
+		if (cfg.xraySkipStaffOnDuty && Mods.staffMode().isActive(player)) {
+			if (contact != null && contact.uncovered() > 0) {
+				player.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.info(
+						"You uncovered a decoy vein. You are in staff mode, so your mining is not "
+								+ "scored and nobody is alerted (xraySkipStaffOnDuty). Leave staff "
+								+ "mode to test it."));
+			}
+			return null;
+		}
+		// Creative is scored. It was skipped once, on the grounds that nobody x-rays for what
+		// the creative menu hands out — and the result was that every operator testing the
+		// decoys, which is nearly always done in creative, saw nothing at all. A builder
+		// clearing rock in creative finds ore and decoys at the rate anybody digging does, so
+		// counting them costs nothing in false alarms.
+		if (player.isSpectator()) return null;
 
 		boolean natural = level.dimension() == Level.OVERWORLD && pos.getY() <= BAND_TOP_Y;
 		double decoyChance = Canaries.chancePerFace(level, player);
@@ -388,12 +400,25 @@ public final class OreSense {
 		Observation observation = observe(level, player, pos, contact);
 		if (observation == null) return;
 		MinecraftServer server = level.getServer();
-		Mods.grief().readOffThread(server, () -> score(observation), null, report -> {
-			if (report != null) announce(server, report);
+		BlockPos at = pos.immutable();
+		// The session is taken on the worker, straight after this break was folded in. Read
+		// later on the server thread it would be whatever the next breaks had made it, and a
+		// burst of three decoys would report "3 this session" three times.
+		Mods.grief().readOffThread(server,
+				() -> new Scored(score(observation), sessionFor(observation.player())), null, scored -> {
+			if (scored == null) return;
+			if (scored.report() != null) {
+				announce(server, scored.report());
+			} else if (observation.decoyVeins() > 0 && StaffConfig.get().canaryNotifyEachFind) {
+				announceDecoy(server, observation, at, scored.session());
+			}
 		});
 	}
 
 	// ------------------------------------------------------------ worker half
+
+	/** One scored break: what to say, if anything, and the session as that break left it. */
+	private record Scored(Report report, Session session) {}
 
 	/** What a session has earned being said about it. */
 	public enum Loudness { NOTICE, ALERT }
@@ -454,6 +479,23 @@ public final class OreSense {
 		double learned = (bandVeins[band] + prior * PRIOR_FACES)
 				/ (double) (bandFaces[band] + PRIOR_FACES);
 		return Math.max(prior / 3, Math.min(prior * 3, learned));
+	}
+
+	/**
+	 * A quiet line for one decoy vein uncovered, before the score has anything to say.
+	 * <p>
+	 * A decoy is shown only to one client, so every one uncovered is worth a line — but not a
+	 * verdict: an honest tunnel meets one now and then, and the line says the score so staff
+	 * can see how far from a case it is. When a break also moves the score over a line, that
+	 * announcement is made instead of this one.
+	 */
+	void announceDecoy(MinecraftServer server, Observation observation, BlockPos at, Session session) {
+		int found = session == null ? observation.decoyVeins() : session.decoyVeins();
+		int score = session == null ? 0 : session.confidence();
+		Mods.alerts().onStaffAction(server, observation.name() + " uncovered a decoy vein at "
+				+ at.toShortString() + " (" + found + " this session, x-ray score " + score
+				+ " of 99). Decoys show only on an x-ray client; one on its own can be an "
+				+ "honest tunnel, and a case opens when the score says it is not.");
 	}
 
 	/** Says it. Server thread. */

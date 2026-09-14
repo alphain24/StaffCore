@@ -425,7 +425,8 @@ public final class StaffConfig {
 	public boolean canaryBlocks = true;
 
 	/**
-	 * How many decoy veins one player has out at a time, each one to ten blocks. 0 disables.
+	 * How many decoy veins one player has out at a time: one to nine blocks in deepslate, one or
+	 * two in stone, where they are four times rarer. 0 disables.
 	 * <p>
 	 * Raising it gives an x-ray user more to walk into, so a cheater is caught in fewer finds;
 	 * it also means an honest tunnel uncovers one more often. That does not make honest miners
@@ -435,6 +436,16 @@ public final class StaffConfig {
 	 * asking a question. Checked at startup to be between 0 and 64.
 	 */
 	public int canaryDensity = 12;
+
+	/**
+	 * Tell staff every time a player uncovers one of their decoy veins, with their current x-ray
+	 * score.
+	 * <p>
+	 * On means staff see decoys working from the first one. Off means only a score over the
+	 * notice or alert line is said, which is quieter on a large server where honest tunnels meet
+	 * the odd decoy every hour. Neither setting changes when a case opens.
+	 */
+	public boolean canaryNotifyEachFind = true;
 
 	/**
 	 * The highest Y a canary is placed at.

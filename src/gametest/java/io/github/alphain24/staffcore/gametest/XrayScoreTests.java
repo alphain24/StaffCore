@@ -173,15 +173,18 @@ public class XrayScoreTests {
 	}
 
 	@GameTest
-	public void creativeAndStaffOnDutyAreNotScored(GameTestHelper helper) {
+	public void creativeIsScoredSoTestingInCreativeWorks(GameTestHelper helper) {
+		// Skipping creative made every operator's test of the decoys look like a broken
+		// detector, because that is where operators test from.
 		ServerLevel level = helper.getLevel();
 		ServerPlayer creative = Harness.mockPlayer(helper);
 		List<BlockPos> placed = slab(helper, 5, 5, 5);
 		BlockPos o = origin(helper);
 
 		level.setBlock(o.offset(2, 2, 3), Blocks.DEEPSLATE_DIAMOND_ORE.defaultBlockState(), 2);
-		Harness.check(helper, dig(level, creative, o.offset(2, 2, 2)) == null,
-				"a creative player's break was scored");
+		var observed = dig(level, creative, o.offset(2, 2, 2));
+		Harness.check(helper, observed != null && observed.hiddenVeins() == 1,
+				"a creative player's break was not scored: " + observed);
 		clear(helper, placed);
 		helper.succeed();
 	}

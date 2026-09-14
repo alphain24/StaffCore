@@ -48,11 +48,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@link OreSense}, which knows how many faces the player has opened and how likely a decoy was
  * to be behind any of them, and decides whether the number is unusual.
  *
- * <h2>Why veins</h2>
+ * <h2>Why veins, and why two kinds</h2>
  * A single ore block floating in stone is not how diamonds generate, and an x-ray user looking
- * at a screen full of real two-to-eight block veins learns to skip the lonely single blocks.
- * Decoy veins are grown the way ore blobs are: a random cluster of one to ten blocks, touching by
- * faces and edges, each block matched to the rock it replaces.
+ * at a screen full of real veins learns to skip anything that does not look like one. So decoys
+ * look like what that rock really holds. In deepslate, where diamonds are common, a decoy is a
+ * cluster of one to nine blocks touching by faces and edges. In stone above it, where diamonds
+ * are rare and come one or two at a time, a decoy is one or two blocks, and only one seed in
+ * {@value #STONE_VEIN_ODDS} that lands in stone is used at all.
  *
  * <h2>Why there is no chunk mixin</h2>
  * The obvious implementation rewrites the block palette as a chunk is serialised, which is what
@@ -104,8 +106,14 @@ public final class Canaries {
 
 	private static final AtomicLong VEINS = new AtomicLong();
 
-	/** The largest decoy vein. Vanilla's biggest diamond blob is size 12, rarely all of it. */
-	static final int MAX_VEIN = 10;
+	/** The largest decoy vein, in deepslate. */
+	static final int MAX_VEIN = 9;
+
+	/**
+	 * How much rarer a decoy in stone is than one in deepslate: one seed in this many that lands
+	 * in stone is kept. Diamonds above the deepslate line are a fraction of those below it.
+	 */
+	static final int STONE_VEIN_ODDS = 4;
 
 	/**
 	 * How far below the player decoys may go. Above them it is eight blocks, as before: an x-ray
@@ -165,22 +173,33 @@ public final class Canaries {
 		for (int attempt = 0; attempt < 20 && veinsIn(mine) < wanted; attempt++) {
 			BlockPos seed = pick(level, player);
 			if (seed == null || tooCloseToAnother(mine, seed)) continue;
-			growVein(player, level, seed, veinSize(random), random);
+			boolean deep = isDeep(level.getBlockState(seed));
+			if (!deep && random.nextInt(STONE_VEIN_ODDS) != 0) continue;
+			growVein(player, level, seed, veinSize(random, deep), random);
 		}
 	}
 
 	/**
-	 * How big a vein to grow, shaped like vanilla's diamond blobs rather than uniform.
+	 * How big a vein to grow.
 	 * <p>
-	 * Most real veins are the small feature — a size-4 blob, which comes out as one to four
-	 * blocks. The medium and buried features give three to eight, and a size-12 blob is rare.
-	 * A decoy layer of uniform sizes would have a signature of its own.
+	 * In deepslate, one to nine blocks, most of them in the middle: the medium and buried
+	 * features that make most deep diamonds come out as three to six. In stone, one or two — and
+	 * netherrack's ancient debris the same. A decoy layer of uniform sizes would have a
+	 * signature of its own.
+	 *
+	 * @param deep whether the seed is in deepslate
 	 */
-	static int veinSize(java.util.random.RandomGenerator random) {
+	static int veinSize(java.util.random.RandomGenerator random, boolean deep) {
+		if (!deep) return 1 + random.nextInt(2);                  // 1-2
 		int roll = random.nextInt(100);
-		if (roll < 50) return 1 + random.nextInt(4);          // 1-4
-		if (roll < 90) return 3 + random.nextInt(6);          // 3-8
-		return 6 + random.nextInt(MAX_VEIN - 5);              // 6-10
+		if (roll < 20) return 1 + random.nextInt(2);              // 1-2
+		if (roll < 75) return 3 + random.nextInt(4);              // 3-6
+		return 7 + random.nextInt(MAX_VEIN - 6);                  // 7-9
+	}
+
+	/** Deepslate and tuff, where deepslate diamond ore generates. */
+	static boolean isDeep(BlockState rock) {
+		return rock.is(Blocks.DEEPSLATE) || rock.is(Blocks.TUFF);
 	}
 
 	/**

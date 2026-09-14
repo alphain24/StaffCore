@@ -118,6 +118,9 @@ public final class CanaryMenu extends Gui {
 				.name("What uncovering one does", Theme.ACCENT)
 				.lore("Breaking any block touching a decoy vein counts")
 				.lore("as uncovering it, once for the whole vein.")
+				.lore(StaffConfig.get().canaryNotifyEachFind
+						? "Staff are told each time, with the score."
+						: "Staff are told when the score crosses a line.", Theme.MUTED)
 				.gap()
 				.lore("It goes into the player's session score, with", Theme.MUTED)
 				.lore("every sealed real diamond vein they uncover.", Theme.MUTED)
@@ -149,10 +152,8 @@ public final class CanaryMenu extends Gui {
 		}
 		return icon.gap()
 				.lore(StaffConfig.get().xraySkipStaffOnDuty && Mods.staffMode().isActive(viewer)
-						? "Not scored while you are in staff mode."
-						: viewer.isCreative() || viewer.isSpectator()
-								? "Not scored in creative. Test in survival."
-								: "A session ends after 20 minutes without mining.",
+						? "Not scored while you are in staff mode. Leave it to test."
+						: "A session ends after 20 minutes without mining.",
 						Theme.MUTED)
 				.build();
 	}

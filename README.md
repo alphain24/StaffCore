@@ -296,7 +296,8 @@ Changing a default in the code alone would never reach a server that has already
   "xrayMinimumVolume": 512,           // smallest dig worth scoring; below this is noise
   "caseAutoAssign": true,             // unclaimed cases go to the staff member online with the fewest
   "canaryBlocks": true,               // decoy ores; forced off by a bulk anti-xray mod
-  "canaryDensity": 12,                // decoy veins (1-10 blocks) per player at once; 0 disables
+  "canaryDensity": 12,                // decoy veins per player: 1-9 blocks in deepslate, rarer 1-2 in stone; 0 disables
+  "canaryNotifyEachFind": true,       // tell staff each time a decoy vein is uncovered, with the score
   "canaryMaxY": 16,                   // below the depth where people build
   "canaryRadius": 48,                 // must be inside their render distance
   "canaryForceWithBulkAntiXray": false, // NOT a supported mode - see the handbook before using

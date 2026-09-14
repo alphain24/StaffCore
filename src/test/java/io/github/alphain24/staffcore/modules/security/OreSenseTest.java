@@ -151,16 +151,20 @@ class OreSenseTest {
 	}
 
 	@Test
-	@DisplayName("decoy veins come out in vanilla's sizes, mostly small")
+	@DisplayName("decoys in deepslate are one to nine blocks; in stone, one or two")
 	void veinSizes() {
 		Random random = new Random(3);
-		int small = 0;
 		int total = 10_000;
+		int deepMax = 0, deepBig = 0;
 		for (int i = 0; i < total; i++) {
-			int size = Canaries.veinSize(random);
-			assertTrue(size >= 1 && size <= Canaries.MAX_VEIN, "vein size " + size);
-			if (size <= 4) small++;
+			int deep = Canaries.veinSize(random, true);
+			assertTrue(deep >= 1 && deep <= 9, "deepslate vein size " + deep);
+			deepMax = Math.max(deepMax, deep);
+			if (deep >= 3) deepBig++;
+			int stone = Canaries.veinSize(random, false);
+			assertTrue(stone >= 1 && stone <= 2, "stone vein size " + stone);
 		}
-		assertTrue(small > total / 2, "only " + small + " of " + total + " veins were four or fewer");
+		assertEquals(9, deepMax, "no deepslate vein ever reached nine blocks");
+		assertTrue(deepBig > total / 2, "deepslate veins were mostly one or two blocks");
 	}
 }

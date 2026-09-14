@@ -82,7 +82,7 @@ class OreSenseSimulationTest {
 			for (int i = 0; i < veins; i++) {
 				BlockPos seedPos = new BlockPos(random.nextInt(W), 1 + random.nextInt(H - 2),
 						random.nextInt(D));
-				grow(seedPos, Canaries.veinSize(random), pos -> {
+				grow(seedPos, Canaries.veinSize(random, true), pos -> {
 					if (cell(pos) != ROCK) return false;
 					set(pos, ORE);
 					ore.add(pos);
@@ -135,7 +135,7 @@ class OreSenseSimulationTest {
 						1 + random.nextInt(H - 2), around.getZ() + random.nextInt(-RADIUS, RADIUS + 1));
 				if (!inside(seed) || tooClose(seed)) continue;
 				long vein = ++nextVein;
-				grow(seed, Canaries.veinSize(random), pos -> {
+				grow(seed, Canaries.veinSize(random, true), pos -> {
 					if (!inside(pos) || cell(pos) != ROCK || decoys.containsKey(pos.asLong())) return false;
 					for (Direction face : Direction.values()) {
 						if (cell(pos.relative(face)) != ROCK) return false;
