@@ -1952,18 +1952,6 @@ public class GriefModule implements Module {
 	public RollbackResult rollback(ServerLevel level, String player, BlockPos centre,
 			int radius, long windowMs, boolean dryRun,
 			io.github.alphain24.staffcore.permission.Actor staff) {
-		return rollback(level, player, centre, radius, windowMs, dryRun, staff, false);
-	}
-
-	/**
-	 * @param breaksOnly put back what was broken and taken, and leave what was placed and put in.
-	 *                   For a chest somebody broke that they had placed themselves: a full
-	 *                   rollback correctly takes the area back to before they placed it — no
-	 *                   chest — which is rarely what the person asking for the chest back wants.
-	 */
-	public RollbackResult rollback(ServerLevel level, String player, BlockPos centre,
-			int radius, long windowMs, boolean dryRun,
-			io.github.alphain24.staffcore.permission.Actor staff, boolean breaksOnly) {
 
 		if (!StaffCore.storage().isReady()) return RollbackResult.NOTHING;
 
@@ -2016,8 +2004,7 @@ public class GriefModule implements Module {
 				WHERE world = ? AND created_at >= ? AND rolled_back = 0
 				  AND action IN ('BREAK','PLACE')
 				  AND x BETWEEN ? AND ? AND y BETWEEN ? AND ? AND z BETWEEN ? AND ?
-				""" + (breaksOnly ? "  AND action = 'BREAK'\n" : "")
-				+ (player == null ? "" : "  AND player_name = ?\n")
+				""" + (player == null ? "" : "  AND player_name = ?\n")
 				+ "ORDER BY created_at DESC";
 
 		int reverted = 0;
@@ -2095,7 +2082,7 @@ public class GriefModule implements Module {
 		ContainerWatch.Undo containerUndo = new ContainerWatch.Undo();
 		if (!removing.isEmpty()) {
 			containers.undo(level, player, centre, radius, windowMs, dryRun, Map.of(),
-					removing::contains, breaksOnly, containerUndo);
+					removing::contains, containerUndo);
 		}
 		int vaulted = 0;
 
@@ -2116,8 +2103,8 @@ public class GriefModule implements Module {
 		}
 
 		for (List<Planned> rows : byPosition.values()) {
-			Planned row = rows.get(rows.size() - 1);   // the oldest: what this goes back to
 			Planned newest = rows.get(0);
+			Planned row = outcomeOf(rows, world);
 			List<Long> ids = new ArrayList<>(rows.size());
 			for (Planned each : rows) ids.add(each.id());
 
@@ -2214,7 +2201,7 @@ public class GriefModule implements Module {
 		// leaving it empty looks like the problem was fixed when it was not. Every container
 		// not already done above, including the ones just rebuilt — see ContainerWatch#undo.
 		containers.undo(level, player, centre, radius, windowMs, dryRun, rebuilt,
-				pos -> !removing.contains(pos), breaksOnly, containerUndo);
+				pos -> !removing.contains(pos), containerUndo);
 		ContainerWatch.Result containerResult =
 				containers.settle(level, centre, radius, windowMs, dryRun, containerUndo);
 
@@ -2252,6 +2239,30 @@ public class GriefModule implements Module {
 				containerResult.restored(), containerResult.deferred(),
 				reclaim.fromChests(), reclaim.queued(), freeze(tally), Map.of(), List.of(),
 				reverted > 0 ? pointId : 0L);
+	}
+
+	/**
+	 * Which of a position's rows decides what it goes back to.
+	 * <p>
+	 * The oldest, with one exception: a container that was broken with something in it always
+	 * comes back, with what was in it, even when the same player placed it inside the window.
+	 * Going back to before the placement would be the strict reading, and it makes a chest
+	 * somebody filled and broke disappear along with its contents — which nobody rolling back a
+	 * broken chest wants, and which took a second screen and a second choice to get around.
+	 *
+	 * @param rows one position's rows, newest first
+	 */
+	private Planned outcomeOf(List<Planned> rows, String world) {
+		Planned oldest = rows.get(rows.size() - 1);
+		if (!"PLACE".equals(oldest.action())) return oldest;
+
+		for (Planned candidate : rows) {
+			if (!"BREAK".equals(candidate.action())) continue;
+			Block block = Mc.blockFromId(candidate.blockId());
+			if (!(block instanceof net.minecraft.world.level.block.EntityBlock)) continue;
+			if (!contentsAtBreak(world, candidate.pos(), candidate.at()).isEmpty()) return candidate;
+		}
+		return oldest;
 	}
 
 	/**

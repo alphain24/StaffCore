@@ -73,22 +73,8 @@ public class RollbackGuiTests {
 				.thenSucceed();
 	}
 
-	private static final int SUBJECT = 13;
-	private static final int ALTERNATIVE = 22;
-
-	private static String lore(ServerPlayer staff, int slot) {
-		var lines = staff.containerMenu.getSlot(slot).getItem()
-				.get(net.minecraft.core.component.DataComponents.LORE);
-		return lines == null ? "" : lines.lines().stream()
-				.map(net.minecraft.network.chat.Component::getString)
-				.collect(java.util.stream.Collectors.joining(" / "));
-	}
-
 	@GameTest(maxTicks = 300)
-	public void aChestTheyPlacedAndBrokeCanBeBroughtBackFromTheConfirmation(GameTestHelper helper) {
-		// What a staff member testing on their own chest does: place it, fill it, break it,
-		// roll back. The full rollback correctly leaves no chest, so the confirmation has to
-		// say so and offer the rollback that brings it back.
+	public void aChestTheyPlacedAndBrokeComesBackWithOneConfirm(GameTestHelper helper) {
 		ServerPlayer staff = Harness.namedPlayer(helper);
 		ServerLevel level = helper.getLevel();
 		BlockPos rel = new BlockPos(2, 2, 2);
@@ -108,7 +94,7 @@ public class RollbackGuiTests {
 		staff.snapTo(Vec3.atBottomCenterOf(pos.north()));
 		Harness.check(helper, staff.gameMode.destroyBlock(pos), "the game refused the break");
 		Mods.grief().awaitWrites();
-		int vaultBefore = Mods.security().vault().countFor(staff.getUUID());
+
 		helper.startSequence()
 				.thenExecute(() -> RollbackPreview.open(staff,
 						new RollbackPreview.Scope(level, Harness.name(staff), pos, 2, 60 * 60_000L,
@@ -117,16 +103,6 @@ public class RollbackGuiTests {
 				.thenExecuteAfter(3, () -> {
 					Harness.check(helper, staff.containerMenu instanceof ConfirmMenu,
 							"the preview did not open the confirmation: " + screen(staff));
-					Harness.check(helper, lore(staff, SUBJECT).contains("will NOT come back"),
-							"the confirmation does not say the chest will not come back: "
-									+ lore(staff, SUBJECT));
-					Harness.check(helper, staff.containerMenu.getSlot(ALTERNATIVE).getItem().is(Items.CHEST),
-							"there is no button to put back only what was broken");
-					click(staff, ALTERNATIVE);
-				})
-				.thenExecuteAfter(3, () -> {
-					Harness.check(helper, staff.containerMenu instanceof ConfirmMenu,
-							"switching did not open the other confirmation: " + screen(staff));
 					click(staff, CONFIRM);
 				})
 				.thenExecuteAfter(3, () -> {
@@ -134,8 +110,6 @@ public class RollbackGuiTests {
 					Harness.check(helper, level.getBlockState(pos).is(Blocks.CHEST) && back != null
 									&& back.getItem(0).is(Items.DIAMOND) && back.getItem(0).getCount() == 5,
 							"the chest did not come back full: " + level.getBlockState(pos));
-					Harness.checkEquals(helper, vaultBefore,
-							Mods.security().vault().countFor(staff.getUUID()), "items went to the vault");
 				})
 				.thenSucceed();
 	}

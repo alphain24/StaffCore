@@ -36,16 +36,9 @@ public final class RollbackPreview {
 	 * @param who      one player's changes, or null for everybody's
 	 * @param windowMs how far back from now
 	 * @param extraWarnings said on the confirm screen after the standard ones
-	 * @param breaksOnly    put back what was broken and taken; leave placements and puts
 	 */
 	public record Scope(ServerLevel level, String who, BlockPos centre, int radius, long windowMs,
-			List<String> extraWarnings, boolean breaksOnly) {
-
-		public Scope(ServerLevel level, String who, BlockPos centre, int radius, long windowMs,
-				List<String> extraWarnings) {
-			this(level, who, centre, radius, windowMs, extraWarnings, false);
-		}
-	}
+			List<String> extraWarnings) {}
 
 	/**
 	 * Previews, and on confirm runs.
@@ -62,7 +55,7 @@ public final class RollbackPreview {
 		// taken while this staff member is deciding rather than only while blocks are moving.
 		// The window somebody else can change the answer in is the human one.
 		GriefModule.RollbackResult preview = Mods.grief().rollback(level, who, scope.centre(),
-				scope.radius(), scope.windowMs(), true, Actor.of(viewer), scope.breaksOnly());
+				scope.radius(), scope.windowMs(), true, Actor.of(viewer));
 
 		if (preview.reverted() == 0) {
 			viewer.sendSystemMessage(Theme.warn(who == null
@@ -72,30 +65,10 @@ public final class RollbackPreview {
 			return;
 		}
 
-		// The other way of doing it, previewed as well, so the screen can say what each one
-		// does. The case this is for: a chest somebody placed and then broke inside the window.
-		// Undoing breaks and placements takes the area back to before they placed it, so the
-		// chest does not come back — correctly, and to the surprise of everybody who asked for
-		// the chest. Only putting back what was broken brings it back.
-		Scope otherScope = new Scope(level, who, scope.centre(), scope.radius(), scope.windowMs(),
-				scope.extraWarnings(), !scope.breaksOnly());
-		GriefModule.RollbackResult other = Mods.grief().rollback(level, who, scope.centre(),
-				scope.radius(), scope.windowMs(), true, Actor.of(viewer), otherScope.breaksOnly());
-		GriefModule.RollbackResult breaks = scope.breaksOnly() ? preview : other;
-		GriefModule.RollbackResult everything = scope.breaksOnly() ? other : preview;
-		List<String> notComingBack = new java.util.ArrayList<>();
-		for (var entry : breaks.proposed().entrySet()) {
-			var full = everything.proposed().get(entry.getKey());
-			if (!entry.getValue().isAir() && (full == null || full.isAir())) {
-				notComingBack.add(entry.getValue().getBlock().getName().getString());
-			}
-		}
-
 		BlockPos centre = scope.centre();
 		Icon summary = (who == null ? Icon.of(Items.TNT) : profileIcon(viewer, who))
 				.name(who == null ? "Roll back this area" : "Roll back " + who, Theme.BAD)
 				.field("Scope", who == null ? "every player" : who)
-				.field("Undoing", scope.breaksOnly() ? "only what was broken" : "breaks and placements")
 				.field("Changes to undo", String.valueOf(preview.reverted()))
 				.field("Radius", scope.radius() + " blocks")
 				.field("Window", TimeFormat.duration(scope.windowMs()))
@@ -127,12 +100,6 @@ public final class RollbackPreview {
 			summary.gap().warn(preview.skipped() + " entry/entries reference blocks that no longer exist.");
 		}
 		summary.gap().warn("Anything built on top of these blocks is overwritten.");
-		if (!scope.breaksOnly() && !notComingBack.isEmpty()) {
-			summary.gap().warn(notComingBack.size() + " broken block(s) will NOT come back ("
-					+ String.join(", ", notComingBack.stream().distinct().limit(3).toList())
-					+ "): they were placed inside this window, so this goes back to before they "
-					+ "existed. Use the button below to put back only what was broken.");
-		}
 		if (preview.itemsReturned() > 0) {
 			summary.lore(preview.itemsReturned() + " container change(s) will also be undone.", Theme.MUTED);
 		}
@@ -163,22 +130,6 @@ public final class RollbackPreview {
 					.lore("drawn. Go to the scene first to see it.", Theme.MUTED);
 		}
 
-		net.minecraft.world.item.ItemStack switchIcon = other.reverted() == 0 ? null
-				: Icon.of(scope.breaksOnly() ? Items.TNT : Items.CHEST)
-						.name(scope.breaksOnly() ? "Undo breaks and placements instead"
-								: "Only put back what was broken instead", Theme.ACCENT)
-						.field("Changes", String.valueOf(other.reverted()))
-						.gap()
-						.lore(scope.breaksOnly()
-								? "Also removes what was placed. Goes back to before"
-								: "Restores broken blocks and taken items. Leaves", Theme.MUTED)
-						.lore(scope.breaksOnly()
-								? "anybody in scope touched the area."
-								: "what was placed where it is.", Theme.MUTED)
-						.gap()
-						.action("Click", "preview that instead")
-						.build();
-
 		ConfirmMenu.open(viewer, "Rollback", summary.build(),
 				() -> {
 					Mods.grief().preview().clear(viewer);
@@ -187,11 +138,6 @@ public final class RollbackPreview {
 				() -> {
 					Mods.grief().preview().clear(viewer);
 					onCancel.run();
-				},
-				switchIcon,
-				() -> {
-					Mods.grief().preview().clear(viewer);
-					open(viewer, otherScope, afterApply, onCancel);
 				});
 	}
 
@@ -200,7 +146,7 @@ public final class RollbackPreview {
 		String who = scope.who();
 		BlockPos centre = scope.centre();
 		GriefModule.RollbackResult result = Mods.grief().rollback(scope.level(), who, centre,
-				scope.radius(), scope.windowMs(), false, Actor.of(viewer), scope.breaksOnly());
+				scope.radius(), scope.windowMs(), false, Actor.of(viewer));
 
 		MinecraftServer server = Mc.server(viewer);
 		if (server != null) {

@@ -287,36 +287,15 @@ public class ContainerBreakRollbackTests {
 	}
 
 	@GameTest(maxTicks = 100)
-	public void aFullRollbackOfYourOwnChestTakesNothingAndVaultsNothing(GameTestHelper helper) {
-		// A full rollback goes back to before the player placed it, which is no chest. What it
-		// must not do is what it did: rebuild the chest, remove it again, and put its contents
-		// in the vault while the player was charged for them as well.
+	public void aChestYouPlacedFilledAndBrokeComesBackFull(GameTestHelper helper) {
+		// Going strictly back to before the placement would leave no chest and lose what was
+		// in it. A chest broken with items in it always comes back with them.
 		ServerPlayer player = Harness.namedPlayer(helper);
 		ServerLevel level = helper.getLevel();
 		BlockPos pos = placeFillAndBreak(helper, player);
 		int vaultBefore = Mods.security().vault().countFor(player.getUUID());
 
 		Mods.grief().rollback(level, Harness.name(player), pos, 6, 60_000L, false, Actor.console());
-		Mods.grief().awaitWrites();
-
-		Harness.check(helper, level.getBlockState(pos).isAir(),
-				"a chest the player had placed themselves is back: " + describe(level, pos));
-		Harness.checkEquals(helper, vaultBefore, Mods.security().vault().countFor(player.getUUID()),
-				"items went into the vault");
-		Harness.checkEquals(helper, 5L, diamondsOnTheGround(level, pos),
-				"the player's own spilled diamonds were taken");
-		helper.succeed();
-	}
-
-	@GameTest(maxTicks = 100)
-	public void puttingBackOnlyWhatWasBrokenBringsTheChestBackFull(GameTestHelper helper) {
-		ServerPlayer player = Harness.namedPlayer(helper);
-		ServerLevel level = helper.getLevel();
-		BlockPos pos = placeFillAndBreak(helper, player);
-		int vaultBefore = Mods.security().vault().countFor(player.getUUID());
-
-		Mods.grief().rollback(level, Harness.name(player), pos, 6, 60_000L, false, Actor.console(),
-				true);
 		Mods.grief().awaitWrites();
 
 		Container back = Mc.containerAt(level, pos);
