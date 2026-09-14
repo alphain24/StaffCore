@@ -5,6 +5,7 @@ import io.github.alphain24.staffcore.gui.Gui;
 import io.github.alphain24.staffcore.gui.menu.BlockHistoryMenu;
 import io.github.alphain24.staffcore.gui.menu.ConfirmMenu;
 import io.github.alphain24.staffcore.gui.menu.GriefMenu;
+import io.github.alphain24.staffcore.gui.menu.PlayerActionsMenu;
 import io.github.alphain24.staffcore.gui.menu.RollbackPreview;
 import io.github.alphain24.staffcore.module.Mods;
 import io.github.alphain24.staffcore.permission.Actor;
@@ -253,6 +254,33 @@ public class RollbackGuiTests {
 									+ text(staff.containerMenu.getSlot(row).getItem()));
 				})
 				.thenSucceed();
+	}
+
+	@GameTest(maxTicks = 100)
+	public void aPlayersFileIsLaidOutInLabelledRows(GameTestHelper helper) {
+		ServerPlayer staff = Harness.namedPlayer(helper);
+		ServerPlayer target = Harness.namedPlayer(helper);
+		Runnable revoke = grantRollback(helper, staff);
+
+		PlayerActionsMenu.open(staff, new net.minecraft.server.players.NameAndId(
+				target.getUUID(), Harness.name(target)));
+		revoke.run();
+
+		Harness.check(helper, staff.containerMenu instanceof PlayerActionsMenu,
+				"the file did not open: " + screen(staff));
+		String[][] expected = {
+				{"4", Harness.name(target)},
+				{"9", "Moderation"}, {"10", "Punish"}, {"13", "Appeals"}, {"14", "Lift Ban"},
+				{"18", "Items"}, {"19", "Inventory"}, {"20", "Ender Chest"}, {"22", "Owed Items"},
+				{"27", "Movement"}, {"28", "Teleport To"}, {"30", "Freeze"},
+				{"36", "Investigation"}, {"37", "Logs"}, {"41", "Risk Profile"},
+		};
+		for (String[] want : expected) {
+			String said = text(staff.containerMenu.getSlot(Integer.parseInt(want[0])).getItem());
+			Harness.check(helper, said.contains(want[1]),
+					"slot " + want[0] + " should be " + want[1] + " but says: " + said);
+		}
+		helper.succeed();
 	}
 
 	@GameTest(maxTicks = 300)

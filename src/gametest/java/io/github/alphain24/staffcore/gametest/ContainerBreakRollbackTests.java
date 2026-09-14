@@ -402,6 +402,70 @@ public class ContainerBreakRollbackTests {
 		helper.succeed();
 	}
 
+	/** A chest of five diamonds broken by hand, with everything it dropped gone from the floor. */
+	private static BlockPos breakChestAndLoseTheDrops(GameTestHelper helper, ServerPlayer griefer) {
+		ServerLevel level = helper.getLevel();
+		BlockPos rel = new BlockPos(2, 2, 2);
+		BlockPos pos = helper.absolutePos(rel);
+		helper.setBlock(rel, Blocks.CHEST);
+		Mc.containerAt(level, pos).setItem(0, new ItemStack(Items.DIAMOND, 5));
+		griefer.snapTo(Vec3.atBottomCenterOf(pos.north()));
+		Harness.check(helper, griefer.gameMode.destroyBlock(pos), "the game refused the break");
+		Mods.grief().awaitWrites();
+		// Despawned, burnt, fell in the void: nobody has them any more.
+		level.getEntitiesOfClass(ItemEntity.class, new AABB(pos).inflate(6))
+				.forEach(ItemEntity::discard);
+		return pos;
+	}
+
+	@GameTest(maxTicks = 100)
+	public void spilledItemsNobodyPickedUpAreOwedByNobody(GameTestHelper helper) {
+		// The chest comes back with its diamonds. Nobody ever had the spilled copies, so there
+		// is nothing to stop anybody keeping, and nobody is booked a debt for them.
+		ServerPlayer griefer = Harness.namedPlayer(helper);
+		ServerLevel level = helper.getLevel();
+		BlockPos pos = breakChestAndLoseTheDrops(helper, griefer);
+
+		var result = Mods.grief().rollback(level, Harness.name(griefer), pos, 6, 60_000L, false,
+				Actor.console());
+		Mods.grief().awaitWrites();
+
+		Container back = Mc.containerAt(level, pos);
+		Harness.check(helper, back != null && count(back, Items.DIAMOND) == 5,
+				"the chest did not come back with its diamonds: " + describe(level, pos));
+		var debts = io.github.alphain24.staffcore.StaffCore.pending().debtsOf(griefer.getUUID());
+		Harness.check(helper, debts.isEmpty(), "the griefer was booked a debt for items nobody "
+				+ "picked up: " + debts.stream().map(d -> d.count() + "× " + d.item()).toList());
+		Harness.check(helper, result.unclaimed() >= 5,
+				"the rollback did not say the spilled items were owed by nobody: " + result.unclaimed());
+		helper.succeed();
+	}
+
+	@GameTest(maxTicks = 100)
+	public void aPlayerWhoPickedUpTheSpillAndLostItOwesJustThat(GameTestHelper helper) {
+		// They picked the diamonds up and no longer have them: those are owed. The chest item
+		// they never picked up is not.
+		ServerPlayer griefer = Harness.namedPlayer(helper);
+		ServerLevel level = helper.getLevel();
+		BlockPos pos = breakChestAndLoseTheDrops(helper, griefer);
+		Mods.grief().pickups().onPickup(griefer, new ItemStack(Items.DIAMOND, 5), 5, pos);
+		Mods.grief().awaitWrites();
+
+		var result = Mods.grief().rollback(level, Harness.name(griefer), pos, 6, 60_000L, false,
+				Actor.console());
+		Mods.grief().awaitWrites();
+
+		var debts = io.github.alphain24.staffcore.StaffCore.pending().debtsOf(griefer.getUUID());
+		Harness.checkEquals(helper, 1, debts.size(), "wrong debts booked: "
+				+ debts.stream().map(d -> d.count() + "× " + d.item()).toList());
+		Harness.checkEquals(helper, "minecraft:diamond", debts.get(0).item(), "the wrong item is owed");
+		Harness.checkEquals(helper, 5, debts.get(0).count(), "the wrong amount is owed");
+		var named = result.owedBy().get(Harness.name(griefer));
+		Harness.check(helper, named != null && named.getOrDefault(Items.DIAMOND, 0) == 5,
+				"the rollback result does not name who owes what: " + result.owedBy());
+		helper.succeed();
+	}
+
 	private static void sleepAMillisecond() {
 		long start = System.currentTimeMillis();
 		while (System.currentTimeMillis() == start) Thread.onSpinWait();

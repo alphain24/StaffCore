@@ -278,6 +278,13 @@ public final class StaffSections {
 						.build(),
 						RestorePointsMenu::open),
 
+				SectionMenu.Entry.of(Nodes.ROLLBACK, Icon.of(Items.GOLD_NUGGET)
+						.name("Owed items", Theme.ACCENT)
+						.lore("Who a rollback left owing items, and what.")
+						.lore("Nobody receives them; forgive any here.", Theme.MUTED)
+						.build(),
+						OwedItemsMenu::open),
+
 				SectionMenu.Entry.of(Nodes.INSPECT_MODE, Icon.of(Items.STICK)
 						.name("Inspect mode", Theme.ACCENT)
 						.lore("Click any block to read its history.")

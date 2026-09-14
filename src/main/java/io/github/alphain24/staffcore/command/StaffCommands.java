@@ -1580,9 +1580,8 @@ public final class StaffCommands {
 			ctx.getSource().sendSuccess(() -> Theme.info("Took back " + result.bankedRemoved()
 					+ " item(s) stashed in chests elsewhere."), false);
 		}
-		if (result.debitsQueued() > 0) {
-			ctx.getSource().sendSuccess(() -> Theme.info(result.debitsQueued()
-					+ " item(s) owed by an offline player — collected on their next login."), false);
+		for (var line : io.github.alphain24.staffcore.modules.grief.OwedReport.lines(result)) {
+			ctx.getSource().sendSuccess(() -> line, false);
 		}
 		if (result.itemsReturned() > 0) {
 			ctx.getSource().sendSuccess(() -> Theme.info(

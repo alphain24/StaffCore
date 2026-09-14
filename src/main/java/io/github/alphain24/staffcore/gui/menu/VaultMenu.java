@@ -33,6 +33,8 @@ import java.util.List;
 public class VaultMenu extends PagedGui<ContrabandVault.Entry> {
 
 	private static final int SLOT_FILTER = 47;
+	private static final int SLOT_DESTROY_ALL = 51;
+	private static final int SLOT_DELETE_HISTORY = 52;
 
 	/**
 	 * Which rows are on screen. {@code null} is everything, which is what makes the
@@ -122,6 +124,101 @@ public class VaultMenu extends PagedGui<ContrabandVault.Entry> {
 			Sfx.page(viewer);
 			render();
 		});
+
+		if (!Permissions.check(viewer, Nodes.VAULT_CLEAR)) return;
+		ContrabandVault vault = Mods.security().vault();
+		int held = vault.count(ContrabandVault.State.HELD);
+		int history = vault.count(ContrabandVault.State.RETURNED)
+				+ vault.count(ContrabandVault.State.DESTROYED);
+
+		button(SLOT_DESTROY_ALL, Icon.of(Items.LAVA_BUCKET)
+				.name("Destroy everything held", held > 0 ? Theme.BAD : Theme.MUTED)
+				.field("Held", String.valueOf(held))
+				.gap()
+				.lore("Every item in the vault, gone for good.", Theme.MUTED)
+				.lore("Returns waiting for a login are kept.", Theme.MUTED)
+				.action("Click", "choose, then confirm")
+				.build(), click -> destroyAll(held));
+
+		button(SLOT_DELETE_HISTORY, Icon.of(Items.WRITABLE_BOOK)
+				.name("Delete the history", history > 0 ? Theme.BAD : Theme.MUTED)
+				.field("Records", String.valueOf(history))
+				.gap()
+				.lore("The record of every returned and destroyed item.", Theme.MUTED)
+				.lore("Held items and waiting returns are kept.", Theme.MUTED)
+				.action("Click", "choose, then confirm")
+				.build(), click -> deleteHistory(history));
+	}
+
+	private void destroyAll(int held) {
+		if (held == 0) {
+			viewer.sendSystemMessage(Theme.info("Nothing is held in the vault."));
+			Sfx.deny(viewer);
+			return;
+		}
+		int waiting = Mods.security().vault().count(ContrabandVault.State.PENDING_RETURN);
+		Icon summary = Icon.of(Items.LAVA_BUCKET)
+				.name("Destroy all " + held + " held item(s)", Theme.BAD)
+				.gap()
+				.lore("None of them can be given back afterwards.");
+		if (waiting > 0) {
+			summary.lore(waiting + " waiting to go back to their owner are kept.", Theme.MUTED);
+		}
+		summary.lore("Each keeps a Destroyed record until the history is deleted.", Theme.MUTED)
+				.gap()
+				.warn("Cannot be undone.");
+
+		ConfirmMenu.open(viewer, "Destroy all", summary.build(),
+				() -> {
+					if (!Permissions.check(viewer, Nodes.VAULT_CLEAR)) {
+						Sfx.deny(viewer);
+						reopen(viewer, filter);
+						return;
+					}
+					int destroyed = Mods.security().vault().destroyAllHeld(Mc.name(viewer));
+					viewer.sendSystemMessage(Theme.warn("Destroyed " + destroyed + " held item(s)."));
+					record("destroyed every held item in the vault (" + destroyed + ")");
+					Sfx.bigSuccess(viewer);
+					reopen(viewer, filter);
+				},
+				() -> reopen(viewer, filter));
+	}
+
+	private void deleteHistory(int history) {
+		if (history == 0) {
+			viewer.sendSystemMessage(Theme.info("There is no returned or destroyed history to delete."));
+			Sfx.deny(viewer);
+			return;
+		}
+		ConfirmMenu.open(viewer, "Delete history",
+				Icon.of(Items.WRITABLE_BOOK)
+						.name("Delete " + history + " vault record(s)", Theme.BAD)
+						.gap()
+						.lore("Every returned and destroyed item's record goes:")
+						.lore("what it was, who it came off, who took it, and why.")
+						.lore("Held items and returns waiting for a login stay.", Theme.MUTED)
+						.gap()
+						.warn("Cannot be undone.")
+						.build(),
+				() -> {
+					if (!Permissions.check(viewer, Nodes.VAULT_CLEAR)) {
+						Sfx.deny(viewer);
+						reopen(viewer, filter);
+						return;
+					}
+					int deleted = Mods.security().vault().deleteHistory();
+					viewer.sendSystemMessage(Theme.warn("Deleted " + deleted + " vault record(s)."));
+					record("deleted the vault history (" + deleted + " record(s))");
+					Sfx.bigSuccess(viewer);
+					reopen(viewer, filter);
+				},
+				() -> reopen(viewer, filter));
+	}
+
+	/** A mass action goes into the command log as well as staff chat. */
+	private void record(String what) {
+		Mods.accountability().audit().record(viewer, Mc.name(viewer), "[panel] vault: " + what, null);
+		audit(what);
 	}
 
 	private static ContrabandVault.State next(ContrabandVault.State state) {

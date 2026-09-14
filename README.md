@@ -220,11 +220,11 @@ has already logged off.
 | `/staff case <id> category <kind>` | `staff.gui` | Move a case to another kind, for a report sorted wrongly |
 | `/staff case <id> evidence` | `staff.gui` | List the evidence to open; add `replay <ago> [length]`, `blocks [radius] [ago]`, `location`, `snapshot`, `view <n>`, `retract <n>` |
 | `/staff case <id> tp` | `staff.tp` | Go to where the case happened: the newest filed location, else the block damage, else the replay's start |
-| `/staff vault` | `security.vault` | The contraband vault; `security.vault.destroy` to destroy an item for good |
+| `/staff vault` | `security.vault` | The contraband vault; `security.vault.destroy` to destroy an item for good; `security.vault.clear` to destroy everything held at once or delete the returned-and-destroyed history |
 | `/staff contraband` | `security.vault` | The contraband rules; `security.contraband.edit` to change them |
 | `/staff anticheat [player]` | `security.check` | Bridge state, or one player's findings |
 | `/staff anticheat test <player> [n]` | `staff.reload` | Push a synthetic finding through the pipeline |
-| `/staff owed [player]` | `grief.rollback` | Who still owes items from a rollback |
+| `/staff owed [player]` | `grief.rollback` | Who still owes items from a rollback — only what they picked up and no longer have; also under World → Owed items |
 | `/staff owed forgive <player> [confirm]` | `grief.rollback` | Write a debt off |
 | `/staff owed undo <id> [confirm]` | `grief.rollback` | Give back what a debit took |
 | `/staff reload` | `staff.reload` | Re-read config and permission groups |

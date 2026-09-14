@@ -143,7 +143,8 @@ public class ContainerLogMenu extends PagedGui<ContainerWatch.Move> {
 		}
 		if (result.queued() > 0) {
 			viewer.sendSystemMessage(Theme.info(result.queued()
-					+ " item(s) still owed — collected the next time they log in with some."));
+					+ " item(s) they took were not on them — taken off them the next time they log "
+					+ "in. Nobody receives these; the chest already has them back."));
 		}
 		if (result.deferred() > 0) {
 			viewer.sendSystemMessage(Theme.warn(result.deferred()

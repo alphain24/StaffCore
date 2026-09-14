@@ -306,6 +306,12 @@ public final class ContainerWatch {
 		final Map<String, Map<net.minecraft.world.item.Item, Integer>> tookBack = new LinkedHashMap<>();
 		final Map<String, List<ItemStack>> takenOut = new LinkedHashMap<>();
 		final java.util.Set<BlockPos> touched = new java.util.HashSet<>();
+		final Map<String, Map<net.minecraft.world.item.Item, Integer>> booked = new LinkedHashMap<>();
+
+		/** Who was left owing what for items they took out and no longer have. */
+		public Map<String, Map<net.minecraft.world.item.Item, Integer>> booked() {
+			return booked;
+		}
 
 		public int restored() {
 			return restored;
@@ -470,6 +476,10 @@ public final class ContainerWatch {
 						windowMs, this, "Items returned to a chest they took them from", true,
 						undo.touched);
 				debited += result.recovered();
+				result.booked().forEach((name, items) -> {
+					var theirs = undo.booked.computeIfAbsent(name, n -> new LinkedHashMap<>());
+					items.forEach((item, n) -> theirs.merge(item, n, Integer::sum));
+				});
 			}
 
 			List<ItemStack> handBack = new ArrayList<>();

@@ -192,9 +192,8 @@ public final class RollbackPreview {
 			viewer.sendSystemMessage(Theme.info(
 					"Took back " + result.bankedRemoved() + " item(s) stashed in chests elsewhere."));
 		}
-		if (result.debitsQueued() > 0) {
-			viewer.sendSystemMessage(Theme.info(result.debitsQueued()
-					+ " item(s) are owed by an offline player — collected when they next log in."));
+		for (var line : io.github.alphain24.staffcore.modules.grief.OwedReport.lines(result)) {
+			viewer.sendSystemMessage(line);
 		}
 		if (result.itemsReturned() > 0) {
 			viewer.sendSystemMessage(Theme.info(

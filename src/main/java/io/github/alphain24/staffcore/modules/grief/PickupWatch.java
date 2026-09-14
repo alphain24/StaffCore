@@ -152,6 +152,45 @@ public final class PickupWatch {
 	 * somebody who pocketed sixty-four cobblestone at a scene where five are missing owes
 	 * five.
 	 */
+	/**
+	 * What one player picked up in an area, item by item.
+	 * <p>
+	 * The question a debt has to answer before it is booked: a rollback put these items back, so
+	 * did this player ever have the copies? Rows already reclaimed are left out — those were
+	 * paid for by a sweep that took them back.
+	 */
+	public Map<Item, Integer> pickedUpBy(String world, BlockPos centre, int radius, long windowMs,
+			String player) {
+
+		Map<Item, Integer> out = new LinkedHashMap<>();
+		Connection c = conn();
+		if (c == null || player == null) return out;
+
+		try (PreparedStatement ps = c.prepareStatement(
+				"SELECT item, SUM(count) AS picked FROM pickup_log WHERE world = ? AND created_at >= ? "
+						+ "AND reclaimed = 0 AND player_name = ? "
+						+ "AND x BETWEEN ? AND ? AND z BETWEEN ? AND ? GROUP BY item")) {
+			int i = 1;
+			ps.setString(i++, world);
+			ps.setLong(i++, System.currentTimeMillis() - windowMs);
+			ps.setString(i++, player);
+			ps.setInt(i++, centre.getX() - radius);
+			ps.setInt(i++, centre.getX() + radius);
+			ps.setInt(i++, centre.getZ() - radius);
+			ps.setInt(i, centre.getZ() + radius);
+
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) {
+					Item item = Mc.itemFromId(rs.getString("item"), null);
+					if (item != null) out.merge(item, rs.getInt("picked"), Integer::sum);
+				}
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Grief] pickup lookup failed", e);
+		}
+		return out;
+	}
+
 	public Map<String, Map<Item, Integer>> whoTook(String world, BlockPos centre, int radius,
 			long windowMs, String except, Map<Item, Integer> owed) {
 

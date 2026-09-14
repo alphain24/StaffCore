@@ -24,7 +24,8 @@ import java.util.UUID;
  * <p>
  * Rows are never removed on release. A returned item keeps its record with a
  * {@code RETURNED} state, so "what did we take off this player, and what happened to it"
- * stays answerable long after the item itself has gone back.
+ * stays answerable long after the item itself has gone back — until somebody holding
+ * {@code security.vault.clear} deliberately deletes that history.
  */
 public final class ContrabandVault {
 
@@ -263,6 +264,51 @@ public final class ContrabandVault {
 	public boolean destroy(Entry entry, String by) {
 		if (entry == null || entry.state() != State.HELD) return false;
 		return resolve(entry.id(), State.DESTROYED, by);
+	}
+
+	/**
+	 * Destroys every held stack at once.
+	 * <p>
+	 * Returns waiting for a login are left alone: those were decided in the owner's favour, and
+	 * emptying the vault is not a reason to take back what somebody was already promised.
+	 * Each row stays as a DESTROYED record until the history is deleted.
+	 *
+	 * @return how many stacks were destroyed
+	 */
+	public int destroyAllHeld(String by) {
+		Connection c = conn();
+		if (c == null) return 0;
+		try (PreparedStatement ps = c.prepareStatement(
+				"UPDATE contraband_vault SET state = 'DESTROYED', resolved_at = ?, resolved_by = ? "
+						+ "WHERE state = 'HELD'")) {
+			ps.setLong(1, System.currentTimeMillis());
+			ps.setString(2, by);
+			return ps.executeUpdate();
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Vault] Could not destroy the held items", e);
+			return 0;
+		}
+	}
+
+	/**
+	 * Deletes the record of every returned and destroyed item.
+	 * <p>
+	 * Only rows that are finished with. Anything still held, or on its way back to somebody, is
+	 * a live item and keeps its row. Who confiscated what is still in the inventory audit, which
+	 * this does not touch.
+	 *
+	 * @return how many records were deleted
+	 */
+	public int deleteHistory() {
+		Connection c = conn();
+		if (c == null) return 0;
+		try (PreparedStatement ps = c.prepareStatement(
+				"DELETE FROM contraband_vault WHERE state IN ('RETURNED', 'DESTROYED')")) {
+			return ps.executeUpdate();
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Vault] Could not delete the vault history", e);
+			return 0;
+		}
 	}
 
 	private boolean resolve(long id, State state, String by) {

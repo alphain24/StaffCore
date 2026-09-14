@@ -25,37 +25,50 @@ import net.minecraft.world.item.Items;
  * Keyed on a {@link NameAndId} rather than a live player, because the person you most
  * need this screen for has usually just logged off. Actions that genuinely need them
  * present are drawn greyed with the reason, not silently missing.
+ * <p>
+ * Laid out as labelled rows, one kind of thing per row: who they are and what is in force
+ * across the top, then moderation, items, movement and investigation. It used to be the same
+ * buttons scattered over four rows in the order they were added — the ban card in the middle
+ * of the logs, the ender chest on the far edge away from the inventory — so finding anything
+ * meant reading the whole screen.
  */
 public class PlayerActionsMenu extends Gui {
 
+	// Top row: what is in force either side of who they are.
+	private static final int BAN_CARD = 2;
 	private static final int HEADER = 4;
+	private static final int MUTE_CARD = 6;
 
+	private static final int ROW_MODERATION = 9;
 	private static final int PUNISH = 10;
 	private static final int HISTORY = 11;
 	private static final int NOTES = 12;
-	private static final int INVENTORY = 13;
-	private static final int SNAPSHOTS = 14;
-	private static final int SECURITY = 15;
-	private static final int FREEZE = 16;
+	private static final int APPEALS = 13;
+	private static final int REVOKE_BAN = 14;
+	private static final int REVOKE_MUTE = 15;
+	private static final int IP_BAN = 16;
 
-	private static final int TP_TO = 20;
-	private static final int BRING = 21;
-	private static final int REVOKE_BAN = 23;
-	private static final int REVOKE_MUTE = 24;
-	private static final int IP_BAN = 25;
-	private static final int TELEPORTS = 22;
-	private static final int RISK = 31;
+	private static final int ROW_ITEMS = 18;
+	private static final int INVENTORY = 19;
+	private static final int ENDERCHEST = 20;
+	private static final int SNAPSHOTS = 21;
+	private static final int OWED = 22;
 
-	private static final int ENDERCHEST = 17;
-	private static final int LOGS = 28;
-	private static final int ALTS = 29;
-	private static final int BAN_CARD = 30;
-	private static final int MUTE_CARD = 32;
-	private static final int GRIEF = 33;
-	private static final int APPEALS = 34;
+	private static final int ROW_MOVEMENT = 27;
+	private static final int TP_TO = 28;
+	private static final int BRING = 29;
+	private static final int FREEZE = 30;
+	private static final int TELEPORTS = 31;
 
-	private static final int BACK = 36;
-	private static final int CLOSE = 44;
+	private static final int ROW_INVESTIGATION = 36;
+	private static final int LOGS = 37;
+	private static final int ALTS = 38;
+	private static final int GRIEF = 39;
+	private static final int SECURITY = 40;
+	private static final int RISK = 41;
+
+	private static final int BACK = 45;
+	private static final int CLOSE = 53;
 
 	private final NameAndId target;
 
@@ -70,7 +83,7 @@ public class PlayerActionsMenu extends Gui {
 	}
 
 	private PlayerActionsMenu(int containerId, Inventory playerInventory, ServerPlayer viewer, NameAndId target) {
-		super(containerId, playerInventory, viewer, 5);
+		super(containerId, playerInventory, viewer, 6);
 		this.target = target;
 		render();
 	}
@@ -123,7 +136,7 @@ public class PlayerActionsMenu extends Gui {
 				.build(), true, click -> InvseeMenu.open(viewer, target));
 
 		int snaps = Mods.inventory().snapshotCount(target.id());
-		action(SNAPSHOTS, Nodes.INVSEE, Icon.of(Items.ENDER_CHEST)
+		action(SNAPSHOTS, Nodes.INVSEE, Icon.of(Items.ITEM_FRAME)
 				.name("Snapshots", Theme.TEXT)
 				.field("Stored", String.valueOf(snaps))
 				.lore("Frozen copies of their inventory.")
@@ -200,6 +213,16 @@ public class PlayerActionsMenu extends Gui {
 		buildRevokes(ban, mute);
 		buildIdentityBand(live);
 		buildStatusCards(ban, mute);
+		buildOwed();
+
+		set(ROW_MODERATION, rowLabel(DyeColor.RED, "Moderation",
+				"Punish them, lift what is in force, and read their record."));
+		set(ROW_ITEMS, rowLabel(DyeColor.ORANGE, "Items",
+				"What they carry, what was saved, and what they owe."));
+		set(ROW_MOVEMENT, rowLabel(DyeColor.LIGHT_BLUE, "Movement",
+				"Where they are, and where they have been."));
+		set(ROW_INVESTIGATION, rowLabel(DyeColor.PURPLE, "Investigation",
+				"Logs, linked accounts, blocks and checks."));
 
 		backButton(BACK, "the player list", () -> PlayerListMenu.openForInspection(viewer));
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
@@ -302,6 +325,29 @@ public class PlayerActionsMenu extends Gui {
 				.gap()
 				.action("Click", "read them")
 				.build(), true, click -> AppealsMenu.openFor(viewer, target));
+	}
+
+	// ------------------------------------------------------------------------ rows
+
+	private static ItemStack rowLabel(DyeColor colour, String name, String what) {
+		return Icon.of(Mc.pane(colour))
+				.name(name, Theme.ACCENT)
+				.lore(what, Theme.MUTED)
+				.build();
+	}
+
+	/** What a rollback left them owing, if anything. */
+	private void buildOwed() {
+		int owed = io.github.alphain24.staffcore.StaffCore.pending().debtsOf(target.id()).stream()
+				.mapToInt(io.github.alphain24.staffcore.storage.PendingActions.Entry::count).sum();
+		action(OWED, Nodes.ROLLBACK, Icon.of(Items.GOLD_NUGGET)
+				.name("Owed Items", owed > 0 ? Theme.WARN : Theme.TEXT)
+				.field("Owes", owed > 0 ? owed + " item(s)" : "nothing",
+						owed > 0 ? Theme.WARN : Theme.MUTED)
+				.lore("Items a rollback put back that they no longer had.")
+				.gap()
+				.action("Click", "see or forgive")
+				.build(), true, click -> PlayerDebtsMenu.open(viewer, target));
 	}
 
 	// ---------------------------------------------------------------- status cards

@@ -62,6 +62,8 @@ public final class Nodes {
 	public static final String VAULT           = "security.vault";
 	/** Destroy a vaulted item for good, and edit the contraband rule list. */
 	public static final String VAULT_DESTROY   = "security.vault.destroy";
+	/** Destroy everything held in the vault at once, and delete the record of past items. */
+	public static final String VAULT_CLEAR     = "security.vault.clear";
 	public static final String CONTRABAND_EDIT = "security.contraband.edit";
 	public static final String ANALYTICS       = "analytics.stats";
 	public static final String ROLLBACK        = "grief.rollback";

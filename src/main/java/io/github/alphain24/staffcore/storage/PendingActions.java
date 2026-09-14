@@ -240,6 +240,12 @@ public final class PendingActions {
 				ps -> ps.setString(1, owner.toString()));
 	}
 
+	/** Only what one player owes, oldest first — not the returns waiting for them. */
+	public List<Entry> debtsOf(UUID owner) {
+		return query("SELECT * FROM pending_actions WHERE uuid = ? AND kind = 'DEBIT' "
+				+ "ORDER BY created_at ASC", ps -> ps.setString(1, owner.toString()));
+	}
+
 	/** Whether anything is waiting for this player — cheaper than loading the rows. */
 	public int countFor(UUID owner) {
 		Connection c = conn();
@@ -437,6 +443,51 @@ public final class PendingActions {
 			return 0;
 		}
 		return items;
+	}
+
+	/**
+	 * Writes off every debt on the server.
+	 * <p>
+	 * Debts only, for the same reason as {@link #forgive}: a queued return is somebody's own
+	 * property on its way back to them.
+	 *
+	 * @return how many individual items were written off
+	 */
+	public int forgiveAll() {
+		Connection c = conn();
+		if (c == null) return 0;
+
+		int items = 0;
+		try (PreparedStatement ps = c.prepareStatement(
+				"SELECT SUM(count) FROM pending_actions WHERE kind = 'DEBIT'");
+				ResultSet rs = ps.executeQuery()) {
+			if (rs.next()) items = rs.getInt(1);
+		} catch (SQLException e) {
+			return 0;
+		}
+
+		try (PreparedStatement ps = c.prepareStatement(
+				"DELETE FROM pending_actions WHERE kind = 'DEBIT'")) {
+			ps.executeUpdate();
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Pending] Could not forgive every debt", e);
+			return 0;
+		}
+		return items;
+	}
+
+	/** Writes off one debt row, and never a queued return. */
+	public boolean cancelDebit(long id) {
+		Connection c = conn();
+		if (c == null) return false;
+		try (PreparedStatement ps = c.prepareStatement(
+				"DELETE FROM pending_actions WHERE id = ? AND kind = 'DEBIT'")) {
+			ps.setLong(1, id);
+			return ps.executeUpdate() > 0;
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Pending] Could not forgive a debt", e);
+			return false;
+		}
 	}
 
 	/** Drops a queued row without settling it — used when staff change their mind. */

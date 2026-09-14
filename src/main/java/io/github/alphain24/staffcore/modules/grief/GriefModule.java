@@ -1871,7 +1871,11 @@ public class GriefModule implements Module {
 	 *                      works — this is the number that says so rather than leaving
 	 *                      somebody to notice the shortfall themselves.
 	 * @param bankedRemoved items taken back out of chests the offender had stashed them in
-	 * @param debitsQueued  items an offline offender still owes, settled on their next login
+	 * @param debitsQueued  items an offender still owes, settled on their next login
+	 * @param owedBy        who was left owing what, by name — the players the debts above and
+	 *                      any picked-up items were booked against
+	 * @param unclaimed     items that went back which nobody is charged for, because nobody
+	 *                      picked them up: they despawned, burnt or were blown up
 	 */
 	public record RollbackResult(int reverted, int skipped, int dropsRemoved, int itemsReturned,
 			int itemsDeferred, int bankedRemoved, int debitsQueued, List<RestoredItem> restoring,
@@ -1884,10 +1888,10 @@ public class GriefModule implements Module {
 			 * Zero for a preview and for a rollback that reverted nothing — both are cases
 			 * where there is genuinely nothing to point at.
 			 */
-			long pointId) {
+			long pointId, Map<String, Map<Item, Integer>> owedBy, int unclaimed) {
 
-		static final RollbackResult NOTHING =
-				new RollbackResult(0, 0, 0, 0, 0, 0, 0, List.of(), Map.of(), List.of(), 0L);
+		static final RollbackResult NOTHING = new RollbackResult(0, 0, 0, 0, 0, 0, 0, List.of(),
+				Map.of(), List.of(), 0L, Map.of(), 0);
 
 		/** Whether this rollback left something {@code /staff rollback undo} could take back. */
 		public boolean isUndoable() {
@@ -2234,7 +2238,7 @@ public class GriefModule implements Module {
 			return new RollbackResult(reverted, skipped, 0, containerResult.restored(),
 					containerResult.deferred(), 0, 0, freeze(tally), proposed,
 					previewCharges(level, centre, radius, restored, player, windowMs,
-							owedContents), 0L);
+							owedContents), 0L, Map.of(), 0);
 		}
 
 		Reclaim reclaim = reclaimDrops(level, centre, radius, restored, player, windowMs,
@@ -2250,10 +2254,19 @@ public class GriefModule implements Module {
 		// which is where a second staff member can quietly change the answer.
 		RegionLock.release(staff);
 
+		Map<String, Map<Item, Integer>> owedBy = new java.util.LinkedHashMap<>();
+		for (var source : List.of(reclaim.booked(), containerUndo.booked())) {
+			source.forEach((name, items) -> {
+				Map<Item, Integer> theirs = owedBy.computeIfAbsent(name,
+						n -> new java.util.LinkedHashMap<>());
+				items.forEach((item, n) -> theirs.merge(item, n, Integer::sum));
+			});
+		}
+
 		return new RollbackResult(reverted, skipped, reclaim.fromGround() + reclaim.fromInventory(),
 				containerResult.restored(), containerResult.deferred(),
 				reclaim.fromChests(), reclaim.queued(), freeze(tally), Map.of(), List.of(),
-				reverted > 0 ? pointId : 0L);
+				reverted > 0 ? pointId : 0L, owedBy, reclaim.unclaimed());
 	}
 
 	/**
@@ -2349,8 +2362,9 @@ public class GriefModule implements Module {
 	}
 
 	/** Where the reclaimed items came from, so each route can be reported on its own terms. */
-	private record Reclaim(int fromGround, int fromInventory, int fromChests, int queued) {
-		static final Reclaim NOTHING = new Reclaim(0, 0, 0, 0);
+	private record Reclaim(int fromGround, int fromInventory, int fromChests, int queued,
+			int unclaimed, Map<String, Map<Item, Integer>> booked) {
+		static final Reclaim NOTHING = new Reclaim(0, 0, 0, 0, 0, Map.of());
 	}
 
 	/**
@@ -2391,9 +2405,11 @@ public class GriefModule implements Module {
 		}
 
 		// Tied to the restore point, so undoing this rollback cancels whatever it left owing.
+		// Only what the offender picked up is booked against them. These items all went through
+		// the ground on their way out, so what nobody picked up nobody has.
 		LootRecovery.Result result = LootRecovery.collect(level, player, owed, centre, radius,
 				windowMs, containers, "Rollback — items from restored blocks", true, keepFilled,
-				"ROLLBACK", pointId, staff);
+				"ROLLBACK", pointId, staff, true);
 
 		// What came back off staff counts as recovered from the ground: it was on the floor
 		// at this scene a moment ago, and that is the honest description of where it came from.
@@ -2401,7 +2417,7 @@ public class GriefModule implements Module {
 		// of view: it was lying at the scene a moment ago and somebody had it.
 		return new Reclaim(result.fromGround() + result.fromStaff() + result.fromPickers(),
 				result.fromInventory() + result.fromEnderChest(),
-				result.fromChests(), result.queued());
+				result.fromChests(), result.queued(), result.unclaimed(), result.booked());
 	}
 
 

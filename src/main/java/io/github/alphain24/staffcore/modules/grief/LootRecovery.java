@@ -36,17 +36,28 @@ import java.util.Map;
  *   <li><b>Their next login.</b> Whatever is still missing is booked as a debt rather than
  *       written off, so spending the loot only delays paying for it.</li>
  * </ol>
+ * <p>
+ * A debt is owed to nobody. The originals are already back where they belong; collecting it
+ * only stops somebody keeping a copy, and what is collected is not handed to anyone.
+ * <p>
  * Both the block rollback and the container theft undo run through here, because a thief
  * does not care which screen staff used and the two must not disagree about what is owed.
  */
 public final class LootRecovery {
 	private LootRecovery() {}
 
-	/** How much came back, and by which route. */
+	/**
+	 * How much came back, and by which route.
+	 *
+	 * @param unclaimed items nobody is charged for: not found anywhere, and never picked up by
+	 *                  the player being charged — they despawned, burnt or were blown up
+	 * @param booked    who was left owing what, by name, so staff can be told exactly that
+	 */
 	public record Result(int fromGround, int fromInventory, int fromEnderChest,
-			int fromChests, int fromStaff, int fromPickers, int queued) {
+			int fromChests, int fromStaff, int fromPickers, int queued, int unclaimed,
+			Map<String, Map<Item, Integer>> booked) {
 
-		public static final Result NOTHING = new Result(0, 0, 0, 0, 0, 0, 0);
+		public static final Result NOTHING = new Result(0, 0, 0, 0, 0, 0, 0, 0, Map.of());
 
 		/** Everything actually taken back off them, wherever it was found. */
 		public int recovered() {
@@ -122,7 +133,28 @@ public final class LootRecovery {
 			String reason, boolean snapshot, java.util.Set<BlockPos> keepFilled,
 			String refKind, Long refId, String staffName) {
 
+		return collect(level, playerName, owed, scene, radius, windowMs, containers, reason,
+				snapshot, keepFilled, refKind, refId, staffName, false);
+	}
+
+	/**
+	 * As above, for items that reached the offender off the ground.
+	 *
+	 * @param onlyWhatTheyPickedUp book a debt only for what the pickup log shows the offender
+	 *                             picking up at the scene. For a block rollback's drops and
+	 *                             spilled chest contents: whatever nobody picked up despawned
+	 *                             or was destroyed, nobody has a copy, and charging the
+	 *                             offender for it would take items that were never duplicated.
+	 *                             Not for items taken straight out of a chest, which never
+	 *                             touched the ground and are in the container log instead.
+	 */
+	public static Result collect(ServerLevel level, String playerName, Map<Item, Integer> owed,
+			BlockPos scene, int radius, long windowMs, ContainerWatch containers,
+			String reason, boolean snapshot, java.util.Set<BlockPos> keepFilled,
+			String refKind, Long refId, String staffName, boolean onlyWhatTheyPickedUp) {
+
 		if (owed == null || owed.isEmpty() || level == null) return Result.NOTHING;
+		Map<String, Map<Item, Integer>> booked = new java.util.LinkedHashMap<>();
 
 		// The chunks have to be resident before their entities can be seen at all.
 		if (scene != null) Mc.ensureLoaded(level, scene, radius, MAX_CHUNKS_TO_LOAD);
@@ -139,8 +171,8 @@ public final class LootRecovery {
 		if (playerName == null || !GriefModule.isPlayerSource(playerName)) {
 			int staffOnly = sweepStaff(level, staffName, owed, refKind, refId);
 			int pickedUp = sweepPickers(level, owed, scene, radius, windowMs, null, reason,
-					refKind, refId, staffName);
-			return new Result(fromGround, 0, 0, 0, staffOnly, pickedUp, 0);
+					refKind, refId, staffName, booked);
+			return new Result(fromGround, 0, 0, 0, staffOnly, pickedUp, 0, sum(owed), booked);
 		}
 
 		ServerPlayer offender = level.getServer().getPlayerList().getPlayerByName(playerName);
@@ -152,6 +184,12 @@ public final class LootRecovery {
 			// dropping it was otherwise a complete defence against the sweep above.
 			fromGround += sweepGround(level, owed,
 					offender.getBoundingBox().inflate(OFFENDER_SWEEP));
+		}
+
+		// What they still owed before paying anything out of their own things, so what they
+		// paid can be told apart from what was found lying about or on somebody else.
+		Map<Item, Integer> beforeThem = new java.util.HashMap<>(owed);
+		if (offender != null) {
 
 			// Through the gateway, which takes the before-picture and writes the audit row
 			// itself. Taking items out of somebody's inventory on the strength of a log query
@@ -167,6 +205,11 @@ public final class LootRecovery {
 		if (StaffConfig.get().rollbackChasesBankedLoot && containers != null) {
 			fromChests = containers.reclaimBanked(level, playerName, windowMs, owed, keepFilled);
 		}
+		Map<Item, Integer> paidByThem = new java.util.HashMap<>();
+		beforeThem.forEach((item, due) -> {
+			int paid = (due == null ? 0 : due) - owed.getOrDefault(item, 0);
+			if (paid > 0) paidByThem.put(item, paid);
+		});
 
 		// Anything still missing is owed, whether they are standing here or not. An online
 		// offender who already spent the loot used to get away with it outright: the debit
@@ -179,12 +222,78 @@ public final class LootRecovery {
 		// distance and through an unloaded chunk, because it asks the log rather than the
 		// world — and the only one that can reach items a third party walked off with.
 		int fromPickers = sweepPickers(level, owed, scene, radius, windowMs, playerName, reason,
-				refKind, refId, staffName);
+				refKind, refId, staffName, booked);
 
-		int queued = queue(level, playerName, owed, reason, refKind, refId);
+		int unclaimed = onlyWhatTheyPickedUp
+				? chargeOnlyWhatTheyPickedUp(level, playerName, owed, scene, radius, windowMs,
+						paidByThem)
+				: 0;
+
+		int queued = queue(level, playerName, owed, reason, refKind, refId, booked);
 
 		return new Result(fromGround, fromInventory, fromEnderChest, fromChests, fromStaff,
-				fromPickers, queued);
+				fromPickers, queued, unclaimed, booked);
+	}
+
+	/**
+	 * Cuts what a player is left owing down to what they actually picked up.
+	 * <p>
+	 * A debt used to be booked for everything a rollback could not find. Most of that was never
+	 * in anybody's hands: chest contents that despawned on the floor, drops that fell in lava,
+	 * blocks a creeper took with it. Nobody had a copy, so there was nothing to stop anybody
+	 * keeping, and the "debt" was a charge on the offender's next honest haul for items that no
+	 * longer existed — owed, as far as anybody could tell, to no one.
+	 * <p>
+	 * What they picked up is read from the pickup log; what they have already paid out of their
+	 * own inventory, ender chest and chests comes off it, so paying once is paying. When the
+	 * pickup log is switched off nothing can be told apart, and everything stays owed as before.
+	 * A shulker box or bundle picked up at the scene could be carrying anything, so it lifts the
+	 * cut too.
+	 *
+	 * @param owed       mutated: what is left is at most what they picked up and have not paid
+	 * @param paidByThem what already came out of their own things, per item
+	 * @return how many items nobody is charged for
+	 */
+	private static int chargeOnlyWhatTheyPickedUp(ServerLevel level, String playerName,
+			Map<Item, Integer> owed, BlockPos scene, int radius, long windowMs,
+			Map<Item, Integer> paidByThem) {
+
+		if (scene == null || !StaffConfig.get().logItemPickups) return 0;
+		if (sum(owed) == 0) return 0;
+
+		Map<Item, Integer> pickedUp = Mods.grief().pickups().pickedUpBy(Mc.dimensionId(level),
+				scene, radius, pickupLookback(windowMs), playerName);
+		if (pickedUp.keySet().stream().anyMatch(LootRecovery::holdsItems)) return 0;
+
+		int unclaimed = 0;
+		for (Map.Entry<Item, Integer> due : owed.entrySet()) {
+			int left = due.getValue() == null ? 0 : due.getValue();
+			if (left <= 0) continue;
+			int mayOwe = Math.max(0, pickedUp.getOrDefault(due.getKey(), 0)
+					- paidByThem.getOrDefault(due.getKey(), 0));
+			if (left > mayOwe) {
+				unclaimed += left - mayOwe;
+				due.setValue(mayOwe);
+			}
+		}
+		return unclaimed;
+	}
+
+	/** An item that can have other items inside it, whose contents the pickup log cannot see. */
+	private static boolean holdsItems(Item item) {
+		ItemStack probe = new ItemStack(item);
+		return probe.has(net.minecraft.core.component.DataComponents.CONTAINER)
+				|| probe.has(net.minecraft.core.component.DataComponents.BUNDLE_CONTENTS)
+				|| net.minecraft.world.level.block.Block.byItem(item)
+						instanceof net.minecraft.world.level.block.ShulkerBoxBlock;
+	}
+
+	/**
+	 * How far back to read pickups: wider than the rollback's own window, because somebody can
+	 * loot a scene minutes after the break that created it.
+	 */
+	private static long pickupLookback(long windowMs) {
+		return Math.max(windowMs, 30 * 60_000L);
 	}
 
 	/**
@@ -234,7 +343,8 @@ public final class LootRecovery {
 	public static int reclaimFromPickers(ServerLevel level, Map<Item, Integer> owed,
 			BlockPos scene, int radius, long windowMs, String owner, String reason) {
 
-		return sweepPickers(level, owed, scene, radius, windowMs, owner, reason, null, null, null);
+		return sweepPickers(level, owed, scene, radius, windowMs, owner, reason, null, null, null,
+				null);
 	}
 
 	/**
@@ -256,7 +366,7 @@ public final class LootRecovery {
 	 */
 	private static int sweepPickers(ServerLevel level, Map<Item, Integer> owed, BlockPos scene,
 			int radius, long windowMs, String owner, String reason, String refKind, Long refId,
-			String staffName) {
+			String staffName, Map<String, Map<Item, Integer>> booked) {
 
 		if (scene == null || !StaffConfig.get().logItemPickups) return 0;
 		if (owed.values().stream().noneMatch(due -> due != null && due > 0)) return 0;
@@ -267,7 +377,7 @@ public final class LootRecovery {
 		// A wider window than the rollback's own: somebody can loot a scene minutes after the
 		// break that created it, and the pickup is what matters rather than when the damage
 		// was done.
-		long lookback = Math.max(windowMs, 30 * 60_000L);
+		long lookback = pickupLookback(windowMs);
 		var byPlayer = pickups.whoTook(world, scene, radius, lookback, owner, owed);
 		if (byPlayer.isEmpty()) return 0;
 
@@ -293,7 +403,7 @@ public final class LootRecovery {
 			// Whatever they no longer have is still theirs to settle, online or not.
 			int stillOwed = theirs.values().stream().mapToInt(v -> v == null ? 0 : v).sum();
 			if (stillOwed > 0) {
-				queue(level, name, theirs, reason, refKind, refId);
+				queue(level, name, theirs, reason, refKind, refId, booked);
 			}
 
 			// The debt has moved from the offender to the person holding the goods, so it
@@ -348,6 +458,7 @@ public final class LootRecovery {
 		// 2. The offender, if they are here.
 		ServerPlayer offender = playerName == null ? null
 				: level.getServer().getPlayerList().getPlayerByName(playerName);
+		Map<Item, Integer> beforeThem = new java.util.HashMap<>(remaining);
 		if (offender != null) {
 			Map<Item, Integer> found = countHeld(offender, remaining);
 			int total = sum(found);
@@ -380,8 +491,21 @@ public final class LootRecovery {
 			});
 		}
 
-		// 5. What is left is owed by somebody who cannot pay it now. Naming this is the
-		//    point of the preview: an offline offender is the one who cannot object.
+		// 5. What is left is owed by somebody who cannot pay it now — but only what they
+		//    picked up. The rest nobody has, so nobody is charged for it.
+		if (playerName != null && GriefModule.isPlayerSource(playerName)) {
+			Map<Item, Integer> paidByThem = new java.util.HashMap<>();
+			beforeThem.forEach((item, due) -> {
+				int paid = (due == null ? 0 : due) - remaining.getOrDefault(item, 0);
+				if (paid > 0) paidByThem.put(item, paid);
+			});
+			int nobody = chargeOnlyWhatTheyPickedUp(level, playerName, remaining, scene, radius,
+					windowMs, paidByThem);
+			if (nobody > 0) {
+				charges.add(new Charge("—", true, nobody + " item(s)", nobody,
+						"never picked up by anybody — despawned or destroyed, nobody is charged"));
+			}
+		}
 		int left = sum(remaining);
 		if (left > 0 && playerName != null) {
 			charges.add(new Charge(playerName, offender != null, describeOwed(remaining), left,
@@ -473,9 +597,13 @@ public final class LootRecovery {
 		return taken;
 	}
 
-	/** Books whatever is left against the offender's next login. */
+	/**
+	 * Books whatever is left against the offender's next login.
+	 *
+	 * @param booked where to write down who now owes what, or null
+	 */
 	private static int queue(ServerLevel level, String playerName, Map<Item, Integer> owed,
-			String reason, String refKind, Long refId) {
+			String reason, String refKind, Long refId, Map<String, Map<Item, Integer>> booked) {
 
 		if (owed.values().stream().noneMatch(due -> due != null && due > 0)) return 0;
 
@@ -484,7 +612,15 @@ public final class LootRecovery {
 			StaffCore.LOGGER.warn("[Grief] {} still owes items but has no known profile", playerName);
 			return 0;
 		}
-		return StaffCore.pending().queueDebit(profile.get().id(), profile.get().name(), owed,
+		int queued = StaffCore.pending().queueDebit(profile.get().id(), profile.get().name(), owed,
 				reason, "system", refKind, refId);
+		if (queued > 0 && booked != null) {
+			Map<Item, Integer> theirs = booked.computeIfAbsent(profile.get().name(),
+					who -> new java.util.LinkedHashMap<>());
+			owed.forEach((item, due) -> {
+				if (due != null && due > 0) theirs.merge(item, due, Integer::sum);
+			});
+		}
+		return queued;
 	}
 }
