@@ -257,7 +257,9 @@ public class RollbackGuiTests {
 	}
 
 	@GameTest(maxTicks = 100)
-	public void aPlayersFileIsLaidOutInLabelledRows(GameTestHelper helper) {
+	public void aPlayersFileIsASymmetricGrid(GameTestHelper helper) {
+		// Every one of the 54 slots, for a target with no ban or mute: Lift Ban and Lift Mute
+		// cannot be used, and must still be in their place or the grid shifts.
 		ServerPlayer staff = Harness.namedPlayer(helper);
 		ServerPlayer target = Harness.namedPlayer(helper);
 		Runnable revoke = grantRollback(helper, staff);
@@ -268,17 +270,37 @@ public class RollbackGuiTests {
 
 		Harness.check(helper, staff.containerMenu instanceof PlayerActionsMenu,
 				"the file did not open: " + screen(staff));
-		String[][] expected = {
-				{"4", Harness.name(target)},
-				{"9", "Moderation"}, {"10", "Punish"}, {"13", "Appeals"}, {"14", "Lift Ban"},
-				{"18", "Items"}, {"19", "Inventory"}, {"20", "Ender Chest"}, {"22", "Owed Items"},
-				{"27", "Movement"}, {"28", "Teleport To"}, {"30", "Freeze"},
-				{"36", "Investigation"}, {"37", "Logs"}, {"41", "Risk Profile"},
+
+		String[] rows = {"Actions", "Record", "Items", "Location"};
+		String[][] buttons = {
+				{"Punish", "IP Ban", "Freeze", "Lift Ban", "Lift Mute"},
+				{"History", "Notes", "Appeals", "Linked Accounts", "Risk Profile"},
+				{"Inventory", "Ender Chest", "Snapshots", "Owed Items", "Security Check"},
+				{"Teleport To", "Bring Here", "Teleport History", "Logs", "Block History"},
 		};
-		for (String[] want : expected) {
-			String said = text(staff.containerMenu.getSlot(Integer.parseInt(want[0])).getItem());
-			Harness.check(helper, said.contains(want[1]),
-					"slot " + want[0] + " should be " + want[1] + " but says: " + said);
+		String[] expected = new String[54];
+		expected[2] = "Not banned";
+		expected[4] = Harness.name(target);
+		expected[6] = "Not muted";
+		for (int row = 0; row < 4; row++) {
+			int start = (row + 1) * 9;
+			expected[start] = rows[row];
+			expected[start + 8] = rows[row];
+			for (int column = 0; column < 5; column++) expected[start + 2 + column] = buttons[row][column];
+		}
+		expected[45] = "Back";
+		expected[53] = "Close";
+
+		for (int slot = 0; slot < 54; slot++) {
+			ItemStack stack = staff.containerMenu.getSlot(slot).getItem();
+			String name = stack.getHoverName().getString();
+			if (expected[slot] == null) {
+				Harness.check(helper, stack.is(Mc.pane(net.minecraft.world.item.DyeColor.BLACK)) && name.isBlank(),
+						"slot " + slot + " should be empty frame but holds " + stack + " \"" + name + "\"");
+			} else {
+				Harness.check(helper, text(stack).contains(expected[slot]),
+						"slot " + slot + " should be " + expected[slot] + " but says: " + text(stack));
+			}
 		}
 		helper.succeed();
 	}

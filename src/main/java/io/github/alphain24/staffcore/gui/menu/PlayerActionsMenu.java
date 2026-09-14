@@ -1,6 +1,6 @@
 package io.github.alphain24.staffcore.gui.menu;
 
-import net.minecraft.server.players.NameAndId;
+import io.github.alphain24.staffcore.StaffCore;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.gui.Gui;
 import io.github.alphain24.staffcore.gui.Guis;
@@ -8,64 +8,56 @@ import io.github.alphain24.staffcore.gui.Icon;
 import io.github.alphain24.staffcore.gui.Sfx;
 import io.github.alphain24.staffcore.gui.Theme;
 import io.github.alphain24.staffcore.module.Mods;
+import io.github.alphain24.staffcore.modules.punish.AddressBans;
 import io.github.alphain24.staffcore.modules.punish.Punishment;
 import io.github.alphain24.staffcore.permission.Nodes;
 import io.github.alphain24.staffcore.permission.Permissions;
+import io.github.alphain24.staffcore.storage.PendingActions;
 import io.github.alphain24.staffcore.util.TimeFormat;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.NameAndId;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+
+import java.util.function.Consumer;
 
 /**
  * One player's file: everything StaffCore knows about them and everything you can do.
  * <p>
  * Keyed on a {@link NameAndId} rather than a live player, because the person you most
  * need this screen for has usually just logged off. Actions that genuinely need them
- * present are drawn greyed with the reason, not silently missing.
+ * present stay in their place with the reason written on them, not silently missing.
  * <p>
- * Laid out as labelled rows, one kind of thing per row: who they are and what is in force
- * across the top, then moderation, items, movement and investigation. It used to be the same
- * buttons scattered over four rows in the order they were added — the ban card in the middle
- * of the logs, the ender chest on the far edge away from the inventory — so finding anything
- * meant reading the whole screen.
+ * The layout is a fixed grid, the same for every player whatever state they are in:
+ * <pre>
+ *   .  .  BAN  .  HEAD  .  MUTE .  .
+ *   A  .  ■    ■  ■     ■  ■    .  A     Actions
+ *   R  .  ■    ■  ■     ■  ■    .  R     Record
+ *   I  .  ■    ■  ■     ■  ■    .  I     Items
+ *   L  .  ■    ■  ■     ■  ■    .  L     Location
+ *   ←  .  .    .  .     .  .    .  ✕
+ * </pre>
+ * Five buttons to a row in the middle five columns, a coloured label at both ends of each
+ * row, and the status cards above the first, middle and last column. Nothing moves when a
+ * player goes offline or a ban is lifted — a button that cannot be used says why in place —
+ * so the same thing is always under the same spot.
  */
 public class PlayerActionsMenu extends Gui {
 
-	// Top row: what is in force either side of who they are.
+	// Top row: what is in force either side of who they are, over columns 2, 4 and 6.
 	private static final int BAN_CARD = 2;
 	private static final int HEADER = 4;
 	private static final int MUTE_CARD = 6;
 
-	private static final int ROW_MODERATION = 9;
-	private static final int PUNISH = 10;
-	private static final int HISTORY = 11;
-	private static final int NOTES = 12;
-	private static final int APPEALS = 13;
-	private static final int REVOKE_BAN = 14;
-	private static final int REVOKE_MUTE = 15;
-	private static final int IP_BAN = 16;
-
-	private static final int ROW_ITEMS = 18;
-	private static final int INVENTORY = 19;
-	private static final int ENDERCHEST = 20;
-	private static final int SNAPSHOTS = 21;
-	private static final int OWED = 22;
-
-	private static final int ROW_MOVEMENT = 27;
-	private static final int TP_TO = 28;
-	private static final int BRING = 29;
-	private static final int FREEZE = 30;
-	private static final int TELEPORTS = 31;
-
-	private static final int ROW_INVESTIGATION = 36;
-	private static final int LOGS = 37;
-	private static final int ALTS = 38;
-	private static final int GRIEF = 39;
-	private static final int SECURITY = 40;
-	private static final int RISK = 41;
+	/** Where each row starts; buttons go in columns 2 to 6, labels in columns 0 and 8. */
+	private static final int ACTIONS = 9;
+	private static final int RECORD = 18;
+	private static final int ITEMS = 27;
+	private static final int LOCATION = 36;
 
 	private static final int BACK = 45;
 	private static final int CLOSE = 53;
@@ -82,7 +74,8 @@ public class PlayerActionsMenu extends Gui {
 				(id, inv, v) -> new PlayerActionsMenu(id, inv, v, target));
 	}
 
-	private PlayerActionsMenu(int containerId, Inventory playerInventory, ServerPlayer viewer, NameAndId target) {
+	private PlayerActionsMenu(int containerId, Inventory playerInventory, ServerPlayer viewer,
+			NameAndId target) {
 		super(containerId, playerInventory, viewer, 6);
 		this.target = target;
 		render();
@@ -100,164 +93,174 @@ public class PlayerActionsMenu extends Gui {
 		ServerPlayer live = online();
 		Punishment ban = Mods.punish().activeBan(target.id());
 		Punishment mute = Mods.punish().activeMute(target.id());
+		String offline = live == null ? target.name() + " is offline." : null;
 
+		set(BAN_CARD, card("Ban", ban, Items.BARRIER));
 		set(HEADER, headerIcon(live, ban, mute));
+		set(MUTE_CARD, card("Mute", mute, Items.NOTE_BLOCK));
 
-		action(PUNISH, Nodes.PUNISH, Icon.of(Items.NETHERITE_AXE)
-				.name("Punish", Theme.BAD)
-				.lore("Warn, kick, mute or ban.")
-				.gap()
-				.action("Click", "open the ladder")
-				.build(), true, click -> PunishMenu.open(viewer, target));
-
-		int punishments = Mods.punish().historyCount(target.id());
-		action(HISTORY, Nodes.HISTORY, Icon.of(Items.BOOK)
-				.name("History", Theme.TEXT)
-				.field("Records", String.valueOf(punishments), punishments > 0 ? Theme.WARN : Theme.MUTED)
-				.gap()
-				.action("Click", "read every punishment")
-				.build(), true, click -> HistoryMenu.open(viewer, target));
-
-		int notes = Mods.notes().count(target.id());
-		action(NOTES, Nodes.NOTES, Icon.of(Items.WRITABLE_BOOK)
-				.name("Notes", Theme.TEXT)
-				.field("Notes", String.valueOf(notes), notes > 0 ? Theme.WARN : Theme.MUTED)
-				.gap()
-				.action("Click", "read and write notes")
-				.build(), true, click -> NotesMenu.open(viewer, target));
-
-		action(INVENTORY, Nodes.INVSEE, Icon.of(Items.CHEST)
-				.name("Inventory", Theme.TEXT)
-				.lore(live == null
-						? "Read from their save file."
-						: Mods.inventory().usedSlots(live) + " slot(s) in use.")
-				.gap()
-				.action("Click", live == null ? "open a read-only view" : "open a live view")
-				.build(), true, click -> InvseeMenu.open(viewer, target));
-
-		int snaps = Mods.inventory().snapshotCount(target.id());
-		action(SNAPSHOTS, Nodes.INVSEE, Icon.of(Items.ITEM_FRAME)
-				.name("Snapshots", Theme.TEXT)
-				.field("Stored", String.valueOf(snaps))
-				.lore("Frozen copies of their inventory.")
-				.gap()
-				.action("Click", "browse snapshots")
-				.build(), true, click -> SnapshotsMenu.open(viewer, target));
-
-		action(SECURITY, Nodes.SECURITY_CHECK, Icon.of(Items.SPYGLASS)
-				.name("Security Check", Theme.TEXT)
-				.lore("Impossible items, illegal enchants, mining patterns.")
-				.gap()
-				.action("Click", "run the checks")
-				.build(), live != null, click -> SecurityMenu.open(viewer, online()));
-
-		boolean frozen = live != null && Mods.freeze().isFrozen(live);
-		action(FREEZE, Nodes.FREEZE, Icon.of(Items.PACKED_ICE)
-				.name("Freeze", frozen ? 0x8FD3FF : Theme.TEXT)
-				.lore("Lock them where they stand so they cannot run.")
-				.gap()
-				.state(frozen, "Frozen", "Free to move")
-				.action("Click", frozen ? "release them" : "freeze them")
-				.build(), live != null, click -> {
-			ServerPlayer p = online();
-			if (p == null) return;
-			boolean now = Mods.freeze().toggle(p);
-			viewer.sendSystemMessage(now
-					? Theme.good(target.name() + " is frozen.")
-					: Theme.info(target.name() + " is free to move."));
-			Sfx.success(viewer);
-			render();
-		});
-
-		action(TP_TO, Nodes.TP, Icon.of(Items.ENDER_PEARL)
-				.name("Teleport To", Theme.TEXT)
-				.lore("Go to where they are standing.")
-				.build(), live != null, click -> {
-			ServerPlayer p = online();
-			if (p == null) return;
-			Mods.teleport().toPlayer(viewer, p);
-			viewer.sendSystemMessage(Theme.info("Teleported to " + target.name() + "."));
-			viewer.closeContainer();
-		});
-
-		action(BRING, Nodes.TP_HERE, Icon.of(Items.LEAD)
-				.name("Bring Here", Theme.TEXT)
-				.lore("Pull them to you.")
-				.warn("They will notice.")
-				.build(), live != null, click -> {
-			ServerPlayer p = online();
-			if (p == null) return;
-			Mods.teleport().bringHere(viewer, p);
-			p.sendSystemMessage(Theme.info("You were brought to a staff member."));
-			viewer.sendSystemMessage(Theme.good("Brought " + target.name() + " to you."));
-			viewer.closeContainer();
-		});
-
-		int teleports = Mods.teleport().log().forPlayer(target.id(), 200).size();
-		action(TELEPORTS, Nodes.LOGS, Icon.of(Items.ENDER_EYE)
-				.name("Teleport History", Theme.TEXT)
-				.field("On record", teleports >= 200 ? "200+" : String.valueOf(teleports))
-				.lore("Commands, pearls, portals, respawns and staff.")
-				.gap()
-				.action("Click", "see where they went")
-				.build(), true, click -> TeleportHistoryMenu.open(viewer, target));
-
-		action(RISK, Nodes.HISTORY, Icon.of(Items.COMPARATOR)
-				.name("Risk Profile", Theme.TEXT)
-				.lore("Everything on record about them, weighed,")
-				.lore("with every reason shown. Not a verdict.")
-				.gap()
-				.action("Click", "see it")
-				.build(), true, click -> RiskProfileMenu.open(viewer, target));
-
-		buildRevokes(ban, mute);
-		buildIdentityBand(live);
-		buildStatusCards(ban, mute);
-		buildOwed();
-
-		set(ROW_MODERATION, rowLabel(DyeColor.RED, "Moderation",
-				"Punish them, lift what is in force, and read their record."));
-		set(ROW_ITEMS, rowLabel(DyeColor.ORANGE, "Items",
-				"What they carry, what was saved, and what they owe."));
-		set(ROW_MOVEMENT, rowLabel(DyeColor.LIGHT_BLUE, "Movement",
-				"Where they are, and where they have been."));
-		set(ROW_INVESTIGATION, rowLabel(DyeColor.PURPLE, "Investigation",
-				"Logs, linked accounts, blocks and checks."));
+		actionsRow(live, ban, mute, offline);
+		recordRow();
+		itemsRow(live, offline);
+		locationRow(offline);
 
 		backButton(BACK, "the player list", () -> PlayerListMenu.openForInspection(viewer));
 		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 		fillEmpty(Theme.filler());
 	}
 
-	// --------------------------------------------------------------------- revokes
+	private void actionsRow(ServerPlayer live, Punishment ban, Punishment mute, String offline) {
+		label(ACTIONS, DyeColor.RED, "Actions", "Punish · IP ban · Freeze · Lift ban · Lift mute");
 
-	private void buildRevokes(Punishment ban, Punishment mute) {
-		action(REVOKE_BAN, Nodes.UNPUNISH, Icon.of(Items.TOTEM_OF_UNDYING)
-				.name("Lift Ban", ban != null ? Theme.GOOD : Theme.MUTED)
-				.lore(ban != null ? "They are banned right now." : "They are not banned.")
-				.lore("Also lifts any IP ban taken from them.", Theme.MUTED)
-				.gap()
-				.action("Click", "lift it")
-				.build(), ban != null, click -> confirmRevoke(true));
-
-		action(REVOKE_MUTE, Nodes.UNPUNISH, Icon.of(Items.JUKEBOX)
-				.name("Lift Mute", mute != null ? Theme.GOOD : Theme.MUTED)
-				.lore(mute != null ? "They are muted right now." : "They are not muted.")
-				.gap()
-				.action("Click", "lift it")
-				.build(), mute != null, click -> confirmRevoke(false));
+		tile(ACTIONS, 0, Nodes.PUNISH, Items.NETHERITE_AXE, "Punish", Theme.BAD, null,
+				icon -> icon.lore("Warn, kick, mute or ban."),
+				"open the ladder", click -> PunishMenu.open(viewer, target));
 
 		long ipBans = Mods.punish().addressBans().forSource(target.id()).stream()
-				.filter(io.github.alphain24.staffcore.modules.punish.AddressBans.AddressBan::inForce)
-				.count();
-		action(IP_BAN, Nodes.IP_BAN, Icon.of(Items.IRON_BARS)
-				.name("IP Ban", ipBans > 0 ? Theme.WARN : Theme.BAD)
-				.lore(ipBans > 0 ? "Their connection is banned right now."
-						: "Ban the account and the connection it uses.")
-				.gap()
-				.action("Click", ipBans > 0 ? "see or lift it" : "choose a reason")
-				.build(), true, click -> AddressBanMenu.open(viewer, target));
+				.filter(AddressBans.AddressBan::inForce).count();
+		tile(ACTIONS, 1, Nodes.IP_BAN, Items.IRON_BARS, "IP Ban", ipBans > 0 ? Theme.WARN : Theme.BAD,
+				null,
+				icon -> icon.lore(ipBans > 0 ? "Their connection is banned now."
+						: "Ban the account and its connection."),
+				ipBans > 0 ? "see or lift it" : "choose a reason",
+				click -> AddressBanMenu.open(viewer, target));
+
+		boolean frozen = live != null && Mods.freeze().isFrozen(live);
+		tile(ACTIONS, 2, Nodes.FREEZE, Items.PACKED_ICE, "Freeze", frozen ? 0x8FD3FF : Theme.TEXT,
+				offline,
+				icon -> icon.lore("Lock them where they stand.")
+						.state(frozen, "Frozen", "Free to move"),
+				frozen ? "release them" : "freeze them", click -> {
+					ServerPlayer p = online();
+					if (p == null) return;
+					boolean now = Mods.freeze().toggle(p);
+					viewer.sendSystemMessage(now
+							? Theme.good(target.name() + " is frozen.")
+							: Theme.info(target.name() + " is free to move."));
+					Sfx.success(viewer);
+					render();
+				});
+
+		tile(ACTIONS, 3, Nodes.UNPUNISH, Items.TOTEM_OF_UNDYING, "Lift Ban", Theme.GOOD,
+				ban == null ? "They are not banned." : null,
+				icon -> icon.lore("Also lifts any IP ban taken from them."),
+				"lift it", click -> confirmRevoke(true));
+
+		tile(ACTIONS, 4, Nodes.UNPUNISH, Items.JUKEBOX, "Lift Mute", Theme.GOOD,
+				mute == null ? "They are not muted." : null,
+				icon -> icon.lore("They can talk again straight away."),
+				"lift it", click -> confirmRevoke(false));
 	}
+
+	private void recordRow() {
+		label(RECORD, DyeColor.YELLOW, "Record",
+				"History · Notes · Appeals · Linked accounts · Risk profile");
+
+		int punishments = Mods.punish().historyCount(target.id());
+		tile(RECORD, 0, Nodes.HISTORY, Items.BOOK, "History", Theme.TEXT, null,
+				icon -> icon.lore("Every punishment they have had.")
+						.field("Records", String.valueOf(punishments),
+								punishments > 0 ? Theme.WARN : Theme.MUTED),
+				"read it", click -> HistoryMenu.open(viewer, target));
+
+		int notes = Mods.notes().count(target.id());
+		tile(RECORD, 1, Nodes.NOTES, Items.WRITABLE_BOOK, "Notes", Theme.TEXT, null,
+				icon -> icon.lore("What staff have written about them.")
+						.field("Notes", String.valueOf(notes), notes > 0 ? Theme.WARN : Theme.MUTED),
+				"read and write notes", click -> NotesMenu.open(viewer, target));
+
+		int appeals = Mods.appeals().openCountFor(target.id());
+		tile(RECORD, 2, Nodes.APPEALS, Items.PAPER, "Appeals", Theme.TEXT, null,
+				icon -> icon.lore("What they have said in their defence.")
+						.field("Open", String.valueOf(appeals), appeals > 0 ? Theme.WARN : Theme.MUTED),
+				"read them", click -> AppealsMenu.openFor(viewer, target));
+
+		int alts = Mods.identity().altCount(target.id());
+		tile(RECORD, 3, Nodes.ALTS, Items.IRON_CHAIN, "Linked Accounts", Theme.TEXT, null,
+				icon -> icon.lore("Accounts sharing an address. A lead, not proof.")
+						.field("Linked", String.valueOf(alts), alts > 0 ? Theme.WARN : Theme.MUTED),
+				"review them", click -> AltsMenu.open(viewer, target));
+
+		tile(RECORD, 4, Nodes.HISTORY, Items.COMPARATOR, "Risk Profile", Theme.TEXT, null,
+				icon -> icon.lore("Everything on record, weighed. Not a verdict."),
+				"see it", click -> RiskProfileMenu.open(viewer, target));
+	}
+
+	private void itemsRow(ServerPlayer live, String offline) {
+		label(ITEMS, DyeColor.CYAN, "Items",
+				"Inventory · Ender chest · Snapshots · Owed items · Security check");
+
+		tile(ITEMS, 0, Nodes.INVSEE, Items.CHEST, "Inventory", Theme.TEXT, null,
+				icon -> icon.lore(live == null ? "Read from their save file."
+						: "Live, " + Mods.inventory().usedSlots(live) + " slot(s) in use."),
+				live == null ? "open a read-only view" : "open a live view",
+				click -> InvseeMenu.open(viewer, target));
+
+		tile(ITEMS, 1, Nodes.ENDERCHEST, Items.ENDER_CHEST, "Ender Chest", Theme.TEXT, offline,
+				icon -> icon.lore("Where hidden things usually end up."),
+				"open it", click -> EnderChestMenu.open(viewer, target));
+
+		int snaps = Mods.inventory().snapshotCount(target.id());
+		tile(ITEMS, 2, Nodes.INVSEE, Items.ITEM_FRAME, "Snapshots", Theme.TEXT, null,
+				icon -> icon.lore("Saved copies of their inventory.")
+						.field("Stored", String.valueOf(snaps)),
+				"browse them", click -> SnapshotsMenu.open(viewer, target));
+
+		int owed = StaffCore.pending().debtsOf(target.id()).stream()
+				.mapToInt(PendingActions.Entry::count).sum();
+		tile(ITEMS, 3, Nodes.ROLLBACK, Items.GOLD_NUGGET, "Owed Items", owed > 0 ? Theme.WARN : Theme.TEXT,
+				null,
+				icon -> icon.lore("Rolled-back items they no longer had.")
+						.field("Owes", owed > 0 ? owed + " item(s)" : "nothing",
+								owed > 0 ? Theme.WARN : Theme.MUTED),
+				"see or forgive", click -> PlayerDebtsMenu.open(viewer, target));
+
+		tile(ITEMS, 4, Nodes.SECURITY_CHECK, Items.SPYGLASS, "Security Check", Theme.TEXT, offline,
+				icon -> icon.lore("Impossible items and illegal enchants."),
+				"run the checks", click -> SecurityMenu.open(viewer, online()));
+	}
+
+	private void locationRow(String offline) {
+		label(LOCATION, DyeColor.PURPLE, "Location",
+				"Teleport to · Bring here · Teleports · Logs · Block history");
+
+		tile(LOCATION, 0, Nodes.TP, Items.ENDER_PEARL, "Teleport To", Theme.TEXT, offline,
+				icon -> icon.lore("Go to where they are standing."),
+				"go there", click -> {
+					ServerPlayer p = online();
+					if (p == null) return;
+					Mods.teleport().toPlayer(viewer, p);
+					viewer.sendSystemMessage(Theme.info("Teleported to " + target.name() + "."));
+					viewer.closeContainer();
+				});
+
+		tile(LOCATION, 1, Nodes.TP_HERE, Items.LEAD, "Bring Here", Theme.TEXT, offline,
+				icon -> icon.lore("Pull them to you.").warn("They will notice."),
+				"bring them", click -> {
+					ServerPlayer p = online();
+					if (p == null) return;
+					Mods.teleport().bringHere(viewer, p);
+					p.sendSystemMessage(Theme.info("You were brought to a staff member."));
+					viewer.sendSystemMessage(Theme.good("Brought " + target.name() + " to you."));
+					viewer.closeContainer();
+				});
+
+		int teleports = Mods.teleport().log().forPlayer(target.id(), 200).size();
+		tile(LOCATION, 2, Nodes.LOGS, Items.ENDER_EYE, "Teleport History", Theme.TEXT, null,
+				icon -> icon.lore("Commands, pearls, portals and staff.")
+						.field("On record", teleports >= 200 ? "200+" : String.valueOf(teleports)),
+				"see where they went", click -> TeleportHistoryMenu.open(viewer, target));
+
+		tile(LOCATION, 3, Nodes.LOGS, Items.RECOVERY_COMPASS, "Logs", Theme.TEXT, null,
+				icon -> icon.lore("Joins, leaves and deaths, with coordinates."),
+				"read them", click -> LogsMenu.open(viewer, target));
+
+		tile(LOCATION, 4, Nodes.ROLLBACK, Items.IRON_PICKAXE, "Block History", Theme.TEXT, null,
+				icon -> icon.lore("The grief log for them, around you."),
+				"open the log", click -> GriefMenu.openFor(viewer, target.name()));
+	}
+
+	// --------------------------------------------------------------------- revokes
 
 	private void confirmRevoke(boolean ban) {
 		String what = ban ? "ban" : "mute";
@@ -285,87 +288,18 @@ public class PlayerActionsMenu extends Gui {
 				() -> reopen(viewer, target));
 	}
 
-	/** Ender chest, logs, linked accounts, grief history and appeals. */
-	private void buildIdentityBand(ServerPlayer live) {
-		action(ENDERCHEST, Nodes.ENDERCHEST, Icon.of(Items.ENDER_CHEST)
-				.name("Ender Chest", Theme.TEXT)
-				.lore("Where anything worth hiding usually ends up.")
-				.gap()
-				.action("Click", "open it")
-				.build(), live != null, click -> EnderChestMenu.open(viewer, target));
-
-		action(LOGS, Nodes.LOGS, Icon.of(Items.WRITTEN_BOOK)
-				.name("Logs", Theme.TEXT)
-				.lore("Joins, leaves and deaths, with coordinates.")
-				.gap()
-				.action("Click", "read their history")
-				.build(), true, click -> LogsMenu.open(viewer, target));
-
-		int alts = Mods.identity().altCount(target.id());
-		action(ALTS, Nodes.ALTS, Icon.of(Items.PLAYER_HEAD)
-				.name("Linked Accounts", alts > 0 ? Theme.WARN : Theme.TEXT)
-				.field("Sharing an address", String.valueOf(alts))
-				.lore("A lead, not proof.")
-				.gap()
-				.action("Click", "review them")
-				.build(), true, click -> AltsMenu.open(viewer, target));
-
-		action(GRIEF, Nodes.ROLLBACK, Icon.of(Items.TNT)
-				.name("Their block history", Theme.TEXT)
-				.lore("Grief log filtered to this player, around you.")
-				.gap()
-				.action("Click", "open the log here")
-				.build(), true, click -> GriefMenu.openFor(viewer, target.name()));
-
-		int appeals = Mods.appeals().openCountFor(target.id());
-		action(APPEALS, Nodes.APPEALS, Icon.of(Items.PAPER)
-				.name("Appeals", appeals > 0 ? Theme.WARN : Theme.TEXT)
-				.field("Open", String.valueOf(appeals))
-				.lore("What they have said in their defence.")
-				.gap()
-				.action("Click", "read them")
-				.build(), true, click -> AppealsMenu.openFor(viewer, target));
-	}
-
-	// ------------------------------------------------------------------------ rows
-
-	private static ItemStack rowLabel(DyeColor colour, String name, String what) {
-		return Icon.of(Mc.pane(colour))
-				.name(name, Theme.ACCENT)
-				.lore(what, Theme.MUTED)
-				.build();
-	}
-
-	/** What a rollback left them owing, if anything. */
-	private void buildOwed() {
-		int owed = io.github.alphain24.staffcore.StaffCore.pending().debtsOf(target.id()).stream()
-				.mapToInt(io.github.alphain24.staffcore.storage.PendingActions.Entry::count).sum();
-		action(OWED, Nodes.ROLLBACK, Icon.of(Items.GOLD_NUGGET)
-				.name("Owed Items", owed > 0 ? Theme.WARN : Theme.TEXT)
-				.field("Owes", owed > 0 ? owed + " item(s)" : "nothing",
-						owed > 0 ? Theme.WARN : Theme.MUTED)
-				.lore("Items a rollback put back that they no longer had.")
-				.gap()
-				.action("Click", "see or forgive")
-				.build(), true, click -> PlayerDebtsMenu.open(viewer, target));
-	}
-
 	// ---------------------------------------------------------------- status cards
 
-	private void buildStatusCards(Punishment ban, Punishment mute) {
-		set(BAN_CARD, card("Ban status", ban, Items.NETHERITE_AXE));
-		set(MUTE_CARD, card("Mute status", mute, Items.NOTE_BLOCK));
-	}
-
-	private ItemStack card(String label, Punishment p, net.minecraft.world.item.Item item) {
+	private ItemStack card(String what, Punishment p, Item item) {
+		boolean isBan = what.equals("Ban");
 		if (p == null) {
 			return Icon.of(Mc.pane(DyeColor.LIME))
-					.name(label, Theme.GOOD)
-					.lore("Nothing active.")
+					.name(isBan ? "Not banned" : "Not muted", Theme.GOOD)
+					.lore("No " + (isBan ? "ban" : "mute") + " in force.", Theme.MUTED)
 					.build();
 		}
 		return Icon.of(item)
-				.name(label, Theme.BAD)
+				.name(isBan ? "Banned" : "Muted", Theme.BAD)
 				.field("Type", p.type().label())
 				.field("Reason", p.reason())
 				.field("By", p.staffName())
@@ -411,24 +345,48 @@ public class PlayerActionsMenu extends Gui {
 
 	// -------------------------------------------------------------------- helpers
 
+	/** The same coloured label at both ends of a row, naming what is in it. */
+	private void label(int row, DyeColor colour, String name, String contents) {
+		ItemStack label = Icon.of(Mc.pane(colour))
+				.name(name, Theme.ACCENT)
+				.lore(contents, Theme.MUTED)
+				.build();
+		set(row, label);
+		set(row + 8, label.copy());
+	}
+
 	/**
-	 * Places an action, or an explanatory stand-in when the viewer lacks the node or the
-	 * target is offline. Two different failures, two different messages — a staff member
-	 * should never have to guess which one they hit.
+	 * One button, in column {@code 2 + index} of its row, every one built the same way: a name,
+	 * a line saying what it is, any counts, then what a click does.
+	 * <p>
+	 * A button stays in its place whatever happens. Without the node it says which one is
+	 * missing; when it cannot be used right now — they are offline, there is no ban to lift —
+	 * it says that instead of the click line. Two different failures, two different messages,
+	 * and the grid never shifts under the cursor.
+	 *
+	 * @param unavailable why it cannot be used right now, or null when it can
 	 */
-	private void action(int slot, String node, ItemStack icon, boolean available, Action run) {
+	private void tile(int row, int index, String node, Item item, String name, int colour,
+			String unavailable, Consumer<Icon> body, String does, Action run) {
+
+		int slot = row + 2 + index;
 		if (!Permissions.check(viewer, node)) {
-			set(slot, Theme.lockedButton("Needs " + node));
-			return;
-		}
-		if (!available) {
-			set(slot, Icon.of(icon)
-					.gap()
-					.warn(target.name() + " must be online for this.")
+			set(slot, Icon.of(item)
+					.name(name, Theme.MUTED)
+					.lore("Locked — needs " + node + ".", Theme.MUTED)
 					.build());
 			return;
 		}
-		button(slot, icon, click -> {
+
+		Icon icon = Icon.of(item).name(name, unavailable == null ? colour : Theme.MUTED);
+		body.accept(icon);
+		icon.gap();
+
+		if (unavailable != null) {
+			set(slot, icon.warn(unavailable).build());
+			return;
+		}
+		button(slot, icon.action("Click", does).build(), click -> {
 			Sfx.click(viewer);
 			run.run(click);
 		});
