@@ -185,7 +185,7 @@ has already logged off.
 | `/staff replay <player> [timespan]` | `staff.replay` | Watch their session back — needs `positionTracking` on |
 | `/staff replay pause · resume · speed · restart · exit` | `staff.replay` | Playback controls |
 | `/staff preview [area] …` | `grief.rollback` | What a rollback would change, writing nothing |
-| `/staff rollback <player> <radius> [minutes]` | `grief.rollback` | Undo block changes |
+| `/staff rollback <player> <radius> [minutes]` | `grief.rollback` | Undo block changes back to how the area was before them — a chest they placed and broke is not put back. In the grief log, right-click the rollback button to put back only what was broken |
 | `/staff rollback undo [id \| list]` | `grief.rollback` | Undo a rollback — restore points kept 7 days |
 | `/staff search <query…>` | `grief.search` | `key:value` query over both logs |
 | `/staff purge <age> [player] [confirm]` | `grief.purge` | Delete history early — previews first |

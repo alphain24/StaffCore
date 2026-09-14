@@ -279,7 +279,7 @@ public final class ContainerWatch {
 	public Result rollback(net.minecraft.server.level.ServerLevel level, String player,
 			BlockPos centre, int radius, long windowMs, boolean dryRun) {
 		Undo undo = new Undo();
-		undo(level, player, centre, radius, windowMs, dryRun, Map.of(), pos -> true, undo);
+		undo(level, player, centre, radius, windowMs, dryRun, Map.of(), pos -> true, false, undo);
 		return settle(level, centre, radius, windowMs, dryRun, undo);
 	}
 
@@ -338,12 +338,14 @@ public final class ContainerWatch {
 	 * anything its breaker had put in is inside the spilled contents they are already being
 	 * charged for, so taking it back out reduces that charge rather than handing it to them.
 	 *
-	 * @param rebuilt  containers rebuilt from a break snapshot, by position
-	 * @param include  which container positions this pass covers
+	 * @param rebuilt   containers rebuilt from a break snapshot, by position
+	 * @param include   which container positions this pass covers
+	 * @param takesOnly put back what was taken and leave what was put in, for a rollback that
+	 *                  only puts back what was broken
 	 */
 	public void undo(net.minecraft.server.level.ServerLevel level, String player, BlockPos centre,
 			int radius, long windowMs, boolean dryRun, Map<BlockPos, Rebuilt> rebuilt,
-			java.util.function.Predicate<BlockPos> include, Undo undo) {
+			java.util.function.Predicate<BlockPos> include, boolean takesOnly, Undo undo) {
 
 		if (!StaffCore.storage().isReady()) return;
 
@@ -370,6 +372,7 @@ public final class ContainerWatch {
 			try (ResultSet rs = ps.executeQuery()) {
 				while (rs.next()) {
 					Move move = map(rs);
+					if (takesOnly && !"TAKE".equals(move.action())) continue;
 					BlockPos pos = new BlockPos(move.x(), move.y(), move.z());
 					java.util.Set<BlockPos> halves = Mc.containerHalves(level, pos);
 					if (halves.stream().noneMatch(include)) continue;

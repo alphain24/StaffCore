@@ -106,6 +106,23 @@ public final class RollbackPoints {
 	 * the same shape a broken chest already uses.
 	 */
 	public void capture(long pointId, long pointTime, ServerLevel level, BlockPos pos, Long logId) {
+		capture(pointId, pointTime, level, pos, logId, true);
+	}
+
+	/**
+	 * As above for a position several log rows are being undone at at once. The state and the
+	 * contents are the same for all of them and recorded once; each row is linked, so undoing
+	 * the rollback brings every one of them back into the log rather than only the first.
+	 */
+	public void capture(long pointId, long pointTime, ServerLevel level, BlockPos pos,
+			List<Long> logIds) {
+		for (int i = 0; i < logIds.size(); i++) {
+			capture(pointId, pointTime, level, pos, logIds.get(i), i == 0);
+		}
+	}
+
+	private void capture(long pointId, long pointTime, ServerLevel level, BlockPos pos, Long logId,
+			boolean withContents) {
 		if (pointId == 0L) return;
 
 		// Read now, write later. The state has to be read before the rollback overwrites it,
@@ -120,7 +137,7 @@ public final class RollbackPoints {
 		// Anything already sitting in a container here is about to be replaced along with
 		// the block. Without this, undoing a rollback would put an empty chest back where a
 		// full one had been — the same failure rollback itself used to have.
-		if (level.getBlockEntity(pos) instanceof Container container) {
+		if (withContents && level.getBlockEntity(pos) instanceof Container container) {
 			for (int slot = 0; slot < container.getContainerSize(); slot++) {
 				ItemStack stack = container.getItem(slot);
 				if (stack.isEmpty()) continue;

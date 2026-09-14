@@ -1952,6 +1952,18 @@ public class GriefModule implements Module {
 	public RollbackResult rollback(ServerLevel level, String player, BlockPos centre,
 			int radius, long windowMs, boolean dryRun,
 			io.github.alphain24.staffcore.permission.Actor staff) {
+		return rollback(level, player, centre, radius, windowMs, dryRun, staff, false);
+	}
+
+	/**
+	 * @param breaksOnly put back what was broken and taken, and leave what was placed and put in.
+	 *                   For a chest somebody broke that they had placed themselves: a full
+	 *                   rollback correctly takes the area back to before they placed it — no
+	 *                   chest — which is rarely what the person asking for the chest back wants.
+	 */
+	public RollbackResult rollback(ServerLevel level, String player, BlockPos centre,
+			int radius, long windowMs, boolean dryRun,
+			io.github.alphain24.staffcore.permission.Actor staff, boolean breaksOnly) {
 
 		if (!StaffCore.storage().isReady()) return RollbackResult.NOTHING;
 
@@ -2004,7 +2016,8 @@ public class GriefModule implements Module {
 				WHERE world = ? AND created_at >= ? AND rolled_back = 0
 				  AND action IN ('BREAK','PLACE')
 				  AND x BETWEEN ? AND ? AND y BETWEEN ? AND ? AND z BETWEEN ? AND ?
-				""" + (player == null ? "" : "  AND player_name = ?\n")
+				""" + (breaksOnly ? "  AND action = 'BREAK'\n" : "")
+				+ (player == null ? "" : "  AND player_name = ?\n")
 				+ "ORDER BY created_at DESC";
 
 		int reverted = 0;
@@ -2082,11 +2095,32 @@ public class GriefModule implements Module {
 		ContainerWatch.Undo containerUndo = new ContainerWatch.Undo();
 		if (!removing.isEmpty()) {
 			containers.undo(level, player, centre, radius, windowMs, dryRun, Map.of(),
-					removing::contains, containerUndo);
+					removing::contains, breaksOnly, containerUndo);
 		}
 		int vaulted = 0;
 
+		// One outcome per position, not one per row.
+		//
+		// Replaying every row in turn, newest first, gets the blocks right and everything else
+		// wrong whenever one position has more than one row. A chest somebody placed and then
+		// broke was rebuilt from the break, charged for as spilled contents, and then removed
+		// again by undoing the placement — with what it had just been refilled with moved to
+		// the vault. The block ends where it should, and the player loses their items twice.
+		//
+		// What a position goes back to is decided by its oldest row alone: before a placement
+		// there was nothing, before a break there was that block. Only that row's drops are
+		// owed and only its contents go back in; every newer row is retired with it.
+		Map<BlockPos, List<Planned>> byPosition = new java.util.LinkedHashMap<>();
 		for (Planned row : plan) {
+			byPosition.computeIfAbsent(row.pos(), k -> new ArrayList<>()).add(row);
+		}
+
+		for (List<Planned> rows : byPosition.values()) {
+			Planned row = rows.get(rows.size() - 1);   // the oldest: what this goes back to
+			Planned newest = rows.get(0);
+			List<Long> ids = new ArrayList<>(rows.size());
+			for (Planned each : rows) ids.add(each.id());
+
 			BlockState replacement;
 			List<StoredStack> contents = List.of();
 
@@ -2097,7 +2131,7 @@ public class GriefModule implements Module {
 				// would replace whatever is standing there with nothing, which is the
 				// opposite of repairing the area.
 				if (block == null || block == Blocks.AIR) {
-					skipped++;
+					skipped += rows.size();
 					continue;
 				}
 				// The state as it stood, when we have it. Rows written before the state
@@ -2143,10 +2177,10 @@ public class GriefModule implements Module {
 				// somebody before the log began — so it is nobody's to hand to: it is held in
 				// the vault for staff to release. Before the capture, so undoing this rollback
 				// rebuilds the container empty rather than a second copy of what is held.
-				vaulted += vaultLeftovers(level, row, replacement, pointId, staff);
+				vaulted += vaultLeftovers(level, newest, replacement, pointId, staff);
 
 				// Recorded before the write, because the write is what destroys it.
-				points.capture(pointId, pointTime, level, row.pos(), row.id());
+				points.capture(pointId, pointTime, level, row.pos(), ids);
 
 				level.setBlockAndUpdate(row.pos(), replacement);
 				if (refill(level, row.pos(), contents, owedContents, block(replacement))) {
@@ -2154,7 +2188,7 @@ public class GriefModule implements Module {
 					rebuilt.put(row.pos().immutable(),
 							new ContainerWatch.Rebuilt(row.at(), row.player()));
 				}
-				applied.add(row.id());
+				applied.addAll(ids);
 			} else {
 				proposed.put(row.pos().immutable(), replacement);
 				for (StoredStack stored : contents) {
@@ -2162,7 +2196,7 @@ public class GriefModule implements Module {
 					if (!stack.isEmpty()) tally.merge(stack.getItem(), stored.count(), Integer::sum);
 				}
 			}
-			reverted++;
+			reverted += rows.size();
 		}
 
 		// After every block is down, not during. A double chest is two blocks, and the half
@@ -2180,7 +2214,7 @@ public class GriefModule implements Module {
 		// leaving it empty looks like the problem was fixed when it was not. Every container
 		// not already done above, including the ones just rebuilt — see ContainerWatch#undo.
 		containers.undo(level, player, centre, radius, windowMs, dryRun, rebuilt,
-				pos -> !removing.contains(pos), containerUndo);
+				pos -> !removing.contains(pos), breaksOnly, containerUndo);
 		ContainerWatch.Result containerResult =
 				containers.settle(level, centre, radius, windowMs, dryRun, containerUndo);
 

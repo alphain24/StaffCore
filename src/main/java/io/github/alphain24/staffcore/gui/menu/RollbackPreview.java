@@ -36,9 +36,16 @@ public final class RollbackPreview {
 	 * @param who      one player's changes, or null for everybody's
 	 * @param windowMs how far back from now
 	 * @param extraWarnings said on the confirm screen after the standard ones
+	 * @param breaksOnly    put back what was broken and taken; leave placements and puts
 	 */
 	public record Scope(ServerLevel level, String who, BlockPos centre, int radius, long windowMs,
-			List<String> extraWarnings) {}
+			List<String> extraWarnings, boolean breaksOnly) {
+
+		public Scope(ServerLevel level, String who, BlockPos centre, int radius, long windowMs,
+				List<String> extraWarnings) {
+			this(level, who, centre, radius, windowMs, extraWarnings, false);
+		}
+	}
 
 	/**
 	 * Previews, and on confirm runs.
@@ -55,7 +62,7 @@ public final class RollbackPreview {
 		// taken while this staff member is deciding rather than only while blocks are moving.
 		// The window somebody else can change the answer in is the human one.
 		GriefModule.RollbackResult preview = Mods.grief().rollback(level, who, scope.centre(),
-				scope.radius(), scope.windowMs(), true, Actor.of(viewer));
+				scope.radius(), scope.windowMs(), true, Actor.of(viewer), scope.breaksOnly());
 
 		if (preview.reverted() == 0) {
 			viewer.sendSystemMessage(Theme.warn(who == null
@@ -69,6 +76,7 @@ public final class RollbackPreview {
 		Icon summary = (who == null ? Icon.of(Items.TNT) : profileIcon(viewer, who))
 				.name(who == null ? "Roll back this area" : "Roll back " + who, Theme.BAD)
 				.field("Scope", who == null ? "every player" : who)
+				.field("Undoing", scope.breaksOnly() ? "only what was broken" : "breaks and placements")
 				.field("Changes to undo", String.valueOf(preview.reverted()))
 				.field("Radius", scope.radius() + " blocks")
 				.field("Window", TimeFormat.duration(scope.windowMs()))
@@ -146,7 +154,7 @@ public final class RollbackPreview {
 		String who = scope.who();
 		BlockPos centre = scope.centre();
 		GriefModule.RollbackResult result = Mods.grief().rollback(scope.level(), who, centre,
-				scope.radius(), scope.windowMs(), false, Actor.of(viewer));
+				scope.radius(), scope.windowMs(), false, Actor.of(viewer), scope.breaksOnly());
 
 		MinecraftServer server = Mc.server(viewer);
 		if (server != null) {

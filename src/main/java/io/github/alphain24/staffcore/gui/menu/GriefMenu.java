@@ -501,8 +501,11 @@ public class GriefMenu extends Gui {
 					.field("Radius", radius + " blocks")
 					.field("Window", TimeFormat.duration(windowMs()))
 					.gap()
+					.action("Click", "undo breaks and placements")
+					.action("Right-click", "only put back what was broken")
+					.gap()
 					.warn("You see a preview before anything is written.")
-					.build(), click -> previewRollback(playerFilter));
+					.build(), click -> previewRollback(playerFilter, click.isRight()));
 		}
 
 		button(SLOT_CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
@@ -512,8 +515,13 @@ public class GriefMenu extends Gui {
 
 	/** {@code who} may be null, meaning everything in the area regardless of who did it. */
 	private void previewRollback(String who) {
+		previewRollback(who, false);
+	}
+
+	private void previewRollback(String who, boolean breaksOnly) {
 		RollbackPreview.open(viewer,
-				new RollbackPreview.Scope(viewer.level(), who, centre, radius, windowMs(), List.of()),
+				new RollbackPreview.Scope(viewer.level(), who, centre, radius, windowMs(), List.of(),
+						breaksOnly),
 				result -> reopen(viewer, centre, windowMinutes, playerFilter),
 				() -> reopen(viewer, centre, windowMinutes, playerFilter));
 	}
