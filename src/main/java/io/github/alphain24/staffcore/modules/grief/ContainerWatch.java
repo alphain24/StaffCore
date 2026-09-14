@@ -278,19 +278,74 @@ public final class ContainerWatch {
 	 */
 	public Result rollback(net.minecraft.server.level.ServerLevel level, String player,
 			BlockPos centre, int radius, long windowMs, boolean dryRun) {
-		return rollback(level, player, centre, radius, windowMs, dryRun, java.util.Set.of());
+		Undo undo = new Undo();
+		undo(level, player, centre, radius, windowMs, dryRun, Map.of(), pos -> true, undo);
+		return settle(level, centre, radius, windowMs, dryRun, undo);
 	}
 
 	/**
-	 * @param alreadyRestored containers that were rebuilt from a break snapshot, and must not
-	 *                        be replayed over. See the note inside the loop — this is the
-	 *                        difference between a repair and deleting the contents twice.
+	 * A container a block rollback has just rebuilt from what was in it when it was broken.
+	 *
+	 * @param brokenAt when it was broken: every logged move before this is already reflected in
+	 *                 what it was rebuilt with, and every move after was on a different container
+	 * @param breaker  who broke it — and so who is being charged for the contents that spilled
 	 */
-	public Result rollback(net.minecraft.server.level.ServerLevel level, String player,
-			BlockPos centre, int radius, long windowMs, boolean dryRun,
-			java.util.Set<BlockPos> alreadyRestored) {
+	public record Rebuilt(long brokenAt, String breaker) {}
 
-		if (!StaffCore.storage().isReady()) return Result.NOTHING;
+	/**
+	 * A container rollback in progress: what has been changed so far, settled once at the end.
+	 * <p>
+	 * A block rollback undoes container moves in two passes — the containers it is about to
+	 * remove first, everything else after the blocks are back — and debiting or handing back
+	 * after each pass would net a player's take in one against their put in the other as two
+	 * separate transactions. So the passes only move items, and {@link #settle} pays up once.
+	 */
+	public static final class Undo {
+		int restored;
+		int deferred;
+		final Map<String, Map<net.minecraft.world.item.Item, Integer>> tookBack = new LinkedHashMap<>();
+		final Map<String, List<ItemStack>> takenOut = new LinkedHashMap<>();
+		final java.util.Set<BlockPos> touched = new java.util.HashSet<>();
+		final Map<net.minecraft.world.item.Item, Integer> alreadyCharged = new HashMap<>();
+
+		/**
+		 * Items taken back out of a rebuilt container that its breaker had put in. They are part
+		 * of the contents the breaker is being charged for as spilled, so the charge shrinks by
+		 * this much instead of the items being handed back and charged for at once.
+		 */
+		public Map<net.minecraft.world.item.Item, Integer> alreadyCharged() {
+			return alreadyCharged;
+		}
+
+		public int restored() {
+			return restored;
+		}
+
+		public int deferred() {
+			return deferred;
+		}
+	}
+
+	/**
+	 * Undoes logged moves in an area, changing containers but paying nobody yet.
+	 *
+	 * <h2>Containers a block rollback rebuilt</h2>
+	 * A chest broken and rebuilt comes back holding what it held at the moment it broke. Moves
+	 * logged before that moment still have to be undone on top of it: somebody who took five
+	 * diamonds and then broke the chest left it holding everything <em>but</em> the diamonds,
+	 * and skipping the log for rebuilt containers — which is what this used to do — brought the
+	 * chest back without them. What is different about a rebuilt container is only the charge:
+	 * anything its breaker had put in is inside the spilled contents they are already being
+	 * charged for, so taking it back out reduces that charge rather than handing it to them.
+	 *
+	 * @param rebuilt  containers rebuilt from a break snapshot, by position
+	 * @param include  which container positions this pass covers
+	 */
+	public void undo(net.minecraft.server.level.ServerLevel level, String player, BlockPos centre,
+			int radius, long windowMs, boolean dryRun, Map<BlockPos, Rebuilt> rebuilt,
+			java.util.function.Predicate<BlockPos> include, Undo undo) {
+
+		if (!StaffCore.storage().isReady()) return;
 
 		String world = Mc.dimensionId(level);
 		long cutoff = System.currentTimeMillis() - windowMs;
@@ -301,19 +356,7 @@ public final class ContainerWatch {
 				""" + (player == null ? "" : "  AND player_name = ?\n")
 				+ "ORDER BY created_at DESC";
 
-		int restored = 0;
-		int deferred = 0;
 		List<Long> applied = new ArrayList<>();
-
-		// What each player's movements come to once undone. A theft undone means the chest has
-		// its items back, so the thief must not keep them; a put undone means items came out
-		// of a chest, and they belong to whoever put them in. Netted per player and item,
-		// because somebody who carried gold from one chest to another has neither kept any
-		// nor lost any, and charging them for the take while deleting the put would do both.
-		Map<String, Map<net.minecraft.world.item.Item, Integer>> tookBack = new LinkedHashMap<>();
-		Map<String, List<ItemStack>> takenOut = new LinkedHashMap<>();
-		java.util.Set<BlockPos> touched = new java.util.HashSet<>();
-
 		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(sql)) {
 			int i = 1;
 			ps.setString(i++, world);
@@ -328,17 +371,16 @@ public final class ContainerWatch {
 				while (rs.next()) {
 					Move move = map(rs);
 					BlockPos pos = new BlockPos(move.x(), move.y(), move.z());
+					java.util.Set<BlockPos> halves = Mc.containerHalves(level, pos);
+					if (halves.stream().noneMatch(include)) continue;
 
-					// A container rebuilt from a break snapshot is already correct, and
-					// replaying the log on top of it undoes the same movements a second time.
-					//
-					// The snapshot is the container's actual final state at the instant it was
-					// destroyed — every PUT and TAKE before that is baked into it. So the
-					// obvious-looking sequence "restore the chest full, then undo the PUTs
-					// that filled it" strips the contents straight back out, while the
-					// offender is separately debited for them. The items end up nowhere,
-					// which is worse than either half of the repair on its own.
-					if (alreadyRestored.contains(pos)) continue;
+					Rebuilt rebuiltHere = null;
+					for (BlockPos half : halves) {
+						if (rebuilt.containsKey(half)) rebuiltHere = rebuilt.get(half);
+					}
+					// A move after the break was on whatever stood here later, not on the
+					// container that was rebuilt.
+					if (rebuiltHere != null && move.at() >= rebuiltHere.brokenAt()) continue;
 
 					Container container = Mc.containerAt(level, pos);
 					if (container == null) continue;
@@ -352,8 +394,8 @@ public final class ContainerWatch {
 					// predictable before anything is written — and being told beforehand is
 					// the whole reason to run a preview.
 					if (dryRun) {
-						if ("PUT".equals(move.action()) || hasRoom(container, move.slot())) restored++;
-						else deferred++;
+						if ("PUT".equals(move.action()) || hasRoom(container, move.slot())) undo.restored++;
+						else undo.deferred++;
 						continue;
 					}
 
@@ -362,29 +404,32 @@ public final class ContainerWatch {
 					if ("TAKE".equals(move.action())) {
 						undone = insert(container, move.slot(), stack.copy());
 						if (undone) {
-							tookBack.computeIfAbsent(move.player(), p -> new HashMap<>())
+							undo.tookBack.computeIfAbsent(move.player(), p -> new HashMap<>())
 									.merge(stack.getItem(), move.count(), Integer::sum);
 						}
 					} else {
 						int removed = removeCounted(container, stack);
 						undone = removed > 0;
-						if (undone) {
+						if (undone && rebuiltHere != null
+								&& move.player().equalsIgnoreCase(rebuiltHere.breaker())) {
+							undo.alreadyCharged.merge(stack.getItem(), removed, Integer::sum);
+						} else if (undone) {
 							ItemStack out = stack.copy();
 							out.setCount(removed);
-							takenOut.computeIfAbsent(move.player(), p -> new ArrayList<>()).add(out);
+							undo.takenOut.computeIfAbsent(move.player(), p -> new ArrayList<>()).add(out);
 						}
 					}
-					if (undone) touched.addAll(Mc.containerHalves(level, pos));
+					if (undone) undo.touched.addAll(halves);
 
 					// Only a row that actually applied is retired. Marking a failed one
 					// rolled-back would quietly forget it: the chest was full, the items were
 					// never returned, and running the rollback again would now skip the row
 					// entirely. Leaving it un-retired means clearing space and retrying works.
 					if (undone) {
-						restored++;
+						undo.restored++;
 						applied.add(move.id());
 					} else {
-						deferred++;
+						undo.deferred++;
 					}
 				}
 			}
@@ -393,18 +438,27 @@ public final class ContainerWatch {
 		}
 
 		if (!applied.isEmpty()) retire(applied);
-		if (dryRun || (tookBack.isEmpty() && takenOut.isEmpty())) {
-			return new Result(restored, deferred);
+	}
+
+	/**
+	 * Pays up for an undo: takes back what each player still holds of what went back in, and
+	 * hands back what came out, netted per player and item across every pass.
+	 */
+	public Result settle(net.minecraft.server.level.ServerLevel level, BlockPos centre, int radius,
+			long windowMs, boolean dryRun, Undo undo) {
+
+		if (dryRun || (undo.tookBack.isEmpty() && undo.takenOut.isEmpty())) {
+			return new Result(undo.restored, undo.deferred);
 		}
 
 		int debited = 0;
 		int returned = 0;
-		java.util.Set<String> players = new java.util.LinkedHashSet<>(tookBack.keySet());
-		players.addAll(takenOut.keySet());
+		java.util.Set<String> players = new java.util.LinkedHashSet<>(undo.tookBack.keySet());
+		players.addAll(undo.takenOut.keySet());
 
 		for (String who : players) {
-			Map<net.minecraft.world.item.Item, Integer> took = tookBack.getOrDefault(who, Map.of());
-			List<ItemStack> out = takenOut.getOrDefault(who, List.of());
+			Map<net.minecraft.world.item.Item, Integer> took = undo.tookBack.getOrDefault(who, Map.of());
+			List<ItemStack> out = undo.takenOut.getOrDefault(who, List.of());
 
 			Map<net.minecraft.world.item.Item, Integer> put = new HashMap<>();
 			for (ItemStack stack : out) put.merge(stack.getItem(), stack.getCount(), Integer::sum);
@@ -420,7 +474,7 @@ public final class ContainerWatch {
 				// has just put things back into.
 				LootRecovery.Result result = LootRecovery.collect(level, who, owed, centre, radius,
 						windowMs, this, "Items returned to a chest they took them from", true,
-						touched);
+						undo.touched);
 				debited += result.recovered();
 			}
 
@@ -440,7 +494,7 @@ public final class ContainerWatch {
 			}
 			if (!handBack.isEmpty()) returned += handBack(level, who, handBack);
 		}
-		return new Result(restored, deferred, debited, returned);
+		return new Result(undo.restored, undo.deferred, debited, returned);
 	}
 
 	/**

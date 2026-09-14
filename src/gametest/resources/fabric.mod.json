@@ -38,7 +38,8 @@
 			"io.github.alphain24.staffcore.gametest.AddressBanTests",
 			"io.github.alphain24.staffcore.gametest.PunishmentListTests",
 			"io.github.alphain24.staffcore.gametest.TeleportHistoryTests",
-			"io.github.alphain24.staffcore.gametest.RiskProfileTests"
+			"io.github.alphain24.staffcore.gametest.RiskProfileTests",
+			"io.github.alphain24.staffcore.gametest.ContainerBreakRollbackTests"
 		]
 	},
 	"depends": {

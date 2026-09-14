@@ -1131,7 +1131,7 @@ public class GriefModule implements Module {
 
 	/** One logged change a rollback intends to undo, read out before any of it is acted on. */
 	private record Planned(long id, BlockPos pos, String action, String blockId, String state,
-			String gamemode, Integer drops, Integer dropsRecorded, long at) {
+			String gamemode, Integer drops, Integer dropsRecorded, long at, String player) {
 
 		boolean droppedAnything() {
 			return GriefModule.droppedAnything(drops, gamemode);
@@ -2018,8 +2018,10 @@ public class GriefModule implements Module {
 		Map<Item, Integer> owedContents = new HashMap<>();
 		/** Where each block would land, so a dry run can be drawn in the world. */
 		Map<BlockPos, BlockState> proposed = new java.util.LinkedHashMap<>();
-		/** Containers rebuilt from a break snapshot; the container log must not replay over them. */
+		/** Containers rebuilt from a break snapshot, kept off the banked-loot sweep. */
 		java.util.Set<BlockPos> restoredContainers = new java.util.HashSet<>();
+		/** The same containers, with when they broke and who broke them, for the container log. */
+		Map<BlockPos, ContainerWatch.Rebuilt> rebuilt = new HashMap<>();
 
 		// Read the whole plan out first, then act on it.
 		//
@@ -2042,7 +2044,8 @@ public class GriefModule implements Module {
 							rs.getString("gamemode"),
 							nullableInt(rs, "drops"),
 							nullableInt(rs, "drops_recorded"),
-							rs.getLong("created_at")));
+							rs.getLong("created_at"),
+							rs.getString("player_name")));
 				}
 			}
 		} catch (SQLException e) {
@@ -2063,6 +2066,25 @@ public class GriefModule implements Module {
 			}
 		}
 		final Map<RecordedDrops.Key, Map<String, Integer>> dropsByRow = recorded;
+
+		// Containers this rollback is about to remove — somebody's placement being undone —
+		// have their logged moves undone first, while they are still standing. Undoing
+		// newest first means the items put into a chest come out before the chest goes; doing
+		// the blocks first removed the chest with the loot still inside, and in this version
+		// removing a container spills what it holds onto the floor.
+		java.util.Set<BlockPos> removing = new java.util.HashSet<>();
+		for (Planned row : plan) {
+			if ("PLACE".equals(row.action())
+					&& level.getBlockEntity(row.pos()) instanceof net.minecraft.world.Container) {
+				removing.addAll(Mc.containerHalves(level, row.pos()));
+			}
+		}
+		ContainerWatch.Undo containerUndo = new ContainerWatch.Undo();
+		if (!removing.isEmpty()) {
+			containers.undo(level, player, centre, radius, windowMs, dryRun, Map.of(),
+					removing::contains, containerUndo);
+		}
+		int vaulted = 0;
 
 		for (Planned row : plan) {
 			BlockState replacement;
@@ -2115,12 +2137,22 @@ public class GriefModule implements Module {
 			}
 
 			if (!dryRun) {
+				// Whatever is still inside a container being replaced is taken out first, so
+				// the replacement does not spill it on the floor for anybody to pick up. What
+				// is left once the log is undone was never logged going in — a hopper, or
+				// somebody before the log began — so it is nobody's to hand to: it is held in
+				// the vault for staff to release. Before the capture, so undoing this rollback
+				// rebuilds the container empty rather than a second copy of what is held.
+				vaulted += vaultLeftovers(level, row, replacement, pointId, staff);
+
 				// Recorded before the write, because the write is what destroys it.
 				points.capture(pointId, pointTime, level, row.pos(), row.id());
 
 				level.setBlockAndUpdate(row.pos(), replacement);
 				if (refill(level, row.pos(), contents, owedContents, block(replacement))) {
 					restoredContainers.add(row.pos().immutable());
+					rebuilt.put(row.pos().immutable(),
+							new ContainerWatch.Rebuilt(row.at(), row.player()));
 				}
 				applied.add(row.id());
 			} else {
@@ -2145,9 +2177,26 @@ public class GriefModule implements Module {
 		}
 
 		// Containers are rolled back alongside the blocks: putting a looted chest back and
-		// leaving it empty looks like the problem was fixed when it was not.
+		// leaving it empty looks like the problem was fixed when it was not. Every container
+		// not already done above, including the ones just rebuilt — see ContainerWatch#undo.
+		containers.undo(level, player, centre, radius, windowMs, dryRun, rebuilt,
+				pos -> !removing.contains(pos), containerUndo);
 		ContainerWatch.Result containerResult =
-				containers.rollback(level, player, centre, radius, windowMs, dryRun, restoredContainers);
+				containers.settle(level, centre, radius, windowMs, dryRun, containerUndo);
+
+		// What the breaker had put into a rebuilt chest and the undo just took back out is no
+		// longer inside it, so they are not charged for it as spilled contents either.
+		containerUndo.alreadyCharged().forEach((item, count) ->
+				owedContents.computeIfPresent(item, (k, owed) -> owed > count ? owed - count : null));
+
+		if (vaulted > 0 && staff != null && staff.id() != null && level.getServer() != null) {
+			ServerPlayer running = level.getServer().getPlayerList().getPlayer(staff.id());
+			if (running != null) {
+				running.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.info(vaulted
+						+ " stack(s) left in containers this rollback removed are held in the "
+						+ "contraband vault."));
+			}
+		}
 
 		if (dryRun) {
 			return new RollbackResult(reverted, skipped, 0, containerResult.restored(),
@@ -2173,6 +2222,47 @@ public class GriefModule implements Module {
 				containerResult.restored(), containerResult.deferred(),
 				reclaim.fromChests(), reclaim.queued(), freeze(tally), Map.of(), List.of(),
 				reverted > 0 ? pointId : 0L);
+	}
+
+	/**
+	 * Empties a container that is about to be replaced into the vault, and says how many stacks.
+	 * <p>
+	 * Only when the block is really changing: a restored chest going back over an identical
+	 * chest keeps its block entity, and its contents with it.
+	 */
+	private int vaultLeftovers(ServerLevel level, Planned row, BlockState replacement,
+			long pointId, io.github.alphain24.staffcore.permission.Actor staff) {
+
+		BlockState current = level.getBlockState(row.pos());
+		if (current.getBlock() == replacement.getBlock()) return 0;
+		if (!(level.getBlockEntity(row.pos()) instanceof net.minecraft.world.Container container)) return 0;
+
+		MinecraftServer server = level.getServer();
+		String owner = row.player() == null ? "unknown" : row.player();
+		UUID ownerId = server == null ? null
+				: io.github.alphain24.staffcore.util.PlayerLookup.uuid(server, owner).orElse(null);
+		if (ownerId == null) {
+			ownerId = UUID.nameUUIDFromBytes(("OfflinePlayer:" + owner).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		}
+
+		int stacks = 0;
+		for (int slot = 0; slot < container.getContainerSize(); slot++) {
+			ItemStack stack = container.getItem(slot);
+			if (stack.isEmpty()) continue;
+			long id = Mods.security().vault().deposit(ownerId, owner,
+					staff == null ? "rollback" : staff.name(), stack.copy(),
+					"Left in a " + Mc.blockId(current.getBlock()) + " at " + row.pos().toShortString()
+							+ " when rollback" + (pointId > 0 ? " #" + pointId : "") + " removed it",
+					server);
+			// Only emptied if it was stored. A failed write leaves it where it was, and the
+			// replacement spills it — a duplication risk, which beats deleting somebody's items.
+			if (id > 0) {
+				container.setItem(slot, ItemStack.EMPTY);
+				stacks++;
+			}
+		}
+		if (stacks > 0) container.setChanged();
+		return stacks;
 	}
 
 	/**
