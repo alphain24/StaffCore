@@ -21,10 +21,14 @@ public class ConfirmMenu extends Gui {
 	private static final int CONFIRM = 11;
 	private static final int SUBJECT = 13;
 	private static final int CANCEL = 15;
+	/** Under the subject, away from both: a different version of the action, not a yes. */
+	private static final int ALTERNATIVE = 22;
 
 	private final ItemStack subject;
 	private final Runnable onConfirm;
 	private final Runnable onCancel;
+	private final ItemStack alternative;
+	private final Runnable onAlternative;
 
 	/**
 	 * When this screen was built.
@@ -39,16 +43,29 @@ public class ConfirmMenu extends Gui {
 
 	public static void open(ServerPlayer viewer, String what, ItemStack subject,
 			Runnable onConfirm, Runnable onCancel) {
+		open(viewer, what, subject, onConfirm, onCancel, null, null);
+	}
+
+	/**
+	 * With a second way of doing it offered underneath — which does not run anything itself,
+	 * only opens that version's own confirmation.
+	 */
+	public static void open(ServerPlayer viewer, String what, ItemStack subject,
+			Runnable onConfirm, Runnable onCancel, ItemStack alternative, Runnable onAlternative) {
 		Guis.navigate(viewer, Theme.title("Confirm", what),
-				(id, inv, v) -> new ConfirmMenu(id, inv, v, subject, onConfirm, onCancel));
+				(id, inv, v) -> new ConfirmMenu(id, inv, v, subject, onConfirm, onCancel,
+						alternative, onAlternative));
 	}
 
 	private ConfirmMenu(int containerId, Inventory playerInventory, ServerPlayer viewer,
-			ItemStack subject, Runnable onConfirm, Runnable onCancel) {
+			ItemStack subject, Runnable onConfirm, Runnable onCancel, ItemStack alternative,
+			Runnable onAlternative) {
 		super(containerId, playerInventory, viewer, 3);
 		this.subject = subject;
 		this.onConfirm = onConfirm;
 		this.onCancel = onCancel;
+		this.alternative = alternative;
+		this.onAlternative = onAlternative;
 		render();
 	}
 
@@ -73,6 +90,13 @@ public class ConfirmMenu extends Gui {
 			Sfx.back(viewer);
 			onCancel.run();
 		});
+
+		if (alternative != null && onAlternative != null) {
+			button(ALTERNATIVE, alternative, click -> {
+				Sfx.click(viewer);
+				onAlternative.run();
+			});
+		}
 
 		fillEmpty(Theme.filler());
 	}

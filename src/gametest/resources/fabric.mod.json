@@ -40,7 +40,8 @@
 			"io.github.alphain24.staffcore.gametest.TeleportHistoryTests",
 			"io.github.alphain24.staffcore.gametest.RiskProfileTests",
 			"io.github.alphain24.staffcore.gametest.ContainerBreakRollbackTests",
-			"io.github.alphain24.staffcore.gametest.XrayAlertTests"
+			"io.github.alphain24.staffcore.gametest.XrayAlertTests",
+			"io.github.alphain24.staffcore.gametest.RollbackGuiTests"
 		]
 	},
 	"depends": {

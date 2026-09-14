@@ -72,6 +72,25 @@ public final class RollbackPreview {
 			return;
 		}
 
+		// The other way of doing it, previewed as well, so the screen can say what each one
+		// does. The case this is for: a chest somebody placed and then broke inside the window.
+		// Undoing breaks and placements takes the area back to before they placed it, so the
+		// chest does not come back — correctly, and to the surprise of everybody who asked for
+		// the chest. Only putting back what was broken brings it back.
+		Scope otherScope = new Scope(level, who, scope.centre(), scope.radius(), scope.windowMs(),
+				scope.extraWarnings(), !scope.breaksOnly());
+		GriefModule.RollbackResult other = Mods.grief().rollback(level, who, scope.centre(),
+				scope.radius(), scope.windowMs(), true, Actor.of(viewer), otherScope.breaksOnly());
+		GriefModule.RollbackResult breaks = scope.breaksOnly() ? preview : other;
+		GriefModule.RollbackResult everything = scope.breaksOnly() ? other : preview;
+		List<String> notComingBack = new java.util.ArrayList<>();
+		for (var entry : breaks.proposed().entrySet()) {
+			var full = everything.proposed().get(entry.getKey());
+			if (!entry.getValue().isAir() && (full == null || full.isAir())) {
+				notComingBack.add(entry.getValue().getBlock().getName().getString());
+			}
+		}
+
 		BlockPos centre = scope.centre();
 		Icon summary = (who == null ? Icon.of(Items.TNT) : profileIcon(viewer, who))
 				.name(who == null ? "Roll back this area" : "Roll back " + who, Theme.BAD)
@@ -108,6 +127,12 @@ public final class RollbackPreview {
 			summary.gap().warn(preview.skipped() + " entry/entries reference blocks that no longer exist.");
 		}
 		summary.gap().warn("Anything built on top of these blocks is overwritten.");
+		if (!scope.breaksOnly() && !notComingBack.isEmpty()) {
+			summary.gap().warn(notComingBack.size() + " broken block(s) will NOT come back ("
+					+ String.join(", ", notComingBack.stream().distinct().limit(3).toList())
+					+ "): they were placed inside this window, so this goes back to before they "
+					+ "existed. Use the button below to put back only what was broken.");
+		}
 		if (preview.itemsReturned() > 0) {
 			summary.lore(preview.itemsReturned() + " container change(s) will also be undone.", Theme.MUTED);
 		}
@@ -138,6 +163,22 @@ public final class RollbackPreview {
 					.lore("drawn. Go to the scene first to see it.", Theme.MUTED);
 		}
 
+		net.minecraft.world.item.ItemStack switchIcon = other.reverted() == 0 ? null
+				: Icon.of(scope.breaksOnly() ? Items.TNT : Items.CHEST)
+						.name(scope.breaksOnly() ? "Undo breaks and placements instead"
+								: "Only put back what was broken instead", Theme.ACCENT)
+						.field("Changes", String.valueOf(other.reverted()))
+						.gap()
+						.lore(scope.breaksOnly()
+								? "Also removes what was placed. Goes back to before"
+								: "Restores broken blocks and taken items. Leaves", Theme.MUTED)
+						.lore(scope.breaksOnly()
+								? "anybody in scope touched the area."
+								: "what was placed where it is.", Theme.MUTED)
+						.gap()
+						.action("Click", "preview that instead")
+						.build();
+
 		ConfirmMenu.open(viewer, "Rollback", summary.build(),
 				() -> {
 					Mods.grief().preview().clear(viewer);
@@ -146,6 +187,11 @@ public final class RollbackPreview {
 				() -> {
 					Mods.grief().preview().clear(viewer);
 					onCancel.run();
+				},
+				switchIcon,
+				() -> {
+					Mods.grief().preview().clear(viewer);
+					open(viewer, otherScope, afterApply, onCancel);
 				});
 	}
 
