@@ -19,6 +19,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.List;
+
 /**
  * A container destroyed and rolled back comes back, with what was in it — broken by hand through
  * the game's own block breaking, and blown up.
@@ -340,6 +342,62 @@ public class ContainerBreakRollbackTests {
 				"the chest did not come back with the diamonds it held when it broke: "
 						+ describe(level, pos));
 		Harness.checkEquals(helper, 0L, diamondsOnTheGround(level, pos),
+				"the spilled diamonds are still on the ground as well, a duplication");
+		helper.succeed();
+	}
+
+	@GameTest(maxTicks = 100)
+	public void aWholeBaseGriefComesBackWithOneRollback(GameTestHelper helper) {
+		// Walls broken, a full chest broken, another chest robbed, rubbish placed: one area
+		// rollback of that player puts every part of it back, containers and contents included.
+		ServerPlayer griefer = Harness.namedPlayer(helper);
+		ServerLevel level = helper.getLevel();
+		String world = Mc.dimensionId(level);
+		BlockPos centre = helper.absolutePos(new BlockPos(2, 2, 2));
+		List<BlockPos> wall = List.of(helper.absolutePos(new BlockPos(1, 2, 4)),
+				helper.absolutePos(new BlockPos(2, 2, 4)), helper.absolutePos(new BlockPos(3, 2, 4)));
+		BlockPos brokenChest = centre;
+		BlockPos robbedChest = helper.absolutePos(new BlockPos(4, 2, 2));
+		BlockPos rubbish = helper.absolutePos(new BlockPos(0, 2, 2));
+
+		for (BlockPos plank : wall) level.setBlockAndUpdate(plank, Blocks.OAK_PLANKS.defaultBlockState());
+		filled(helper, new BlockPos(2, 2, 2), Blocks.CHEST);
+		helper.setBlock(new BlockPos(4, 2, 2), Blocks.CHEST);
+		Container robbed = Mc.containerAt(level, robbedChest);
+		robbed.setItem(0, new ItemStack(Items.GOLD_INGOT, 10));
+
+		griefer.snapTo(Vec3.atBottomCenterOf(centre.north()));
+		for (BlockPos plank : wall) {
+			Harness.check(helper, griefer.gameMode.destroyBlock(plank), "the game refused a plank");
+		}
+		Harness.check(helper, griefer.gameMode.destroyBlock(brokenChest), "the game refused the chest");
+
+		Mods.grief().containers().onOpen(griefer, robbedChest, robbed, world);
+		robbed.getItem(0).shrink(3);
+		griefer.getInventory().add(new ItemStack(Items.GOLD_INGOT, 3));
+		Mods.grief().onContainerClosed(griefer);
+
+		level.setBlockAndUpdate(rubbish, Blocks.COBBLESTONE.defaultBlockState());
+		Mods.grief().logPlace(griefer, rubbish, Blocks.COBBLESTONE.defaultBlockState(), world);
+		Mods.grief().awaitWrites();
+
+		Mods.grief().rollback(level, Harness.name(griefer), centre, 6, 60_000L, false, Actor.console());
+		Mods.grief().awaitWrites();
+
+		for (BlockPos plank : wall) {
+			Harness.check(helper, level.getBlockState(plank).is(Blocks.OAK_PLANKS),
+					"a wall block did not come back: " + plank);
+		}
+		Container back = Mc.containerAt(level, brokenChest);
+		Harness.check(helper, level.getBlockState(brokenChest).is(Blocks.CHEST) && back != null
+						&& count(back, Items.DIAMOND) == 5 && count(back, Items.COBBLESTONE) == 32,
+				"the broken chest did not come back full: " + describe(level, brokenChest));
+		Harness.checkEquals(helper, 10, count(robbed, Items.GOLD_INGOT),
+				"the robbed chest did not get its gold back");
+		Harness.checkEquals(helper, 0, count(griefer.getInventory(), Items.GOLD_INGOT),
+				"the griefer kept the gold as well");
+		Harness.check(helper, level.getBlockState(rubbish).isAir(), "the placed cobblestone is still there");
+		Harness.checkEquals(helper, 0L, diamondsOnTheGround(level, brokenChest),
 				"the spilled diamonds are still on the ground as well, a duplication");
 		helper.succeed();
 	}

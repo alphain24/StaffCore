@@ -143,8 +143,17 @@ public class BlockHistoryMenu extends Gui {
 					.lore("happened before logging started.", Theme.MUTED)
 					.build());
 		} else {
+			boolean mayRollBack = Permissions.check(viewer, Nodes.ROLLBACK);
 			for (int i = 0; i < rows.size() && i < CONTENT.length; i++) {
-				set(CONTENT[i], rowIcon(rows.get(i)));
+				GriefModule.HistoryRow row = rows.get(i);
+				if (mayRollBack && canRollBack(row)) {
+					button(CONTENT[i], rowIcon(row), click -> {
+						if (click.isShift()) rollBack(row);
+						else Sfx.deny(viewer);
+					});
+				} else {
+					set(CONTENT[i], rowIcon(row));
+				}
 			}
 		}
 
@@ -198,8 +207,46 @@ public class BlockHistoryMenu extends Gui {
 
 		if (row.rolledBack()) {
 			icon.gap().lore("Already rolled back.", Theme.MUTED);
+		} else if (canRollBack(row) && Permissions.check(viewer, Nodes.ROLLBACK)) {
+			icon.gap().action("Shift-click", "roll back what " + row.player() + " did here");
+		}
+		if (row.equals(nothingLeft)) {
+			icon.gap().warn("Nothing left to roll back here.");
 		}
 		return icon.build();
+	}
+
+	/** A block change or an item moved, that has not been undone yet. */
+	private static boolean canRollBack(GriefModule.HistoryRow row) {
+		return !row.rolledBack() && switch (row.action()) {
+			case "BREAK", "PLACE", "TAKE", "PUT" -> true;
+			default -> false;
+		};
+	}
+
+	/** The row last shift-clicked with nothing left to roll back. */
+	private GriefModule.HistoryRow nothingLeft;
+
+	/**
+	 * Everything that player did at this one block, through the same preview and confirmation as
+	 * the grief log. Reaches back at least as far as the rollback default, so the items somebody
+	 * took out of a chest before breaking it go back with the chest.
+	 */
+	private void rollBack(GriefModule.HistoryRow row) {
+		long window = Math.max(
+				io.github.alphain24.staffcore.config.StaffConfig.get().defaultRollbackMinutes * 60_000L,
+				System.currentTimeMillis() - row.at() + 60_000L);
+
+		boolean opened = RollbackPreview.open(viewer,
+				new RollbackPreview.Scope(viewer.level(), row.player(), pos, GriefMenu.ROW_REACH,
+						window, List.of(), java.util.Set.of(pos)),
+				result -> open(viewer, pos),
+				() -> open(viewer, pos));
+		if (!opened) {
+			nothingLeft = row;
+			render();
+			fetch(true);
+		}
 	}
 
 	private ItemStack subjectStack(GriefModule.HistoryRow row) {

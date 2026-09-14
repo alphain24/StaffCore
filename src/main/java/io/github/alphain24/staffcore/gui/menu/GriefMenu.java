@@ -59,6 +59,9 @@ public class GriefMenu extends Gui {
 	private static final int SLOT_ROLLBACK = 52;
 	private static final int SLOT_CLOSE = 53;
 
+	/** How far past a row's own blocks spilled items are looked for when rolling back just it. */
+	static final int ROW_REACH = 3;
+
 	/** Radius steps the control cycles through. 24 was the old hardcoded value. */
 	private static final int[] RADII = { 8, 16, 24, 48, 96 };
 
@@ -99,6 +102,8 @@ public class GriefMenu extends Gui {
 	private GriefModule.Page page;
 	private int pageIndex;
 	private boolean loading = true;
+	/** The row last shift-clicked with nothing left to roll back, by its newest log id. */
+	private long nothingLeftAt = -1;
 
 	private boolean hideNoise() {
 		return show == Show.INTERESTING;
@@ -246,7 +251,7 @@ public class GriefMenu extends Gui {
 			List<Run> runs = collapse(page.entries());
 			for (int i = 0; i < runs.size() && i < CONTENT.length; i++) {
 				Run run = runs.get(i);
-				button(CONTENT[i], icon(run), click -> onPick(run.first(), click));
+				button(CONTENT[i], icon(run), click -> onPick(run, click));
 			}
 		}
 
@@ -266,8 +271,13 @@ public class GriefMenu extends Gui {
 		}
 	}
 
-	/** A run of the same thing, done by the same person, in the same place and moment. */
-	private record Run(GriefModule.Entry first, int count, long oldest) {}
+	/**
+	 * A run of the same thing, done by the same person, in the same place and moment.
+	 *
+	 * @param entries every row in it, newest first — what rolling back this one row undoes
+	 */
+	private record Run(GriefModule.Entry first, int count, long oldest,
+			List<GriefModule.Entry> entries) {}
 
 	/**
 	 * Collapses consecutive identical actions into one row.
@@ -289,9 +299,12 @@ public class GriefMenu extends Gui {
 		for (GriefModule.Entry entry : entries) {
 			Run last = runs.isEmpty() ? null : runs.get(runs.size() - 1);
 			if (last != null && continues(last, entry)) {
-				runs.set(runs.size() - 1, new Run(last.first(), last.count() + 1, entry.at()));
+				List<GriefModule.Entry> members = new java.util.ArrayList<>(last.entries());
+				members.add(entry);
+				runs.set(runs.size() - 1, new Run(last.first(), last.count() + 1, entry.at(),
+						members));
 			} else {
-				runs.add(new Run(entry, 1, entry.at()));
+				runs.add(new Run(entry, 1, entry.at(), List.of(entry)));
 			}
 		}
 		return runs;
@@ -343,7 +356,13 @@ public class GriefMenu extends Gui {
 						: "clear the player filter");
 
 		if (Permissions.check(viewer, Nodes.ROLLBACK)) {
-			icon.action("Shift-click", "roll back " + entry.player() + " here");
+			icon.action("Shift-click", opened ? "undo what they took or put in here"
+					: run.count() > 1 ? "roll back these " + run.count()
+					: "roll back just this");
+		}
+		if (entry.id() == nothingLeftAt) {
+			icon.gap().warn("Nothing left to roll back here —")
+					.warn("it may already have been rolled back.");
 		}
 		return icon.build();
 	}
@@ -362,7 +381,9 @@ public class GriefMenu extends Gui {
 		return RollbackPreview.shortId(id);
 	}
 
-	private void onPick(GriefModule.Entry entry, Click click) {
+	private void onPick(Run run, Click click) {
+		GriefModule.Entry entry = run.first();
+		nothingLeftAt = -1;
 		if (click.isRight()) {
 			playerFilter = entry.player().equals(playerFilter) ? null : entry.player();
 			pageIndex = 0;
@@ -378,7 +399,7 @@ public class GriefMenu extends Gui {
 				Sfx.deny(viewer);
 				return;
 			}
-			previewRollback(entry.player());
+			previewRollback(run);
 			return;
 		}
 
@@ -509,6 +530,47 @@ public class GriefMenu extends Gui {
 	}
 
 	// ------------------------------------------------------------------ rollback
+
+	/**
+	 * One row of the log: what that player did at exactly the spots in it, and nothing else they
+	 * did nearby. A broken chest comes back with what was in it and whatever they took out of it
+	 * first; a run of broken planks comes back as that run.
+	 * <p>
+	 * The time window is the log's own, not the row's, so the items somebody took out of a chest
+	 * ten minutes before breaking it are still undone along with the break.
+	 */
+	private void previewRollback(Run run) {
+		java.util.Set<BlockPos> spots = new java.util.LinkedHashSet<>();
+		int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+		int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+		for (GriefModule.Entry each : run.entries()) {
+			spots.add(new BlockPos(each.x(), each.y(), each.z()));
+			minX = Math.min(minX, each.x());
+			minY = Math.min(minY, each.y());
+			minZ = Math.min(minZ, each.z());
+			maxX = Math.max(maxX, each.x());
+			maxY = Math.max(maxY, each.y());
+			maxZ = Math.max(maxZ, each.z());
+		}
+		BlockPos middle = new BlockPos((minX + maxX) >> 1, (minY + maxY) >> 1, (minZ + maxZ) >> 1);
+		// Wider than the spots themselves: this is also where spilled items are picked back up
+		// from, and a chest's contents do not all land on the block it stood on.
+		int reach = Math.max(maxX - minX, Math.max(maxY - minY, maxZ - minZ)) / 2 + ROW_REACH;
+		// Never shorter than the row's own age, so a row right at the edge of the window does
+		// not slip out of it between the screen being drawn and the click.
+		long window = Math.max(windowMs(), System.currentTimeMillis() - run.oldest() + 60_000L);
+
+		boolean opened = RollbackPreview.open(viewer,
+				new RollbackPreview.Scope(viewer.level(), run.first().player(), middle, reach, window,
+						List.of(), spots),
+				result -> reopen(viewer, centre, windowMinutes, playerFilter),
+				() -> reopen(viewer, centre, windowMinutes, playerFilter));
+		if (!opened) {
+			nothingLeftAt = run.first().id();
+			render();
+			fetch(true);
+		}
+	}
 
 	/** {@code who} may be null, meaning everything in the area regardless of who did it. */
 	private void previewRollback(String who) {

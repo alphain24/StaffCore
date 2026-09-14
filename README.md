@@ -32,8 +32,9 @@ Nineteen modules behind one `/staff` command:
 - **Moderation** — warn, mute, kick, temp-ban and ban, from a preset offence ladder or by
   hand. Reports from players, appeals from the punished, notes for the next person on shift.
 - **Investigation** — a block and container log that answers who broke it, who placed it,
-  who opened it and who emptied it. Inspect any block for its own history, roll an area back,
-  and undo the rollback if you got the radius wrong.
+  who opened it and who emptied it. Inspect any block for its own history, roll an area back
+  or shift-click one row of the log to roll back just that, and undo the rollback if you got
+  it wrong.
 - **Inventories** — live views of what somebody is carrying, editable behind their own
   permission, with snapshots taken automatically before a death, a logout, a staff edit or a
   rollback. Restoring a death snapshot does not duplicate the drops.

@@ -36,17 +36,26 @@ public final class RollbackPreview {
 	 * @param who      one player's changes, or null for everybody's
 	 * @param windowMs how far back from now
 	 * @param extraWarnings said on the confirm screen after the standard ones
+	 * @param only     just these block positions, or null for the whole area — one row of the
+	 *                 grief log rather than everything around it
 	 */
 	public record Scope(ServerLevel level, String who, BlockPos centre, int radius, long windowMs,
-			List<String> extraWarnings) {}
+			List<String> extraWarnings, java.util.Set<BlockPos> only) {
+
+		public Scope(ServerLevel level, String who, BlockPos centre, int radius, long windowMs,
+				List<String> extraWarnings) {
+			this(level, who, centre, radius, windowMs, extraWarnings, null);
+		}
+	}
 
 	/**
 	 * Previews, and on confirm runs.
 	 *
 	 * @param afterApply given the result once it ran; reopen whatever screen fits
 	 * @param onCancel   the way back when staff decide against it
+	 * @return false when there was nothing to roll back and no confirmation opened
 	 */
-	public static void open(ServerPlayer viewer, Scope scope,
+	public static boolean open(ServerPlayer viewer, Scope scope,
 			Consumer<GriefModule.RollbackResult> afterApply, Runnable onCancel) {
 
 		ServerLevel level = scope.level();
@@ -55,25 +64,41 @@ public final class RollbackPreview {
 		// taken while this staff member is deciding rather than only while blocks are moving.
 		// The window somebody else can change the answer in is the human one.
 		GriefModule.RollbackResult preview = Mods.grief().rollback(level, who, scope.centre(),
-				scope.radius(), scope.windowMs(), true, Actor.of(viewer));
+				scope.radius(), scope.windowMs(), true, Actor.of(viewer), scope.only());
 
-		if (preview.reverted() == 0) {
-			viewer.sendSystemMessage(Theme.warn(who == null
-					? "Nothing to roll back here."
-					: "Nothing of " + who + "'s to roll back here."));
+		// A looted chest that was never broken is block changes zero and still very much
+		// something to roll back.
+		if (preview.reverted() == 0 && preview.itemsReturned() == 0 && preview.itemsDeferred() == 0) {
+			viewer.sendSystemMessage(Theme.warn((who == null ? "Nothing" : "Nothing of " + who + "'s")
+					+ (scope.only() == null ? " to roll back here." : " left to roll back there — "
+							+ "it may already have been rolled back.")));
 			Sfx.deny(viewer);
-			return;
+			// The chat line sits behind the window that was clicked, so the screen is told as
+			// well and can say it where staff are looking.
+			return false;
 		}
 
 		BlockPos centre = scope.centre();
+		java.util.Set<BlockPos> only = scope.only();
 		Icon summary = (who == null ? Icon.of(Items.TNT) : profileIcon(viewer, who))
-				.name(who == null ? "Roll back this area" : "Roll back " + who, Theme.BAD)
+				.name(only != null ? "Roll back just this"
+						: who == null ? "Roll back this area" : "Roll back " + who, Theme.BAD)
 				.field("Scope", who == null ? "every player" : who)
-				.field("Changes to undo", String.valueOf(preview.reverted()))
-				.field("Radius", scope.radius() + " blocks")
-				.field("Window", TimeFormat.duration(scope.windowMs()))
-				.field("World", Mc.dimensionName(level))
-				.field("Centre", "%d, %d, %d".formatted(centre.getX(), centre.getY(), centre.getZ()));
+				.field("Changes to undo", String.valueOf(preview.reverted()));
+		if (only != null) {
+			BlockPos first = only.iterator().next();
+			summary.field("Where", only.size() == 1
+					? "%d, %d, %d".formatted(first.getX(), first.getY(), first.getZ())
+					: only.size() + " spots around %d, %d, %d".formatted(
+							centre.getX(), centre.getY(), centre.getZ()))
+					.field("Window", TimeFormat.duration(scope.windowMs()))
+					.field("World", Mc.dimensionName(level));
+		} else {
+			summary.field("Radius", scope.radius() + " blocks")
+					.field("Window", TimeFormat.duration(scope.windowMs()))
+					.field("World", Mc.dimensionName(level))
+					.field("Centre", "%d, %d, %d".formatted(centre.getX(), centre.getY(), centre.getZ()));
+		}
 
 		// What, not just how many. "412 changes" says how big the operation is and nothing
 		// about whether it is the right one; the item list is what staff actually check
@@ -139,6 +164,7 @@ public final class RollbackPreview {
 					Mods.grief().preview().clear(viewer);
 					onCancel.run();
 				});
+		return true;
 	}
 
 	/** Runs it and says what happened. */
@@ -146,7 +172,7 @@ public final class RollbackPreview {
 		String who = scope.who();
 		BlockPos centre = scope.centre();
 		GriefModule.RollbackResult result = Mods.grief().rollback(scope.level(), who, centre,
-				scope.radius(), scope.windowMs(), false, Actor.of(viewer));
+				scope.radius(), scope.windowMs(), false, Actor.of(viewer), scope.only());
 
 		MinecraftServer server = Mc.server(viewer);
 		if (server != null) {
@@ -155,7 +181,9 @@ public final class RollbackPreview {
 							centre.getX(), centre.getY(), centre.getZ()));
 		}
 
-		viewer.sendSystemMessage(Theme.good("Reverted " + result.reverted() + " change(s)."));
+		if (result.reverted() > 0 || result.itemsReturned() == 0) {
+			viewer.sendSystemMessage(Theme.good("Reverted " + result.reverted() + " change(s)."));
+		}
 		if (result.dropsRemoved() > 0) {
 			viewer.sendSystemMessage(Theme.info(
 					"Reclaimed " + result.dropsRemoved() + " dropped item(s) so nothing was duplicated."));

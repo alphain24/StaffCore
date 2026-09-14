@@ -1770,8 +1770,11 @@
         </p>
         <p>
           Right-clicking a row filters to that player; the header says who you are scoped to
-          and clicking it clears the filter. Shift-clicking a row previews a rollback of that
-          player at that spot.
+          and clicking it clears the filter. Shift-clicking a row previews a rollback of just
+          that row: the blocks in it, what that player did to those same blocks, and — for a
+          broken chest — its contents plus anything that player took out of it first. Nothing
+          else they did nearby is touched. If the row has already been rolled back, the row
+          itself says so.
         </p>
 
         <div class="note">
@@ -1792,6 +1795,8 @@
           <p>
             Rows that have already been rolled back are shown and marked rather than hidden,
             since "this was already put back" is usually what somebody is trying to find out.
+            Shift-click any other break, place, take or put to roll back what that player did
+            at this block, through the same preview and confirmation.
           </p>
           <p>
             <code>/staff inspect</code> holds the mode on, so any block you click reports its
@@ -1857,7 +1862,7 @@
         </p>
         <ul>
           <li><strong>Left-click</strong> an entry — teleport to that exact spot</li>
-          <li><strong>Shift-click</strong> — roll back everything that player did in this radius</li>
+          <li><strong>Shift-click</strong> — roll back just that row (one chest, or one run of blocks)</li>
           <li><strong>Right-click</strong> — filter the list to just that player</li>
           <li><strong>The TNT</strong> — roll back the whole area, whoever did it</li>
           <li><strong>The clock</strong> — double or halve the time window</li>

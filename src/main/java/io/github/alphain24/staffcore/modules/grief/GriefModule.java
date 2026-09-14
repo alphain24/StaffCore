@@ -1952,6 +1952,19 @@ public class GriefModule implements Module {
 	public RollbackResult rollback(ServerLevel level, String player, BlockPos centre,
 			int radius, long windowMs, boolean dryRun,
 			io.github.alphain24.staffcore.permission.Actor staff) {
+		return rollback(level, player, centre, radius, windowMs, dryRun, staff, null);
+	}
+
+	/**
+	 * @param only the block positions to undo, or null for every position in the area. What one
+	 *             row of the grief log rolls back: the chest in that row, or the run of planks,
+	 *             and not everything else the same player did nearby. The area still decides
+	 *             where spilled items are looked for and which ground is locked, so it wants to
+	 *             be a little wider than the positions themselves.
+	 */
+	public RollbackResult rollback(ServerLevel level, String player, BlockPos centre,
+			int radius, long windowMs, boolean dryRun,
+			io.github.alphain24.staffcore.permission.Actor staff, java.util.Set<BlockPos> only) {
 
 		if (!StaffCore.storage().isReady()) return RollbackResult.NOTHING;
 
@@ -2052,6 +2065,8 @@ public class GriefModule implements Module {
 			StaffCore.LOGGER.error("[Grief] rollback failed", e);
 			return RollbackResult.NOTHING;
 		}
+
+		if (only != null) plan.removeIf(row -> !only.contains(row.pos()));
 
 		// Read in one query rather than one per row, and only when a row needs it.
 		Map<RecordedDrops.Key, Map<String, Integer>> recorded = Map.of();
@@ -2201,7 +2216,7 @@ public class GriefModule implements Module {
 		// leaving it empty looks like the problem was fixed when it was not. Every container
 		// not already done above, including the ones just rebuilt — see ContainerWatch#undo.
 		containers.undo(level, player, centre, radius, windowMs, dryRun, rebuilt,
-				pos -> !removing.contains(pos), containerUndo);
+				pos -> !removing.contains(pos) && (only == null || only.contains(pos)), containerUndo);
 		ContainerWatch.Result containerResult =
 				containers.settle(level, centre, radius, windowMs, dryRun, containerUndo);
 
