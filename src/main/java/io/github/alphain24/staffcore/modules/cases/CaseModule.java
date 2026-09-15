@@ -338,6 +338,11 @@ public class CaseModule implements Module {
 		} else {
 			Mods.alerts().onStaffAction(server, said.message());
 		}
+		io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+				new io.github.alphain24.staffcore.api.StaffCoreEvent.SignalRaised(
+						signal.occurredAt(), signal.type().name(), signal.subjectId(),
+						signal.subjectName(), signal.confidence(), said.message(),
+						landing.caseId(), landing.openedCase()));
 	}
 
 	/**

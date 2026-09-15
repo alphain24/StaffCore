@@ -10,3 +10,7 @@ pluginManagement {
 }
 
 rootProject.name = 'staffcore'
+
+// The Discord companion. A separate jar so servers without Discord never ship JDA, and so a
+// bot crash or a Discord outage cannot take moderation down with it.
+include 'staffcore-discord'

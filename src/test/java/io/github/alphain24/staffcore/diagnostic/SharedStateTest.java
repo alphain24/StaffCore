@@ -159,7 +159,16 @@ class SharedStateTest {
 			"Excavation.targetBlocks",
 			"IllegalItems.spawnEggs",
 			"Actor.allNodes",
-			"PermissionGroups.instance"));
+			"PermissionGroups.instance",
+
+			// The published API's event thread: started once, on the first event, and the flag
+			// it clears when the queue is empty. Read back only by EventBus.drain, which waits
+			// for the thread rather than for anybody's own write.
+			"EventBus.worker",
+			"EventBus.busy",
+
+			// Set once, when a Discord companion starts, and never cleared while the server runs.
+			"StaffCoreApi.discordCompanion"));
 
 	@Test
 	@DisplayName("every mutable static is one somebody decided to add")
@@ -215,7 +224,7 @@ class SharedStateTest {
 
 		// And it actually found things in the real source — a regex that matched nothing would
 		// make noUndeclaredGlobalState pass forever while the codebase filled up with globals.
-		assertEquals(14, DECLARED.size(),
+		assertEquals(17, DECLARED.size(),
 				"the declared list changed size; check the new entry is classified correctly "
 						+ "rather than added to make the build green");
 	}

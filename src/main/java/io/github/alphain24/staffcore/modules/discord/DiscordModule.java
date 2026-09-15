@@ -37,7 +37,12 @@ public class DiscordModule implements Module {
 			.connectTimeout(Duration.ofSeconds(5))
 			.build();
 
+	/**
+	 * Whether this webhook should post. Not when the Discord companion is installed: it posts the
+	 * same things with more in them, and a channel that gets everything twice is read by nobody.
+	 */
 	public boolean isConfigured() {
+		if (io.github.alphain24.staffcore.api.StaffCoreApi.discordCompanionPresent()) return false;
 		String url = StaffConfig.get().discordWebhookUrl;
 		return url != null && !url.isBlank();
 	}

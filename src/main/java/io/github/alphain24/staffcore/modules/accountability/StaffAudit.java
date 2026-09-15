@@ -92,6 +92,11 @@ public final class StaffAudit {
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Audit] could not record a staff command", e);
 		}
+		// Who, what and which case. The address and session written to the row above are not in
+		// it and cannot be: the event has no field for them.
+		io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+				new io.github.alphain24.staffcore.api.StaffCoreEvent.StaffAction(
+						System.currentTimeMillis(), staffName, command, caseId));
 	}
 
 	/**

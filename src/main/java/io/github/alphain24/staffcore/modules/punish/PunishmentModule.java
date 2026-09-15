@@ -170,6 +170,11 @@ public class PunishmentModule implements Module {
 
 		enforce(server, record);
 		announce(server, record);
+		io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+				new io.github.alphain24.staffcore.api.StaffCoreEvent.PunishmentIssued(
+						record.createdAt(), record.id(), record.targetUuid(), record.targetName(),
+						Math.max(0, historyCount(record.targetUuid()) - 1), record.type().name(),
+						record.reason(), record.staffName(), record.expiresAt(), record.caseId()));
 
 		if (type == PunishmentType.WARN) suggestEscalation(server, record, online(server, actor));
 		return record;
@@ -560,6 +565,13 @@ public class PunishmentModule implements Module {
 			ps.setString(4, target.toString());
 			int n = ps.executeUpdate();
 
+			long liftedAt = System.currentTimeMillis();
+			for (Punishment lifted : lifting) {
+				io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+						new io.github.alphain24.staffcore.api.StaffCoreEvent.PunishmentReversed(
+								liftedAt, lifted.id(), lifted.targetUuid(), lifted.targetName(),
+								lifted.type().name(), staffName, reason, lifted.caseId()));
+			}
 			for (Punishment lifted : lifting) {
 				if (!lifted.hasCase()) continue;
 				Mods.cases().store().note(lifted.caseId(), staffName,

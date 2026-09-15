@@ -56,7 +56,7 @@ public class ReportModule implements Module {
 				INSERT INTO reports (target_uuid, target_name, reporter_uuid, reporter_name, reason, status, created_at)
 				VALUES (?,?,?,?,?, 'OPEN', ?)
 				""";
-		try (PreparedStatement ps = c.prepareStatement(sql)) {
+		try (PreparedStatement ps = c.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS)) {
 			ps.setString(1, target.toString());
 			ps.setString(2, targetName);
 			ps.setString(3, reporter.toString());
@@ -65,6 +65,16 @@ public class ReportModule implements Module {
 			ps.setLong(6, now);
 			ps.executeUpdate();
 			lastReport.put(reporter, now);
+
+			long reportId = 0;
+			try (ResultSet keys = ps.getGeneratedKeys()) {
+				if (keys.next()) reportId = keys.getLong(1);
+			}
+			io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+					new io.github.alphain24.staffcore.api.StaffCoreEvent.ReportFiled(now, reportId,
+							target, targetName,
+							io.github.alphain24.staffcore.module.Mods.punish().historyCount(target),
+							reporterName, reason));
 
 			// A player report is a signal like any other, and the one with the best claim to
 			// be taken seriously: a human watched something happen and chose to tell somebody.
@@ -150,18 +160,31 @@ public class ReportModule implements Module {
 	// ------------------------------------------------------------------- actions
 
 	public boolean claim(long id, String staffName) {
-		return update("UPDATE reports SET status='CLAIMED', claimed_by=? WHERE id=? AND status='OPEN'",
-				staffName, id);
+		return changed(id, "CLAIMED", staffName,
+				update("UPDATE reports SET status='CLAIMED', claimed_by=? WHERE id=? AND status='OPEN'",
+						staffName, id));
 	}
 
 	public boolean resolve(long id, String staffName) {
-		return update("UPDATE reports SET status='RESOLVED', claimed_by=COALESCE(claimed_by, ?) WHERE id=?",
-				staffName, id);
+		return changed(id, "RESOLVED", staffName,
+				update("UPDATE reports SET status='RESOLVED', claimed_by=COALESCE(claimed_by, ?) WHERE id=?",
+						staffName, id));
 	}
 
 	public boolean unclaim(long id) {
-		return update("UPDATE reports SET status='OPEN', claimed_by=NULL WHERE id=? AND status='CLAIMED'",
-				null, id);
+		return changed(id, "OPEN", null,
+				update("UPDATE reports SET status='OPEN', claimed_by=NULL WHERE id=? AND status='CLAIMED'",
+						null, id));
+	}
+
+	/** Tells companions about a change that happened, and passes the answer through. */
+	private static boolean changed(long id, String status, String staffName, boolean happened) {
+		if (happened) {
+			io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+					new io.github.alphain24.staffcore.api.StaffCoreEvent.ReportChanged(
+							System.currentTimeMillis(), id, status, staffName));
+		}
+		return happened;
 	}
 
 	private boolean update(String sql, String staffName, long id) {

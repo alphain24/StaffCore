@@ -2004,6 +2004,17 @@ public final class StaffCommands {
 		ctx.getSource().sendSuccess(() -> Icon.text(
 				"  Block log: " + Mods.grief().logCounters(), Theme.MUTED), false);
 
+		// Companions report themselves here, so "is the Discord bot connected" is answered where
+		// an owner already looks rather than in a log they have to go and find.
+		for (String line : io.github.alphain24.staffcore.api.StaffCoreApi.status()) {
+			ctx.getSource().sendSuccess(() -> Icon.text("  " + line, Theme.MUTED), false);
+		}
+		if (io.github.alphain24.staffcore.api.internal.EventBus.dropped() > 0) {
+			ctx.getSource().sendSuccess(() -> Theme.warn("  API events dropped because a companion "
+					+ "was not keeping up: " + io.github.alphain24.staffcore.api.internal.EventBus.dropped()),
+					false);
+		}
+
 		if (findings.isEmpty()) {
 			ctx.getSource().sendSuccess(() -> Icon.text(
 					"  Hooks: the startup check has not run yet.", Theme.MUTED), false);

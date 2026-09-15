@@ -1,0 +1,94 @@
+plugins {
+	id 'net.fabricmc.fabric-loom'
+}
+
+// staffcore-discord: the Discord companion to StaffCore.
+//
+// A jar of its own, for three reasons in this order. JDA and what it pulls in are large, and a
+// server that does not want Discord should not ship them. A bot crash, a rate limit or a Discord
+// outage must not be able to take moderation down. And it forces StaffCore to have a real API,
+// which is worth having regardless: this project may only use StaffCore through
+// io.github.alphain24.staffcore.api, and a test fails the build if it reaches past it.
+
+version = project.discord_mod_version
+group = project.maven_group
+
+base {
+	archivesName = 'staffcore-discord'
+}
+
+repositories {
+	mavenCentral()
+}
+
+loom {
+	runs {
+		server {
+			runDir = "../run/discord-server"
+		}
+	}
+}
+
+// Everything JDA resolves to, compiled against and nested into the jar one module at a time.
+// Loom's include is not transitive, so the resolved set is listed rather than guessed at.
+configurations {
+	bundle
+	implementation.extendsFrom bundle
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// StaffCore itself. Needed at compile time for the api package and at runtime in the
+	// development server; never bundled — server owners install StaffCore as its own jar.
+	implementation project(':')
+
+	// JDA, nested into the jar with what it needs at runtime. Voice is not used, so the audio
+	// codec and the encryption library voice needs are left out; the game already provides SLF4J.
+	bundle("net.dv8tion:JDA:${project.jda_version}") {
+		exclude module: 'opus-java'
+		exclude module: 'tink'
+		exclude group: 'org.slf4j'
+	}
+
+	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
+	testImplementation "org.junit.jupiter:junit-jupiter"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+afterEvaluate {
+	configurations.bundle.resolvedConfiguration.resolvedArtifacts.each { artifact ->
+		def id = artifact.moduleVersion.id
+		dependencies.add('include', "${id.group}:${id.name}:${id.version}")
+	}
+}
+
+test {
+	useJUnitPlatform()
+	testLogging {
+		events "passed", "failed", "skipped"
+		exceptionFormat = "full"
+	}
+}
+
+processResources {
+	def v = project.version
+	inputs.property "version", v
+	filesMatching("fabric.mod.json") {
+		expand "version": v
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.encoding = "UTF-8"
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+}

@@ -77,6 +77,9 @@ public class StaffChatModule implements Module {
 			}
 		}
 		StaffCore.LOGGER.info("[StaffChat] {}: {} (to {} staff)", senderName, message, delivered);
+		io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+				new io.github.alphain24.staffcore.api.StaffCoreEvent.StaffChat(
+						System.currentTimeMillis(), senderName, message, false));
 		return delivered;
 	}
 
