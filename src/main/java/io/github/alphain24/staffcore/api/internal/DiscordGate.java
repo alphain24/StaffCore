@@ -25,6 +25,7 @@ import io.github.alphain24.staffcore.permission.Rank;
 import io.github.alphain24.staffcore.util.PlayerLookup;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.NameAndId;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -263,34 +264,92 @@ public final class DiscordGate {
 	/** How many punishments a history answer carries, newest first. */
 	static final int HISTORY_LIMIT = 20;
 
-	public static CompletableFuture<DiscordAnswer<DiscordProfile>> profile(DiscordUser user, UUID playerId) {
-		return read(user, DiscordOperation.VIEW_PROFILE, (server, resolved) -> {
-			if (playerId == null) return DiscordAnswer.no("No player named.");
-			String name = nameOf(server, playerId);
-			var punish = Mods.punish();
-			List<String> openCases = Mods.cases().store().openCasesFor(playerId).stream()
-					.map(Case::id).toList();
+	/** A player named from Discord: exactly one, or why not. */
+	private record Named(NameAndId player, String refusal) {}
 
-			audit(resolved, user, "profile " + name, null);
-			return DiscordAnswer.of(new DiscordProfile(playerId, name,
-					server.getPlayerList().getPlayer(playerId) != null,
-					punish.historyCount(playerId),
-					io.github.alphain24.staffcore.modules.punish.WarningPoints.standingOf(playerId).points(),
-					Mods.notes().count(playerId), Mods.appeals().openCountFor(playerId),
-					published(punish.activeBan(playerId)), published(punish.activeMute(playerId)), openCases));
+	/**
+	 * Who a name typed in Discord means, by the same rules as a name typed in game: an exact name first,
+	 * then a prefix only when it matches one player. {@code Steve_} and {@code Steve__} are both real
+	 * accounts often enough that guessing between them is how the wrong person gets banned.
+	 */
+	private static Named named(MinecraftServer server, String typed) {
+		if (typed == null || typed.isBlank()) return new Named(null, "Name a player.");
+		var match = io.github.alphain24.staffcore.command.KnownPlayers.resolve(server, typed.strip());
+		if (match.isResolved()) return new Named(match.profile(), null);
+		if (match.isAmbiguous()) {
+			return new Named(null, "\"" + typed.strip() + "\" could be " + String.join(", ",
+					match.candidates().stream().limit(10).toList()) + ". Type the whole name.");
+		}
+		return new Named(null, "Nobody called \"" + typed.strip() + "\" has joined this server.");
+	}
+
+	public static CompletableFuture<DiscordAnswer<DiscordProfile>> profile(DiscordUser user, UUID playerId) {
+		return read(user, DiscordOperation.VIEW_PROFILE, (server, resolved) -> playerId == null
+				? DiscordAnswer.no("No player named.") : profileOf(server, resolved, user, playerId));
+	}
+
+	public static CompletableFuture<DiscordAnswer<DiscordProfile>> profile(DiscordUser user, String player) {
+		return read(user, DiscordOperation.VIEW_PROFILE, (server, resolved) -> {
+			Named named = named(server, player);
+			return named.player() == null ? DiscordAnswer.no(named.refusal())
+					: profileOf(server, resolved, user, named.player().id());
 		});
+	}
+
+	private static DiscordAnswer<DiscordProfile> profileOf(MinecraftServer server, Resolved resolved, DiscordUser user,
+			UUID playerId) {
+		String name = nameOf(server, playerId);
+		var punish = Mods.punish();
+		List<String> openCases = Mods.cases().store().openCasesFor(playerId).stream().map(Case::id).toList();
+
+		audit(resolved, user, "profile " + name, null);
+		return DiscordAnswer.of(new DiscordProfile(playerId, name,
+				server.getPlayerList().getPlayer(playerId) != null,
+				punish.historyCount(playerId),
+				io.github.alphain24.staffcore.modules.punish.WarningPoints.standingOf(playerId).points(),
+				Mods.notes().count(playerId), Mods.appeals().openCountFor(playerId),
+				published(punish.activeBan(playerId)), published(punish.activeMute(playerId)), openCases));
 	}
 
 	public static CompletableFuture<DiscordAnswer<List<DiscordPunishment>>> history(DiscordUser user,
 			UUID playerId) {
+		return read(user, DiscordOperation.VIEW_HISTORY, (server, resolved) -> playerId == null
+				? DiscordAnswer.no("No player named.") : historyOf(server, resolved, user, playerId));
+	}
+
+	public static CompletableFuture<DiscordAnswer<List<DiscordPunishment>>> history(DiscordUser user,
+			String player) {
 		return read(user, DiscordOperation.VIEW_HISTORY, (server, resolved) -> {
-			if (playerId == null) return DiscordAnswer.no("No player named.");
-			List<DiscordPunishment> out = new ArrayList<>();
-			for (Punishment p : Mods.punish().history(playerId)) {
+			Named named = named(server, player);
+			return named.player() == null ? DiscordAnswer.no(named.refusal())
+					: historyOf(server, resolved, user, named.player().id());
+		});
+	}
+
+	private static DiscordAnswer<List<DiscordPunishment>> historyOf(MinecraftServer server, Resolved resolved,
+			DiscordUser user, UUID playerId) {
+		List<DiscordPunishment> out = new ArrayList<>();
+		for (Punishment p : Mods.punish().history(playerId)) {
+			if (out.size() >= HISTORY_LIMIT) break;
+			out.add(published(p));
+		}
+		audit(resolved, user, "history " + nameOf(server, playerId), null);
+		return DiscordAnswer.of(out);
+	}
+
+	/** A player's notes, newest first, retracted ones included and marked. */
+	public static CompletableFuture<DiscordAnswer<List<io.github.alphain24.staffcore.api.DiscordNote>>> notes(
+			DiscordUser user, String player) {
+		return read(user, DiscordOperation.VIEW_NOTES, (server, resolved) -> {
+			Named named = named(server, player);
+			if (named.player() == null) return DiscordAnswer.no(named.refusal());
+			List<io.github.alphain24.staffcore.api.DiscordNote> out = new ArrayList<>();
+			for (var note : Mods.notes().list(named.player().id())) {
 				if (out.size() >= HISTORY_LIMIT) break;
-				out.add(published(p));
+				out.add(new io.github.alphain24.staffcore.api.DiscordNote(note.id(), note.author(), note.text(),
+						note.createdAt(), note.caseId(), note.retractedBy()));
 			}
-			audit(resolved, user, "history " + nameOf(server, playerId), null);
+			audit(resolved, user, "notes " + named.player().name(), null);
 			return DiscordAnswer.of(out);
 		});
 	}
@@ -299,35 +358,275 @@ public final class DiscordGate {
 	static final int NOTE_LIMIT = 256;
 
 	public static CompletableFuture<DiscordResult> addNote(DiscordUser user, UUID playerId, String text) {
+		return act(user, DiscordOperation.NOTE, (server, resolved) -> playerId == null
+				? DiscordResult.no("No player named.") : noteOn(server, resolved, user, playerId, text));
+	}
+
+	public static CompletableFuture<DiscordResult> addNote(DiscordUser user, String player, String text) {
 		return act(user, DiscordOperation.NOTE, (server, resolved) -> {
-			if (playerId == null) return DiscordResult.no("No player named.");
-			String clean = cleanText(text, NOTE_LIMIT);
-			if (clean.isEmpty()) return DiscordResult.no("A note needs some text.");
-
-			String name = nameOf(server, playerId);
-			var written = Mods.notes().write(playerId, name, resolved.standing().minecraftName(), clean);
-			if (!written.saved()) return DiscordResult.no("The note could not be saved. The server log says why.");
-
-			audit(resolved, user, "note " + name, written.caseId());
-			return new DiscordResult(true, "Noted on " + name + " (" + written.total() + " total)"
-					+ (written.caseId() == null ? "." : ", attached to case " + written.caseId() + "."));
+			Named named = named(server, player);
+			return named.player() == null ? DiscordResult.no(named.refusal())
+					: noteOn(server, resolved, user, named.player().id(), text);
 		});
 	}
 
-	public static CompletableFuture<DiscordResult> freeze(DiscordUser user, UUID playerId) {
-		return act(user, DiscordOperation.FREEZE, (server, resolved) -> {
-			if (playerId == null) return DiscordResult.no("No player named.");
-			ServerPlayer target = server.getPlayerList().getPlayer(playerId);
-			if (target == null) {
-				return DiscordResult.no(nameOf(server, playerId) + " is not online. A freeze holds somebody "
-						+ "where they stand, so there is nobody to hold.");
-			}
-			if (Mods.freeze().isFrozen(target)) return DiscordResult.no(Mc.name(target) + " is already frozen.");
+	private static DiscordResult noteOn(MinecraftServer server, Resolved resolved, DiscordUser user, UUID playerId,
+			String text) {
+		String clean = cleanText(text, NOTE_LIMIT);
+		if (clean.isEmpty()) return DiscordResult.no("A note needs some text.");
 
-			audit(resolved, user, "freeze " + Mc.name(target), null);
-			Mods.freeze().toggle(target);
-			return new DiscordResult(true, Mc.name(target) + " is frozen.");
+		String name = nameOf(server, playerId);
+		var written = Mods.notes().write(playerId, name, resolved.standing().minecraftName(), clean);
+		if (!written.saved()) return DiscordResult.no("The note could not be saved. The server log says why.");
+
+		audit(resolved, user, "note " + name, written.caseId());
+		return new DiscordResult(true, "Noted on " + name + " (" + written.total() + " total)"
+				+ (written.caseId() == null ? "." : ", attached to case " + written.caseId() + "."));
+	}
+
+	public static CompletableFuture<DiscordResult> freeze(DiscordUser user, UUID playerId) {
+		return act(user, DiscordOperation.FREEZE, (server, resolved) -> playerId == null
+				? DiscordResult.no("No player named.") : freezeOn(server, resolved, user, playerId, true));
+	}
+
+	public static CompletableFuture<DiscordResult> freeze(DiscordUser user, String player) {
+		return act(user, DiscordOperation.FREEZE, (server, resolved) -> {
+			Named named = named(server, player);
+			return named.player() == null ? DiscordResult.no(named.refusal())
+					: freezeOn(server, resolved, user, named.player().id(), true);
 		});
+	}
+
+	public static CompletableFuture<DiscordResult> unfreeze(DiscordUser user, String player) {
+		return act(user, DiscordOperation.UNFREEZE, (server, resolved) -> {
+			Named named = named(server, player);
+			return named.player() == null ? DiscordResult.no(named.refusal())
+					: freezeOn(server, resolved, user, named.player().id(), false);
+		});
+	}
+
+	/**
+	 * Freezes or releases a player who is online. A freeze holds somebody where they stand, so it needs
+	 * somebody standing; releasing is refused for somebody not frozen, rather than toggling them frozen.
+	 */
+	private static DiscordResult freezeOn(MinecraftServer server, Resolved resolved, DiscordUser user, UUID playerId,
+			boolean freeze) {
+		ServerPlayer target = server.getPlayerList().getPlayer(playerId);
+		if (target == null) {
+			return DiscordResult.no(nameOf(server, playerId) + " is not online. A freeze holds somebody where they "
+					+ "stand, so there is nobody to " + (freeze ? "hold." : "release."));
+		}
+		if (Mods.freeze().isFrozen(target) == freeze) {
+			return DiscordResult.no(Mc.name(target) + (freeze ? " is already frozen." : " is not frozen."));
+		}
+		audit(resolved, user, (freeze ? "freeze " : "unfreeze ") + Mc.name(target), null);
+		Mods.freeze().toggle(target);
+		return new DiscordResult(true, Mc.name(target) + (freeze ? " is frozen." : " is free to move."));
+	}
+
+	// ------------------------------------------------------------------ punishing
+
+	/**
+	 * Bans, mutes or warns from Discord.
+	 * <p>
+	 * Through {@code PunishmentModule.apply} with the Discord actor, which is the whole point: the rate
+	 * limit, the self-punishment guard and the rank guard there are the ones every in-game punishment
+	 * meets, and the reason one refused is handed back rather than lost.
+	 *
+	 * @param type     {@code BAN}, {@code MUTE} or {@code WARN}
+	 * @param duration {@code 7d}, {@code 12h} and the like; empty or {@code perm} for no end; ignored for a warning
+	 */
+	public static CompletableFuture<DiscordResult> punish(DiscordUser user, String player, String type,
+			String duration, String reason) {
+		io.github.alphain24.staffcore.modules.punish.PunishmentType base;
+		DiscordOperation operation;
+		switch (type == null ? "" : type) {
+			case "BAN" -> {
+				base = io.github.alphain24.staffcore.modules.punish.PunishmentType.BAN;
+				operation = DiscordOperation.BAN;
+			}
+			case "MUTE" -> {
+				base = io.github.alphain24.staffcore.modules.punish.PunishmentType.MUTE;
+				operation = DiscordOperation.MUTE;
+			}
+			case "WARN" -> {
+				base = io.github.alphain24.staffcore.modules.punish.PunishmentType.WARN;
+				operation = DiscordOperation.WARN;
+			}
+			default -> {
+				return CompletableFuture.completedFuture(DiscordResult.no("Only bans, mutes and warnings are given "
+						+ "from Discord."));
+			}
+		}
+		return act(user, operation, (server, resolved) -> {
+			Named named = named(server, player);
+			if (named.player() == null) return DiscordResult.no(named.refusal());
+
+			String cleanReason = cleanText(reason, NOTE_LIMIT);
+			if (StaffConfig.get().requireReason && cleanReason.isEmpty()) {
+				return DiscordResult.no("This server requires a reason.");
+			}
+
+			Long millis = null;
+			if (base != io.github.alphain24.staffcore.modules.punish.PunishmentType.WARN
+					&& duration != null && !duration.isBlank()) {
+				var length = io.github.alphain24.staffcore.util.DurationParser.of(duration.strip());
+				if (!length.valid()) return DiscordResult.no(length.problem());
+				if (!length.isPermanent()) millis = length.millis();
+			}
+
+			String staffName = resolved.standing().minecraftName();
+			audit(resolved, user, type.toLowerCase(java.util.Locale.ROOT) + " " + named.player().name() + " "
+					+ (millis == null ? "" : duration.strip() + " ") + cleanReason, null);
+
+			String[] refusal = new String[1];
+			Punishment issued = Mods.punish().apply(server, named.player(), staffName, base, millis, cleanReason,
+					null, null, resolved.actor(), why -> refusal[0] = why);
+			if (issued == null) {
+				return DiscordResult.no(refusal[0] != null ? refusal[0]
+						: "The punishment could not be saved. The server log says why.");
+			}
+			return new DiscordResult(true, io.github.alphain24.staffcore.modules.cases.CaseClosing.label(issued)
+					+ " issued to " + issued.targetName() + " — #" + issued.id() + ".");
+		});
+	}
+
+	/**
+	 * Lifts a player's ban or mute from Discord, through the same revoke {@code /staff unban} uses.
+	 *
+	 * @param bans true to lift bans, false to lift mutes
+	 */
+	public static CompletableFuture<DiscordResult> lift(DiscordUser user, String player, boolean bans, String reason) {
+		return act(user, bans ? DiscordOperation.UNBAN : DiscordOperation.UNMUTE, (server, resolved) -> {
+			Named named = named(server, player);
+			if (named.player() == null) return DiscordResult.no(named.refusal());
+
+			String what = bans ? "ban" : "mute";
+			String staffName = resolved.standing().minecraftName();
+			String cleanReason = cleanText(reason, NOTE_LIMIT);
+			audit(resolved, user, "un" + what + " " + named.player().name()
+					+ (cleanReason.isEmpty() ? "" : " " + cleanReason), null);
+
+			int lifted = Mods.punish().revoke(server, named.player().id(), staffName, bans,
+					cleanReason.isEmpty() ? null : cleanReason);
+			if (lifted == 0) return DiscordResult.no(named.player().name() + " has no active " + what + ".");
+			Mods.alerts().onStaffAction(server, staffName + " lifted a " + what + " on " + named.player().name()
+					+ " from Discord");
+			return new DiscordResult(true, "Lifted the " + what + " on " + named.player().name() + ".");
+		});
+	}
+
+	// ------------------------------------------------------------------ staff and cases
+
+	/** How many of a staff member's actions one answer carries. */
+	static final int STAFF_HISTORY_LIMIT = 25;
+
+	/**
+	 * What a staff member did, as {@code /staff audit} shows it. The addresses they acted from are behind
+	 * their own admin permission in game and not offered here at all.
+	 */
+	public static CompletableFuture<DiscordAnswer<List<io.github.alphain24.staffcore.api.DiscordStaffAction>>> staffHistory(
+			DiscordUser user, String staffName, int days) {
+		return read(user, DiscordOperation.VIEW_STAFF_HISTORY, (server, resolved) -> {
+			if (staffName == null || staffName.isBlank()) return DiscordAnswer.no("Name a staff member.");
+			int window = Math.max(1, Math.min(90, days));
+			List<io.github.alphain24.staffcore.api.DiscordStaffAction> out = new ArrayList<>();
+			for (var entry : Mods.accountability().audit().forStaff(staffName.strip(), window, STAFF_HISTORY_LIMIT)) {
+				out.add(new io.github.alphain24.staffcore.api.DiscordStaffAction(entry.at(), entry.kind(), entry.detail(),
+						entry.caseId()));
+			}
+			audit(resolved, user, "audit " + staffName.strip() + " " + window + "d", null);
+			return DiscordAnswer.of(out);
+		});
+	}
+
+	/** How many of a case's history lines one answer carries. */
+	static final int CASE_EVENTS = 10;
+
+	public static CompletableFuture<DiscordAnswer<io.github.alphain24.staffcore.api.DiscordCase>> caseView(
+			DiscordUser user, String caseId) {
+		return read(user, DiscordOperation.VIEW_CASE, (server, resolved) -> {
+			var store = Mods.cases().store();
+			var found = caseFor(caseId);
+			if (found == null) return DiscordAnswer.no("There is no case " + (caseId == null ? "" : caseId.strip()) + ".");
+
+			List<io.github.alphain24.staffcore.api.DiscordCase.Event> events = new ArrayList<>();
+			List<io.github.alphain24.staffcore.modules.cases.CaseStore.Event> history = store.eventsFor(found.id());
+			for (int i = history.size() - 1; i >= 0 && events.size() < CASE_EVENTS; i--) {
+				var e = history.get(i);
+				events.add(new io.github.alphain24.staffcore.api.DiscordCase.Event(e.at(), e.actor(), e.kind(), e.body()));
+			}
+			audit(resolved, user, "case " + found.id() + " " + found.subjectName(), found.id());
+			return DiscordAnswer.of(new io.github.alphain24.staffcore.api.DiscordCase(found.id(), found.subjectId(),
+					found.subjectName(), found.status().stored(), found.category() == null ? "other" : found.category().label(),
+					found.severity(), found.summary(), found.openedAt(), found.openedBy(), found.assignedTo(),
+					found.closedAt(), found.closedBy(), found.resolution(), store.signalsFor(found.id()).size(),
+					Mods.cases().evidence().forCase(found.id()).size(), store.linksFor(found.id()).size(), events));
+		});
+	}
+
+	/** The evidence filed on a case, by the case's id. */
+	public static CompletableFuture<DiscordAnswer<List<io.github.alphain24.staffcore.api.DiscordEvidence>>> caseEvidence(
+			DiscordUser user, String caseId) {
+		return read(user, DiscordOperation.VIEW_EVIDENCE, (server, resolved) -> {
+			var found = caseFor(caseId);
+			if (found == null) return DiscordAnswer.no("There is no case " + (caseId == null ? "" : caseId.strip()) + ".");
+			audit(resolved, user, "evidence case " + found.id(), found.id());
+			return DiscordAnswer.of(evidenceOf(found.id()));
+		});
+	}
+
+	private static Case caseFor(String typed) {
+		String id = io.github.alphain24.staffcore.modules.cases.CaseId.normalise(typed);
+		return id == null ? null : Mods.cases().store().byId(id).orElse(null);
+	}
+
+	private static List<io.github.alphain24.staffcore.api.DiscordEvidence> evidenceOf(String caseId) {
+		List<io.github.alphain24.staffcore.api.DiscordEvidence> out = new ArrayList<>();
+		for (var item : Mods.cases().evidence().forCase(caseId)) {
+			out.add(new io.github.alphain24.staffcore.api.DiscordEvidence(item.id(), item.kind().label(),
+					item.describe(), item.addedAt(), item.addedBy()));
+		}
+		return out;
+	}
+
+	/** How many staff an analytics answer lists when nobody in particular was asked about. */
+	static final int LEADERBOARD = 10;
+
+	/** Server totals, and one staff member's numbers or the busiest staff's. */
+	public static CompletableFuture<DiscordAnswer<io.github.alphain24.staffcore.api.DiscordAnalytics>> analytics(
+			DiscordUser user, String staffName) {
+		return read(user, DiscordOperation.VIEW_ANALYTICS, (server, resolved) -> {
+			var analytics = Mods.analytics();
+			var totals = analytics.totals();
+			List<io.github.alphain24.staffcore.api.DiscordAnalytics.Staff> staff = new ArrayList<>();
+			List<io.github.alphain24.staffcore.modules.analytics.AnalyticsModule.StaffStat> stats =
+					staffName == null || staffName.isBlank() ? analytics.leaderboard(LEADERBOARD)
+							: List.of(analytics.forStaff(staffName.strip()));
+			for (var s : stats) {
+				staff.add(new io.github.alphain24.staffcore.api.DiscordAnalytics.Staff(s.name(), s.punishments(),
+						s.reportsHandled(), s.reportsResolved(), s.overturned(), s.medianResponseMs(), s.commands(),
+						s.lastSeen()));
+			}
+			audit(resolved, user, "stats" + (staffName == null || staffName.isBlank() ? "" : " " + staffName.strip()),
+					null);
+			return DiscordAnswer.of(new io.github.alphain24.staffcore.api.DiscordAnalytics(totals.punishments(),
+					totals.activeBans(), totals.openReports(), totals.notes(), staff));
+		});
+	}
+
+	/**
+	 * Known player names starting with what has been typed, for Discord's autocomplete. Only for a linked
+	 * account holding something; everybody else gets nothing, so autocomplete is not a way to list who
+	 * plays here. Not audited: it runs on every keystroke, and the command it completes is.
+	 */
+	public static CompletableFuture<List<String>> suggestPlayers(DiscordUser user, String prefix) {
+		return onServer(server -> {
+			var standing = resolve(server, user).standing();
+			if (!standing.linked() || standing.nodes().isEmpty()) return List.<String>of();
+			return io.github.alphain24.staffcore.command.KnownPlayers.startingWith(server,
+					prefix == null ? "" : prefix.strip(), 25);
+		}, List.of());
 	}
 
 	// ------------------------------------------------------------------ staff chat
@@ -486,13 +785,8 @@ public final class DiscordGate {
 			if (p == null) return DiscordAnswer.no("There is no punishment #" + punishmentId + ".");
 			if (!p.hasCase()) return DiscordAnswer.no("Punishment #" + punishmentId + " was not issued from a case, "
 					+ "so no evidence is filed against it.");
-			List<io.github.alphain24.staffcore.api.DiscordEvidence> out = new ArrayList<>();
-			for (var item : Mods.cases().evidence().forCase(p.caseId())) {
-				out.add(new io.github.alphain24.staffcore.api.DiscordEvidence(item.id(), item.kind().label(),
-						item.describe(), item.addedAt(), item.addedBy()));
-			}
 			audit(resolved, user, "evidence " + p.targetName() + " case " + p.caseId(), p.caseId());
-			return DiscordAnswer.of(out);
+			return DiscordAnswer.of(evidenceOf(p.caseId()));
 		});
 	}
 
@@ -516,9 +810,21 @@ public final class DiscordGate {
 		}, whenStopped);
 	}
 
+	/**
+	 * Something that changes something, from Discord. Past the gate it is counted against the Discord
+	 * action limit — on top of whatever limit the action has in game, which it still meets inside its own
+	 * service. Staff chat is talking, not acting, and is not counted.
+	 */
 	private static CompletableFuture<DiscordResult> act(DiscordUser user, DiscordOperation operation,
 			BiFunction<MinecraftServer, Resolved, DiscordResult> work) {
-		return gated(user, operation, work, DiscordResult::no, DiscordResult.no(STOPPED));
+		return gated(user, operation, (server, resolved) -> {
+			if (operation != DiscordOperation.STAFF_CHAT) {
+				var verdict = Mods.accountability().limits().check(resolved.actor(),
+						io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.DISCORD_ACTION);
+				if (!verdict.allowed()) return DiscordResult.no(verdict.refusal());
+			}
+			return work.apply(server, resolved);
+		}, DiscordResult::no, DiscordResult.no(STOPPED));
 	}
 
 	private static <T> CompletableFuture<DiscordAnswer<T>> read(DiscordUser user, DiscordOperation operation,

@@ -2485,8 +2485,8 @@
           <strong>What it does today:</strong> links staff accounts; posts punishments, reports, alerts,
           appeals and the staff log to channels you choose, with a thread for each report, appeal and case;
           acts from buttons on reports; takes appeals with <code>/appeal</code> and the ban screen's code, with
-          buttons to decide them; and bridges staff chat both ways. Slash commands for punishing and looking
-          players up are not built yet.
+          buttons to decide them; runs the <code>/staff</code> commands for looking players up and punishing
+          them; and bridges staff chat both ways.
         </p>
         <h3>Setting it up</h3>
         <ol>
@@ -2553,6 +2553,18 @@
           link: text is escaped and every message is sent with mentions disabled. Where each post went is kept
           in <code>world/staffcore-discord/threads.json</code> for 90 days, so edits survive a restart. Posts
           made while the bot is disconnected are counted in <code>/staff status</code> and not made.
+        </p>
+        <h3>Commands in Discord</h3>
+        <p>
+          <code>/staff</code> in Discord has <code>history</code>, <code>notes</code>, <code>profile</code>,
+          <code>case</code>, <code>evidence</code>, <code>staff-history</code> and <code>analytics</code> for
+          looking, and <code>warn</code>, <code>mute</code>, <code>ban</code>, <code>unmute</code>,
+          <code>unban</code>, <code>freeze</code>, <code>unfreeze</code> and <code>note</code> for acting, each
+          behind the same node as in game. Player names complete as you type and every answer is private.
+          Each goes through the in-game service, so the punishment rate limit and the rank guard apply and a
+          refusal says why. Everything that changes something from Discord also counts against
+          <code>discordActionsPerMinute</code> (20 a minute by default, staff chat not counted). IP bans,
+          rollbacks and inventory edits have no command.
         </p>
         <h3>Appeals from Discord</h3>
         <p>
@@ -3357,7 +3369,7 @@
           </ul>
           <h3>Not built</h3>
           <ul>
-            <li><strong>The Discord companion is partly built.</strong> It links accounts, posts to channels with threads, acts from report and appeal buttons, takes appeals and bridges staff chat (see <a href="#discord">Discord</a>). There are no slash commands yet for punishing or looking players up, and a post made while the bot is disconnected is counted and dropped rather than queued.</li>
+            <li><strong>A Discord post made while the bot is disconnected is dropped.</strong> It is counted in <code>/staff status</code> rather than queued and sent when the bot reconnects (see <a href="#discord">Discord</a>).</li>
             <li><strong>No map integrations.</strong> BlueMap, Dynmap and Squaremap would each need that mod present as a compile dependency.</li>
           </ul>
           <h3>Structural</h3>

@@ -399,11 +399,55 @@ class BypassAttemptTest {
 	 * parameter handed down from whoever resolved it. A literal null, a name string or a
 	 * field are still flagged; an identity that was resolved one call up is not anonymous.
 	 */
+	/**
+	 * Whether the call hands over an identity in the actor's place: the ninth argument of the overloads
+	 * that take one. Found by position rather than as the last argument, because the overload that reports
+	 * a refusal back to its caller takes a callback after it — and a callback in last place would otherwise
+	 * read as a call with no identity at all, or, worse, an identity-less call with a callback would read as
+	 * fine.
+	 */
 	private static boolean passesDeclaredActor(String body, String args) {
-		int comma = args.lastIndexOf(',');
-		String last = (comma < 0 ? args : args.substring(comma + 1)).trim();
-		if (!last.matches("[A-Za-z_]\\w*") || last.equals("null")) return false;
-		return Pattern.compile("\\bActor\\s+" + last + "\\b").matcher(body).find();
+		List<String> parts = topLevel(args);
+		if (parts.size() < 9) return false;
+		String actor = parts.get(8).trim();
+		if (actor.equals("null")) return false;
+		if (actor.matches("[A-Za-z_]\\w*")) {
+			return Pattern.compile("\\bActor\\s+" + actor + "\\b").matcher(body).find();
+		}
+		// An identity resolved on the spot, such as a Discord user's resolved.actor().
+		return actor.matches("[A-Za-z_]\\w*\\.actor\\(\\)");
+	}
+
+	/** The arguments of a call, split at the commas that belong to it rather than to anything inside it. */
+	private static List<String> topLevel(String args) {
+		List<String> parts = new ArrayList<>();
+		int depth = 0;
+		boolean inString = false;
+		boolean escaped = false;
+		int from = 0;
+		for (int i = 0; i < args.length(); i++) {
+			char c = args.charAt(i);
+			if (inString) {
+				if (escaped) escaped = false;
+				else if (c == '\\') escaped = true;
+				else if (c == '"') inString = false;
+				continue;
+			}
+			switch (c) {
+				case '"' -> inString = true;
+				case '(', '[', '{', '<' -> depth++;
+				case ')', ']', '}', '>' -> depth = Math.max(0, depth - 1);
+				case ',' -> {
+					if (depth == 0) {
+						parts.add(args.substring(from, i));
+						from = i + 1;
+					}
+				}
+				default -> { }
+			}
+		}
+		parts.add(args.substring(from));
+		return parts;
 	}
 
 	private static String arguments(String body, int openIndex) {

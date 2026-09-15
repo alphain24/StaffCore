@@ -446,8 +446,8 @@ should not carry them.
 punishments, reports, alerts, appeals and the staff log to channels you choose, each report, appeal
 and case with a thread; puts buttons on reports to claim, resolve, escalate, look at the player, add
 a note and freeze them; takes ban and mute appeals with `/appeal` and the code from the ban screen,
-with buttons to accept, reject, ask the player something and close; and bridges staff chat both
-ways. Punishing and looking players up with slash commands is not built yet.
+with buttons to accept, reject, ask the player something and close; runs the in-game `/staff`
+commands for looking players up and punishing them; and bridges staff chat both ways.
 
 ### Setting it up
 
@@ -525,6 +525,36 @@ connects from, and not the accounts linked to them that way.
 
 Only linked staff holding `staff.chat` are bridged into staff chat; anybody else gets a short reply
 that disappears. Lines from the game are sent with mentions switched off.
+
+### Commands
+
+`/staff` in Discord runs the staff commands, with player names completing as you type and every
+answer private to whoever asked:
+
+| Command | Needs | Does |
+|---|---|---|
+| `/staff history <player>` | `staff.history` | Their punishments, newest first |
+| `/staff notes <player>` | `staff.notes.view` | Their notes, retracted ones marked |
+| `/staff profile <player>` | `staff.gui` | Their standing: punishments, points, notes, what is in force, open cases |
+| `/staff case <id>` | `staff.gui` | A case and the latest of its history |
+| `/staff evidence <case>` | `staff.gui` | The evidence filed on a case |
+| `/staff staff-history <staff> [days]` | `staff.audit` | What a staff member did — never where from |
+| `/staff analytics [staff]` | `analytics.stats` | Server totals, and one staff member's or the busiest staff's numbers |
+| `/staff warn <player> <reason>` | `staff.punish.warn` | Warn |
+| `/staff mute <player> <reason> [duration]` | `staff.punish.mute` | Mute; permanent without a duration |
+| `/staff ban <player> <reason> [duration]` | `staff.punish.ban` | Ban; permanent without a duration |
+| `/staff unmute <player> [reason]` · `/staff unban <player> [reason]` | `staff.punish.revoke` | Lift it |
+| `/staff freeze <player>` · `/staff unfreeze <player>` | `staff.freeze` | Hold or release a player who is online |
+| `/staff note <player> <text>` | `staff.notes` | Add a note |
+
+Each runs through the same services as its in-game command: the permission (in game and in
+`roleNodes`), the punishment rate limit, and the guard against punishing somebody who outranks you,
+whose refusal is shown rather than lost. Everything that changes something from Discord — commands and
+buttons alike, staff chat excepted — also counts against **`discordActionsPerMinute`** in
+`config/staffcore.json` (default 20; 0 disables): several of these have no limit in game, where doing
+forty of them means standing in the server doing them. Lookups are recorded in the audit log, as they
+are in game. IP bans, rollbacks and inventory edits have no command and are refused to Discord by the
+services that run them.
 
 ### Appeals
 
@@ -724,11 +754,9 @@ known gap — not a bug list.
 
 **Not built**
 
-- **The Discord companion is partly built.** It links accounts, posts to channels with
-  threads, acts from report and appeal buttons, takes appeals and bridges staff chat
-  ([above](#discord-companion--staffcore-discord)). There are no slash commands yet for
-  punishing or looking players up, and a post made while the bot is disconnected is counted and
-  dropped rather than queued.
+- **A Discord post made while the bot is disconnected is dropped.** It is counted in
+  `/staff status` rather than queued and sent when the bot reconnects
+  ([the companion](#discord-companion--staffcore-discord)).
 - **No map integrations.** BlueMap, Dynmap and Squaremap would each need that mod present as
   a compile dependency.
 

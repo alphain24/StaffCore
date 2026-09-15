@@ -33,7 +33,13 @@ public final class RateLimits {
 	/** Which limit applies. Separate counters, because they protect different things. */
 	public enum Kind {
 		PUNISHMENT("punishment"),
-		ROLLBACK("rollback");
+		ROLLBACK("rollback"),
+		/**
+		 * Anything done from Discord that changes something: a punishment, lifting one, a freeze, a
+		 * note, a claim. On top of the limits the actions have in game, never instead of them — so a
+		 * ban from Discord counts here and against the punishment limit both.
+		 */
+		DISCORD_ACTION("Discord action");
 
 		private final String label;
 
@@ -47,7 +53,11 @@ public final class RateLimits {
 
 		int perMinute() {
 			StaffConfig cfg = StaffConfig.get();
-			return this == PUNISHMENT ? cfg.maxPunishmentsPerMinute : cfg.maxRollbacksPerMinute;
+			return switch (this) {
+				case PUNISHMENT -> cfg.maxPunishmentsPerMinute;
+				case ROLLBACK -> cfg.maxRollbacksPerMinute;
+				case DISCORD_ACTION -> cfg.discordActionsPerMinute;
+			};
 		}
 	}
 
@@ -104,10 +114,12 @@ public final class RateLimits {
 				long oldest = times.peekFirst();
 				long waitSeconds = Math.max(1, (WINDOW_MS - (now - oldest)) / 1000);
 
+				// Parenthesised, because .formatted binds to the last string alone: without the brackets
+				// every refusal read "Rate limit: %d %s(s) a minute" with nothing filled in.
 				return Verdict.refused(
-						"Rate limit: %d %s(s) a minute. Try again in %d second(s). This exists so "
+						("Rate limit: %d %s(s) a minute. Try again in %d second(s). This exists so "
 								+ "a stolen staff account cannot empty the server before anybody "
-								+ "notices — ask an admin if you need to do this in bulk."
+								+ "notices — ask an admin if you need to do this in bulk.")
 								.formatted(allowed, kind.label(), waitSeconds));
 			}
 			times.addLast(now);

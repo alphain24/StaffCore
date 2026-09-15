@@ -170,8 +170,8 @@ Open the file the server wrote and fill it in. A complete example — your ids w
   "enabled": true,
   "guildId": "111111111111111111",
   "roleNodes": {
-    "222222222222222222": ["staff.history", "report.view", "staff.gui", "staff.notes", "staff.freeze", "staff.chat"],
-    "333333333333333333": ["staff.history", "report.view", "staff.gui", "staff.notes", "staff.freeze", "staff.chat", "staff.appeals"]
+    "222222222222222222": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat"],
+    "333333333333333333": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat", "staff.appeals", "staff.punish.warn", "staff.punish.mute", "staff.punish.ban", "staff.punish.revoke", "staff.audit", "analytics.stats"]
   },
   "requestTimeoutSeconds": 10,
   "punishmentsChannelId": "create",
@@ -254,8 +254,8 @@ what it may do is a list:
 
 ```json
 "roleNodes": {
-  "111111111111111111": ["report.view", "staff.history", "staff.notes", "staff.freeze", "staff.chat", "staff.gui"],
-  "222222222222222222": ["report.view", "staff.history", "staff.notes", "staff.freeze", "staff.chat", "staff.gui", "staff.appeals"]
+  "111111111111111111": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat"],
+  "222222222222222222": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat", "staff.appeals", "staff.punish.warn", "staff.punish.mute", "staff.punish.ban", "staff.punish.revoke", "staff.audit", "analytics.stats"]
 }
 ```
 
@@ -278,17 +278,24 @@ Things that make the bot ignore an entry (the log says which, and why):
 - a **wildcard** like `"staff.*"` — write each permission out;
 - a permission that is misspelled.
 
-The permissions the bot uses today:
+The permissions the bot uses:
 
 | Permission | Lets them, from Discord |
 |---|---|
 | `report.view` | Claim and resolve reports |
-| `staff.gui` | Escalate a report to a case; see a player's profile and a case's evidence |
-| `staff.history` | See a player's punishment history, and a single punishment |
-| `staff.notes` | Add a note to a player |
-| `staff.freeze` | Freeze a player who is online |
+| `staff.gui` | Escalate a report; `/staff profile`, `/staff case`, `/staff evidence`, and the Profile and Evidence buttons |
+| `staff.history` | `/staff history`, and the History and Punishment buttons |
+| `staff.notes` | `/staff note`, and the Add Note and Staff Note buttons |
+| `staff.notes.view` | `/staff notes` |
+| `staff.freeze` | `/staff freeze`, `/staff unfreeze`, and the Freeze button |
 | `staff.chat` | Talk in the bridged staff chat channel |
 | `staff.appeals` | Accept, reject and close appeals, and ask the player a question |
+| `staff.punish.warn` | `/staff warn` |
+| `staff.punish.mute` | `/staff mute` |
+| `staff.punish.ban` | `/staff ban` |
+| `staff.punish.revoke` | `/staff unmute`, `/staff unban` |
+| `staff.audit` | `/staff staff-history` |
+| `analytics.stats` | `/staff analytics` |
 
 Keep the file valid JSON: quotes around every id, commas between entries, none after the last. If
 it cannot be read, the bot stays off and the log says so — the file is not replaced.
@@ -341,6 +348,36 @@ their role lets them see, and nothing else.
 `/staff discord` shows your link, and `/staff discord unlink` ends it. An admin with `staff.perms`
 can end somebody else's link with `/staff discord unlink <player>`, which is the quick way to cut
 off a Discord account that has been taken over.
+
+---
+
+### Using the commands
+
+Type `/staff` in your Discord server and pick a command. Player names complete as you type. Every
+answer is private to you; what a command does — a ban, a note — is posted to its channel as usual.
+
+| Command | Needs | Does |
+|---|---|---|
+| `/staff history <player>` | `staff.history` | Their punishments, newest first |
+| `/staff notes <player>` | `staff.notes.view` | Their notes, retracted ones marked |
+| `/staff profile <player>` | `staff.gui` | Their standing: punishments, points, notes, what is in force, open cases |
+| `/staff case <id>` | `staff.gui` | A case and the latest of its history |
+| `/staff evidence <case>` | `staff.gui` | The evidence filed on a case |
+| `/staff staff-history <staff> [days]` | `staff.audit` | What a staff member did — never where from |
+| `/staff analytics [staff]` | `analytics.stats` | Server totals, and one staff member's or the busiest staff's numbers |
+| `/staff warn <player> <reason>` | `staff.punish.warn` | Warn |
+| `/staff mute <player> <reason> [duration]` | `staff.punish.mute` | Mute; permanent without a duration |
+| `/staff ban <player> <reason> [duration]` | `staff.punish.ban` | Ban; permanent without a duration |
+| `/staff unmute <player> [reason]` · `/staff unban <player> [reason]` | `staff.punish.revoke` | Lift it |
+| `/staff freeze <player>` · `/staff unfreeze <player>` | `staff.freeze` | Hold or release a player who is online |
+| `/staff note <player> <text>` | `staff.notes` | Add a note |
+
+Durations are written the way they are in game: `30m`, `12h`, `7d`, `1h30m`.
+
+A command from Discord meets the same checks as in game — the permission, the punishment rate limit,
+the rule against punishing somebody who outranks you — and on top of that everything you change from
+Discord counts against `discordActionsPerMinute` in `config/staffcore.json` (20 a minute unless
+changed). IP bans, rollbacks and inventory edits are not available from Discord at all.
 
 ---
 

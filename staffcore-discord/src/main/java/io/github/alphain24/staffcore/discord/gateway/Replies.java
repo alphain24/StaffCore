@@ -100,6 +100,90 @@ public final class Replies {
 		return out.toString();
 	}
 
+	/** A player's notes, newest first. */
+	public static String notes(DiscordAnswer<List<io.github.alphain24.staffcore.api.DiscordNote>> answer) {
+		if (!answer.answered()) return answer.refusal();
+		if (answer.value().isEmpty()) return "No notes on record.";
+		StringBuilder out = new StringBuilder();
+		for (var note : answer.value()) {
+			String line = "• " + Text.relative(note.writtenAt()) + " **" + Text.safe(note.author(), 32) + "**: "
+					+ Text.safe(note.text(), 300)
+					+ (note.retractedBy() == null ? "" : " *(retracted by " + Text.safe(note.retractedBy(), 32) + ")*");
+			if (!append(out, line)) break;
+		}
+		return out.toString();
+	}
+
+	/** What a staff member did, newest first. */
+	public static String staffHistory(DiscordAnswer<List<io.github.alphain24.staffcore.api.DiscordStaffAction>> answer) {
+		if (!answer.answered()) return answer.refusal();
+		if (answer.value().isEmpty()) return "Nothing recorded in that time.";
+		StringBuilder out = new StringBuilder();
+		for (var action : answer.value()) {
+			String line = "• " + Text.relative(action.at()) + " " + Text.safe(action.kind(), 16) + " — "
+					+ Text.safe(action.detail(), 200) + (action.caseId() == null ? "" : " `" + code(action.caseId()) + "`");
+			if (!append(out, line)) break;
+		}
+		return out.toString();
+	}
+
+	/** A case and the latest of its history. */
+	public static String caseView(DiscordAnswer<io.github.alphain24.staffcore.api.DiscordCase> answer) {
+		if (!answer.answered()) return answer.refusal();
+		var c = answer.value();
+		StringBuilder out = new StringBuilder("**Case `" + code(c.id()) + "` · " + Text.safe(c.subjectName(), 32) + "**")
+				.append("\n").append(Text.safe(c.status(), 16)).append(" · ").append(Text.safe(c.category(), 32))
+				.append(" · severity ").append(c.severity())
+				.append("\n").append(Text.safe(c.summary(), 300))
+				.append("\nOpened ").append(Text.relative(c.openedAt())).append(" by ").append(Text.safe(c.openedBy(), 32))
+				.append(" · assigned to ").append(c.assignedTo() == null ? "nobody" : Text.safe(c.assignedTo(), 32));
+		if (c.closedAt() != null) {
+			out.append("\nClosed ").append(Text.relative(c.closedAt())).append(" by ").append(Text.safe(c.closedBy(), 32))
+					.append(c.resolution() == null ? "" : ": " + Text.safe(c.resolution(), 200));
+		}
+		out.append("\n").append(c.signals()).append(" signal(s) · ").append(c.evidence()).append(" evidence · ")
+				.append(c.links()).append(" linked record(s)");
+		if (!c.events().isEmpty()) out.append("\n\n**Latest**");
+		for (var e : c.events()) {
+			if (!append(out, "• " + Text.relative(e.at()) + " **" + Text.safe(e.actor(), 32) + "** "
+					+ Text.safe(e.kind(), 16) + (e.body() == null ? "" : ": " + Text.safe(e.body(), 200)))) {
+				break;
+			}
+		}
+		return out.toString();
+	}
+
+	/** Server totals and staff numbers. */
+	public static String analytics(DiscordAnswer<io.github.alphain24.staffcore.api.DiscordAnalytics> answer) {
+		if (!answer.answered()) return answer.refusal();
+		var a = answer.value();
+		StringBuilder out = new StringBuilder("**Server** · " + a.punishments() + " punishment(s) · " + a.activeBans()
+				+ " active ban(s) · " + a.openReports() + " open report(s) · " + a.notes() + " note(s)");
+		for (var s : a.staff()) {
+			String line = "• **" + Text.safe(s.name(), 32) + "** — " + s.punishments() + " punishment(s), "
+					+ s.reportsHandled() + " report(s) handled (" + s.reportsResolved() + " resolved), "
+					+ s.overturned() + " overturned, " + s.commands() + " command(s)"
+					+ (s.lastSeen() > 0 ? ", last active " + Text.relative(s.lastSeen()) : "");
+			if (!append(out, line)) break;
+		}
+		return out.toString();
+	}
+
+	/** Adds a line if it fits in a Discord message; says so and stops when it does not. */
+	private static boolean append(StringBuilder out, String line) {
+		if (out.length() + line.length() + 1 > 1900) {
+			out.append("\n…");
+			return false;
+		}
+		if (out.length() > 0) out.append('\n');
+		out.append(line);
+		return true;
+	}
+
+	private static String code(String id) {
+		return Text.clip(id == null ? "" : id, 16).replace('`', '\'');
+	}
+
 	private static String inForce(DiscordPunishment p) {
 		return Text.punishment(p.type()) + " — " + Text.safe(p.reason(), 200)
 				+ (p.expiresAt() == null ? ", permanent" : ", ends " + Text.relative(p.expiresAt()));

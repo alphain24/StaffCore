@@ -2039,6 +2039,43 @@ the form is sent.
 
 ---
 
+## Commands from Discord
+
+**Date:** 2026-09-15
+
+Phase 5.5: `/staff` in Discord, with the reads and writes the brief lists.
+
+**The punishment door reports why it refused.** `PunishmentModule.apply` refused a rate-limited or
+rank-guarded punishment by messaging the acting staff member in game, or the log. From Discord there
+is nobody in game to message, and a ban that silently did not happen is worse than one that said no. An
+overload takes a callback for the refusal; the in-game callers are unchanged. `BypassAttemptTest`'s
+check that every call site passes an identity looked at the last argument, which is now the callback, so
+it finds the actor by position instead — and still fails when that argument is `null`, which was tried.
+
+**A Discord action limit, on top of the in-game ones.** The brief gates Discord writes by rate limit.
+Bans, mutes and warnings already meet the punishment limit inside `apply`. Unbanning, unmuting,
+freezing and noting have no limit in game, where doing forty means standing in the server doing them;
+from Discord it means a stolen account and a script. `RateLimits.Kind.DISCORD_ACTION`, set by
+`discordActionsPerMinute`, counts every write from Discord — commands, report and appeal buttons —
+so a ban from Discord counts against both limits. Staff chat is not an action and is not counted.
+
+**The rate-limit refusal had never said anything.** Its message was several strings joined with `+`
+and `.formatted(...)` bound only to the last of them, so every refusal since Phase 2 read
+"Rate limit: %d %s(s) a minute. Try again in %d second(s)". Every test checked that the limit held and
+none read the message. `DiscordCommandTests` looked for the words "Discord action" and found the
+placeholders instead. Fixed with brackets, pinned by `RateLimitMessageTest`, and a scan of every
+`.formatted(` call for the same shape found no other — the scan does find this one when it is put back.
+
+**Names are resolved as in game.** Commands name players, so they go through `KnownPlayers.resolve`:
+an exact name, or a prefix matching one player; several matches are refused with the candidates.
+Autocomplete offers names only to a linked account that holds something, so it is not a way to list
+who plays on the server, and it gives up after two seconds rather than miss Discord's three.
+
+**Lookups are audited.** `/staff history` in game writes a command row; so does every read from
+Discord, naming the Discord account.
+
+---
+
 ---
 
 <a id="testing-layers"></a>
@@ -2244,6 +2281,7 @@ Things that used to be on this list, and what replaced them:
 | Case commands crashed when run from the console | They read the source's name, not the player's |
 | Mining visible ore in a cave was flagged as x-ray | A vein touching open space is not hidden; the sweep leaves cave air and cave-wall ore out of its odds |
 | X-ray judged only what was found, never how the player dug | Each tunnel leg is weighed against the directions not taken, and an alert from ore needs the two to agree |
+| Rate-limit refusals printed "%d %s(s) a minute" with nothing filled in | The message is formatted as a whole; a test reads it |
 
 ---
 

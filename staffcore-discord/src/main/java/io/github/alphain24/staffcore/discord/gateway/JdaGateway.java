@@ -189,6 +189,7 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			commands.add(Commands.slash("appeal", "Appeal a ban or mute, with the code from the ban screen")
 					.addOption(OptionType.STRING, "code", "The appeal code, like ABCD-EFGH-JKMN", true));
 		}
+		commands.add(StaffCommands.definition());
 		guild.updateCommands().addCommands(commands).queue(ok -> { }, failure -> StaffCoreDiscord.LOGGER.warn(
 				"[StaffCore Discord] Could not register commands in {} ({}).", guild.getName(), describe(failure)));
 
@@ -452,8 +453,68 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			case "unlink" -> answer(event, DiscordAccess.unlink(user).thenApply(DiscordLinkResult::message));
 			case "whoami" -> answer(event, DiscordAccess.standing(user).thenApply(Replies::standing));
 			case "appeal" -> appeal(event);
+			case "staff" -> staff(event, user);
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
+	}
+
+	/**
+	 * {@code /staff <subcommand>}: the in-game staff commands a Discord user may run.
+	 * <p>
+	 * Every one is a single call into StaffCore, which checks the link, the permission in game and in the
+	 * role mapping, the rate limits and — for punishments — the rank guard, and records it against the
+	 * linked account. Nothing is checked here that is not checked there too.
+	 */
+	private void staff(SlashCommandInteractionEvent event, DiscordUser user) {
+		String sub = event.getSubcommandName();
+		String player = event.getOption("player", "", OptionMapping::getAsString);
+		String reason = event.getOption("reason", "", OptionMapping::getAsString);
+		String duration = event.getOption("duration", "", OptionMapping::getAsString);
+		switch (sub == null ? "" : sub) {
+			case "history" -> answer(event, DiscordAccess.history(user, player).thenApply(Replies::history));
+			case "staff-history" -> answer(event, DiscordAccess.staffHistory(user,
+					event.getOption("staff", "", OptionMapping::getAsString),
+					event.getOption("days", 7, OptionMapping::getAsInt)).thenApply(Replies::staffHistory));
+			case "notes" -> answer(event, DiscordAccess.notes(user, player).thenApply(Replies::notes));
+			case "evidence" -> answer(event, DiscordAccess.caseEvidence(user,
+					event.getOption("case", "", OptionMapping::getAsString)).thenApply(Replies::evidence));
+			case "case" -> answer(event, DiscordAccess.caseView(user,
+					event.getOption("case", "", OptionMapping::getAsString)).thenApply(Replies::caseView));
+			case "profile" -> answer(event, DiscordAccess.profile(user, player).thenApply(Replies::profile));
+			case "analytics" -> answer(event, DiscordAccess.analytics(user,
+					event.getOption("staff", "", OptionMapping::getAsString)).thenApply(Replies::analytics));
+			case "ban" -> answer(event, DiscordAccess.ban(user, player, duration, reason).thenApply(DiscordResult::message));
+			case "unban" -> answer(event, DiscordAccess.unban(user, player, reason).thenApply(DiscordResult::message));
+			case "mute" -> answer(event, DiscordAccess.mute(user, player, duration, reason).thenApply(DiscordResult::message));
+			case "unmute" -> answer(event, DiscordAccess.unmute(user, player, reason).thenApply(DiscordResult::message));
+			case "warn" -> answer(event, DiscordAccess.warn(user, player, reason).thenApply(DiscordResult::message));
+			case "freeze" -> answer(event, DiscordAccess.freeze(user, player).thenApply(DiscordResult::message));
+			case "unfreeze" -> answer(event, DiscordAccess.unfreeze(user, player).thenApply(DiscordResult::message));
+			case "note" -> answer(event, DiscordAccess.addNote(user, player,
+					event.getOption("text", "", OptionMapping::getAsString)).thenApply(DiscordResult::message));
+			default -> event.reply("Unknown command.").setEphemeral(true).queue();
+		}
+	}
+
+	/**
+	 * Player names as they are typed into a {@code /staff} command.
+	 * <p>
+	 * Discord gives an answer three seconds, and asking the server can take longer on a busy tick, so it
+	 * is given two and answers with nothing when that runs out. Somebody who holds nothing is offered no
+	 * names at all: autocomplete is not a way to list who plays here.
+	 */
+	@Override
+	public void onCommandAutoCompleteInteraction(net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent event) {
+		if (!"staff".equals(event.getName()) || !inGuild(event.getGuild())) return;
+		String option = event.getFocusedOption().getName();
+		if (!option.equals("player") && !option.equals("staff")) return;
+
+		DiscordUser user = userOf(event.getMember(), event.getUser());
+		DiscordAccess.suggestPlayers(user, event.getFocusedOption().getValue())
+				.completeOnTimeout(List.of(), 2, TimeUnit.SECONDS)
+				.whenCompleteAsync((names, failure) -> event.replyChoiceStrings(
+						failure != null || names == null ? List.of() : names.stream().limit(25).toList())
+						.queue(ok -> { }, ignored -> { }), worker);
 	}
 
 	/**

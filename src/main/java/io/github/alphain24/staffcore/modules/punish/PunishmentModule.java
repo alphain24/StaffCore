@@ -108,11 +108,25 @@ public class PunishmentModule implements Module {
 	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
 			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId,
 			io.github.alphain24.staffcore.permission.Actor actor) {
+		return apply(server, target, staffName, base, durationMs, reason, offenceId, caseId, actor, null);
+	}
+
+	/**
+	 * The one door, telling the caller why when it refuses.
+	 * <p>
+	 * A refusal normally reaches the acting staff member in game, which is where they are. From
+	 * Discord they are not, and a ban that silently did not happen is worse than one that said no.
+	 *
+	 * @param refused told the reason when a guard refuses; null to tell the staff member in game
+	 */
+	public Punishment apply(MinecraftServer server, NameAndId target, String staffName,
+			PunishmentType base, Long durationMs, String reason, String offenceId, String caseId,
+			io.github.alphain24.staffcore.permission.Actor actor, java.util.function.Consumer<String> refused) {
 
 		var verdict = Mods.accountability().limits().check(actor,
 				io.github.alphain24.staffcore.modules.accountability.RateLimits.Kind.PUNISHMENT);
 		if (!verdict.allowed()) {
-			refuse(server, actor, verdict.refusal());
+			refuse(server, actor, verdict.refusal(), refused);
 			StaffCore.LOGGER.warn("[Punish] rate limit refused {} punishing {}",
 					staffName, target.name());
 			return null;
@@ -123,7 +137,7 @@ public class PunishmentModule implements Module {
 		var ranking = io.github.alphain24.staffcore.permission.Rank.mayPunish(
 				actor, server, target.id(), target.name());
 		if (!ranking.allowed()) {
-			refuse(server, actor, ranking.refusal());
+			refuse(server, actor, ranking.refusal(), refused);
 			StaffCore.LOGGER.warn("[Punish] refused {} punishing {}: rank", staffName,
 					target.name());
 			return null;
@@ -188,8 +202,13 @@ public class PunishmentModule implements Module {
 	 * reading anyway.
 	 */
 	private void refuse(MinecraftServer server,
-			io.github.alphain24.staffcore.permission.Actor actor, String why) {
+			io.github.alphain24.staffcore.permission.Actor actor, String why,
+			java.util.function.Consumer<String> refused) {
 
+		if (refused != null) {
+			refused.accept(why);
+			return;
+		}
 		ServerPlayer online = online(server, actor);
 		if (online != null) online.sendSystemMessage(Theme.bad(why));
 		else StaffCore.LOGGER.warn("[Punish] {}", why);

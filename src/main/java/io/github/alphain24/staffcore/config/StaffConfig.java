@@ -555,6 +555,17 @@ public final class StaffConfig {
 	public int maxRollbacksPerMinute = 3;
 
 	/**
+	 * Things one staff member may do from Discord in a minute: punishing, lifting, freezing, noting,
+	 * claiming, deciding an appeal. 0 disables.
+	 * <p>
+	 * On top of the limits above, not instead of them. Several of these have no limit in game, where
+	 * doing forty of them means standing in the server doing them; from Discord it means a stolen
+	 * account and a script. Lower slows that down; higher suits staff who work mostly from Discord.
+	 * Staff chat is not counted.
+	 */
+	public int discordActionsPerMinute = 20;
+
+	/**
 	 * Require a second staff member to confirm a mass rollback, IP ban or inventory edit.
 	 * <p>
 	 * <b>Read the cost before turning this off, and before leaving it on.</b> With it on, a
@@ -1065,10 +1076,12 @@ public final class StaffConfig {
 					+ "https://discord.gg/abc123.");
 		}
 
-		for (String key : java.util.List.of("appealCooldownDays", "appealStaleDays", "appealAttemptsPerHour")) {
+		for (String key : java.util.List.of("appealCooldownDays", "appealStaleDays", "appealAttemptsPerHour",
+				"discordActionsPerMinute")) {
 			int value = switch (key) {
 				case "appealCooldownDays" -> cfg.appealCooldownDays;
 				case "appealStaleDays" -> cfg.appealStaleDays;
+				case "discordActionsPerMinute" -> cfg.discordActionsPerMinute;
 				default -> cfg.appealAttemptsPerHour;
 			};
 			if (value >= 0) continue;
@@ -1077,6 +1090,7 @@ public final class StaffConfig {
 			switch (key) {
 				case "appealCooldownDays" -> cfg.appealCooldownDays = 0;
 				case "appealStaleDays" -> cfg.appealStaleDays = 0;
+				case "discordActionsPerMinute" -> cfg.discordActionsPerMinute = 0;
 				default -> cfg.appealAttemptsPerHour = 0;
 			}
 		}

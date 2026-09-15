@@ -145,6 +145,88 @@ public final class DiscordAccess {
 		return DiscordGate.evidence(user, punishmentId);
 	}
 
+	// ------------------------------------------------------------------ commands, by player name
+
+	/**
+	 * Players are named the way they are in game: an exact name, or a prefix that matches only one
+	 * player. A name that could be several is refused with the candidates, never guessed between.
+	 */
+	public static CompletableFuture<DiscordAnswer<DiscordProfile>> profile(DiscordUser user, String player) {
+		return DiscordGate.profile(user, player);
+	}
+
+	public static CompletableFuture<DiscordAnswer<List<DiscordPunishment>>> history(DiscordUser user, String player) {
+		return DiscordGate.history(user, player);
+	}
+
+	/** A player's notes, newest first, retracted ones included and marked. */
+	public static CompletableFuture<DiscordAnswer<List<DiscordNote>>> notes(DiscordUser user, String player) {
+		return DiscordGate.notes(user, player);
+	}
+
+	public static CompletableFuture<DiscordResult> addNote(DiscordUser user, String player, String text) {
+		return DiscordGate.addNote(user, player, text);
+	}
+
+	public static CompletableFuture<DiscordResult> freeze(DiscordUser user, String player) {
+		return DiscordGate.freeze(user, player);
+	}
+
+	public static CompletableFuture<DiscordResult> unfreeze(DiscordUser user, String player) {
+		return DiscordGate.unfreeze(user, player);
+	}
+
+	/**
+	 * Bans a player: permanently with no duration, or for {@code 7d}, {@code 12h} and the like. Through the
+	 * punishment service with its rate limit and rank guard, and refused with the reason when either says no.
+	 */
+	public static CompletableFuture<DiscordResult> ban(DiscordUser user, String player, String duration, String reason) {
+		return DiscordGate.punish(user, player, "BAN", duration, reason);
+	}
+
+	public static CompletableFuture<DiscordResult> mute(DiscordUser user, String player, String duration, String reason) {
+		return DiscordGate.punish(user, player, "MUTE", duration, reason);
+	}
+
+	public static CompletableFuture<DiscordResult> warn(DiscordUser user, String player, String reason) {
+		return DiscordGate.punish(user, player, "WARN", null, reason);
+	}
+
+	public static CompletableFuture<DiscordResult> unban(DiscordUser user, String player, String reason) {
+		return DiscordGate.lift(user, player, true, reason);
+	}
+
+	public static CompletableFuture<DiscordResult> unmute(DiscordUser user, String player, String reason) {
+		return DiscordGate.lift(user, player, false, reason);
+	}
+
+	/** What a staff member did in the last {@code days} days, without where they did it from. */
+	public static CompletableFuture<DiscordAnswer<List<DiscordStaffAction>>> staffHistory(DiscordUser user,
+			String staffName, int days) {
+		return DiscordGate.staffHistory(user, staffName, days);
+	}
+
+	/** A case by its id, with the latest of its history. */
+	public static CompletableFuture<DiscordAnswer<DiscordCase>> caseView(DiscordUser user, String caseId) {
+		return DiscordGate.caseView(user, caseId);
+	}
+
+	/** The evidence filed on a case, by the case's id. */
+	public static CompletableFuture<DiscordAnswer<List<DiscordEvidence>>> caseEvidence(DiscordUser user,
+			String caseId) {
+		return DiscordGate.caseEvidence(user, caseId);
+	}
+
+	/** Server totals, and one staff member's numbers or, with no name, the busiest staff's. */
+	public static CompletableFuture<DiscordAnswer<DiscordAnalytics>> analytics(DiscordUser user, String staffName) {
+		return DiscordGate.analytics(user, staffName);
+	}
+
+	/** Known player names starting with a prefix, for autocomplete. Empty for anybody who holds nothing. */
+	public static CompletableFuture<List<String>> suggestPlayers(DiscordUser user, String prefix) {
+		return DiscordGate.suggestPlayers(user, prefix);
+	}
+
 	/** Every node StaffCore defines, so a companion can reject a role mapping naming anything else. */
 	public static Set<String> knownNodes() {
 		return Actor.all();

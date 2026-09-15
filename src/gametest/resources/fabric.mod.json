@@ -45,7 +45,8 @@
 			"io.github.alphain24.staffcore.gametest.CommandTreeTests",
 			"io.github.alphain24.staffcore.gametest.DiscordAccessTests",
 			"io.github.alphain24.staffcore.gametest.DiscordChannelTests",
-			"io.github.alphain24.staffcore.gametest.DiscordAppealTests"
+			"io.github.alphain24.staffcore.gametest.DiscordAppealTests",
+			"io.github.alphain24.staffcore.gametest.DiscordCommandTests"
 		]
 	},
 	"depends": {
