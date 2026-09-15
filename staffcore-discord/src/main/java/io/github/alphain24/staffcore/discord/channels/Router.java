@@ -5,6 +5,7 @@ import io.github.alphain24.staffcore.api.StaffCoreListener;
 import io.github.alphain24.staffcore.discord.StaffCoreDiscord;
 import io.github.alphain24.staffcore.discord.channels.Outbound.Button;
 import io.github.alphain24.staffcore.discord.channels.Outbound.Channel;
+import io.github.alphain24.staffcore.discord.channels.Outbound.Direct;
 import io.github.alphain24.staffcore.discord.channels.Outbound.InThread;
 import io.github.alphain24.staffcore.discord.channels.Outbound.Message;
 import io.github.alphain24.staffcore.discord.channels.Outbound.Send;
@@ -104,6 +105,7 @@ public final class Router implements StaffCoreListener {
 			case StaffCoreEvent.CaseChanged e -> caseChanged(e);
 			case StaffCoreEvent.AppealFiled e -> appeal(e);
 			case StaffCoreEvent.AppealDecided e -> appealDecided(e);
+			case StaffCoreEvent.AppealConversation e -> appealConversation(e);
 			case StaffCoreEvent.StaffAction e -> staffAction(e);
 			case StaffCoreEvent.StaffChat e -> staffChat(e);
 		};
@@ -317,13 +319,11 @@ public final class Router implements StaffCoreListener {
 	private List<Outbound> appeal(StaffCoreEvent.AppealFiled e) {
 		if (off(Channel.APPEALS)) return List.of();
 
-		String discord = e.linkedDiscordId() != null && SNOWFLAKE.matcher(e.linkedDiscordId()).matches()
-				? "<@" + e.linkedDiscordId() + ">" : "Not linked";
 		Embed embed = Embed.builder("Appeal #" + e.id() + " · " + e.playerName())
 				.color(APPEAL)
 				.thumbnail(head(e.playerId()))
 				.inline("Minecraft", Text.safe(e.playerName(), 100))
-				.inline("Discord", discord)
+				.inline("Discord", appellant(e))
 				.inline("Punishment", "#" + e.punishmentId() + " · " + Text.punishment(e.punishmentType()))
 				.field("Original punishment", "Reason: " + Text.safe(e.punishmentReason(), 600)
 						+ "\nIssued by: " + Text.safe(e.punishmentBy(), 100)
@@ -333,28 +333,110 @@ public final class Router implements StaffCoreListener {
 				.inline("Created", Text.when(e.at()))
 				.inline("Case", caseLink(e.caseId()))
 				.inline("Status", "Open")
-				.footer("Appeal #" + e.id())
+				.footer("Appeal #" + e.id() + " · filed " + ("DISCORD".equals(e.source()) ? "in Discord" : "in game"))
 				.timestamp(e.at())
 				.build();
-		return List.of(new Send(Channel.APPEALS, Message.of(embed), "appeal:" + e.id(),
+		Message message = new Message(null, embed, appealButtons(e.id(), e.punishmentId(), e.playerId()));
+		return List.of(new Send(Channel.APPEALS, message, "appeal:" + e.id(),
 				"Appeal #" + e.id() + " — " + e.playerName(), List.of()));
+	}
+
+	/**
+	 * Who is behind an appeal on Discord, and whether that is the punished player.
+	 * <p>
+	 * Anybody holding a photograph of a ban screen can file, which is accepted on purpose. What
+	 * staff need is to see it when the account filing is linked to somebody else.
+	 */
+	static String appellant(StaffCoreEvent.AppealFiled e) {
+		boolean known = e.discordId() != null && SNOWFLAKE.matcher(e.discordId()).matches();
+		if (!known) return "DISCORD".equals(e.source()) ? "Unknown account" : "Filed in game · no linked account";
+		String mention = "<@" + e.discordId() + ">";
+		if (e.discordLinkedTo() == null) return mention + " · not linked";
+		if (e.discordLinkedTo().equalsIgnoreCase(e.playerName())) return mention + " · linked to this player";
+		return mention + " · linked to **" + Text.safe(e.discordLinkedTo(), 32) + "**, not this player";
+	}
+
+	/** The verdicts on the first row; looking at what the appeal is about on the second. */
+	static List<List<Button>> appealButtons(long appealId, long punishmentId, UUID player) {
+		return List.of(
+				List.of(new Button("sc:accept:" + appealId, "Accept", Button.Style.SUCCESS, false),
+						new Button("sc:reject:" + appealId, "Reject", Button.Style.DANGER, false),
+						new Button("sc:info:" + appealId, "Request More Info", Button.Style.PRIMARY, false),
+						new Button("sc:close:" + appealId, "Close", Button.Style.SECONDARY, false)),
+				List.of(new Button("sc:punishment:" + punishmentId, "Punishment", Button.Style.SECONDARY, false),
+						new Button("sc:profile:" + player, "Profile", Button.Style.SECONDARY, false),
+						new Button("sc:evidence:" + punishmentId, "Evidence", Button.Style.SECONDARY, false),
+						new Button("sc:note:" + player, "Staff Note", Button.Style.SECONDARY, false)));
 	}
 
 	private List<Outbound> appealDecided(StaffCoreEvent.AppealDecided e) {
 		String key = "appeal:" + e.id();
-		boolean accepted = "ACCEPTED".equals(e.verdict());
-		String line = (accepted ? "Accepted" : "Rejected") + " by **" + Text.safe(e.staffName(), 100) + "**";
+		String who = Text.safe(e.staffName(), 100);
+		String line = switch (e.verdict()) {
+			case "ACCEPTED" -> "Accepted by **" + who + "**; the punishment is lifted";
+			case "REJECTED" -> "Rejected by **" + who + "**";
+			case "STALE" -> "Went stale: the player did not answer";
+			default -> "Closed without a decision by **" + who + "**";
+		};
+		int colour = switch (e.verdict()) {
+			case "ACCEPTED" -> CLEARED;
+			case "REJECTED" -> SEVERE;
+			default -> QUIET;
+		};
+
+		List<Outbound> out = new ArrayList<>();
+		// The player first, so a message that cannot be delivered is said in the thread before it closes.
+		if (e.discordId() != null && SNOWFLAKE.matcher(e.discordId()).matches()) {
+			out.add(new Direct(e.discordId(), Message.text(verdictForPlayer(e)), key));
+		}
 
 		Message posted = posted(key);
 		if (posted == null || posted.embed() == null) {
-			if (off(Channel.APPEALS)) return List.of();
-			return List.of(new Send(Channel.APPEALS, Message.text("Appeal #" + e.id() + ": " + line), null, null,
-					List.of()));
+			if (!off(Channel.APPEALS)) {
+				out.add(new Send(Channel.APPEALS, Message.text("Appeal #" + e.id() + ": " + line), null, null, List.of()));
+			}
+			return out;
 		}
-		Embed embed = posted.embed()
-				.withField("Status", line, true)
-				.withColor(accepted ? CLEARED : SEVERE);
-		return List.of(new Update(key, posted.withEmbed(embed)), new InThread(key, line, true));
+		Message message = posted.withEmbed(posted.embed().withField("Status", line, true).withColor(colour));
+		if (!message.rows().isEmpty()) {
+			List<List<Button>> rows = new ArrayList<>(message.rows());
+			rows.set(0, rows.get(0).stream().map(Button::disable).toList());
+			message = message.withRows(rows);
+		}
+		out.add(new Update(key, message));
+		out.add(new InThread(key, line, true));
+		return out;
+	}
+
+	/**
+	 * What the player is told. Never who decided: a name in a verdict message is a name somebody
+	 * upset has just been handed.
+	 */
+	static String verdictForPlayer(StaffCoreEvent.AppealDecided e) {
+		return switch (e.verdict()) {
+			case "ACCEPTED" -> "Your appeal #" + e.id() + " was accepted, and the punishment it was about has been lifted.";
+			case "REJECTED" -> "Your appeal #" + e.id() + " was reviewed and rejected."
+					+ (e.mayAppealAgainAt() == null ? "" : " You can appeal this punishment again "
+							+ Text.relative(e.mayAppealAgainAt()) + ".");
+			case "STALE" -> "Your appeal #" + e.id() + " was closed because staff did not hear back from you. You can "
+					+ "appeal again with /appeal.";
+			default -> "Your appeal #" + e.id() + " was closed without a decision. You can appeal again with /appeal.";
+		};
+	}
+
+	private List<Outbound> appealConversation(StaffCoreEvent.AppealConversation e) {
+		String key = "appeal:" + e.id();
+		List<Outbound> out = new ArrayList<>();
+		if (!e.fromAppellant() && e.discordId() != null && SNOWFLAKE.matcher(e.discordId()).matches()) {
+			out.add(new Direct(e.discordId(), Message.text("Staff have a question about your appeal #" + e.id()
+					+ ":\n> " + Text.safe(e.text(), 1500) + "\n\nReply here to answer."), key));
+		}
+		if (hasThread(key)) {
+			out.add(new InThread(key, e.fromAppellant()
+					? "**The player answered:** " + Text.safe(e.text(), 1800)
+					: "**" + Text.safe(e.author(), 100) + "** asked the player: " + Text.safe(e.text(), 1800), false));
+		}
+		return out;
 	}
 
 	// ------------------------------------------------------------------ staff

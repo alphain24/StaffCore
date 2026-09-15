@@ -89,7 +89,9 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	private volatile String closeReason;
 	private final AtomicLong failed = new AtomicLong();
 	private final AtomicLong skipped = new AtomicLong();
+	private final AtomicLong undelivered = new AtomicLong();
 	private final Map<Outbound.Channel, String> channelProblems = new ConcurrentHashMap<>();
+	private volatile String intakeProblem;
 
 	/**
 	 * @param worker the companion's own thread: posts are made and answers sent from here, never from
@@ -111,6 +113,9 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			intents.add(GatewayIntent.GUILD_MESSAGES);
 			intents.add(GatewayIntent.MESSAGE_CONTENT);
 		}
+		// A player answers a question about their appeal by replying to the bot. Direct messages are
+		// not a privileged intent, and Discord gives a bot the content of messages sent to it directly.
+		if (!settings.appealsChannelId.isEmpty()) intents.add(GatewayIntent.DIRECT_MESSAGES);
 		jda = JDABuilder.createLight(token.revealForLogin(), intents)
 				.setEnableShutdownHook(false)
 				.addEventListeners(this)
@@ -149,8 +154,12 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	@Override
 	public List<String> problems() {
 		List<String> out = new ArrayList<>(channelProblems.values());
+		if (intakeProblem != null) out.add(intakeProblem);
 		if (failed.get() > 0) out.add("posts Discord refused: " + failed.get() + " (the log names why)");
 		if (skipped.get() > 0) out.add("posts not made because the bot was not connected: " + skipped.get());
+		if (undelivered.get() > 0) {
+			out.add("direct messages players did not receive: " + undelivered.get() + " (said in each appeal's thread)");
+		}
 		if (book.problem() != null) out.add(book.problem());
 		return out;
 	}
@@ -168,17 +177,25 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			return;
 		}
 
-		guild.updateCommands().addCommands(
+		List<net.dv8tion.jda.api.interactions.commands.build.CommandData> commands = new ArrayList<>(List.of(
 				Commands.slash("link", "Link your Discord account to your Minecraft account")
 						.addOption(OptionType.STRING, "code", "The code from /staff discord link in game", true),
 				Commands.slash("unlink", "Unlink your Discord account from Minecraft"),
-				Commands.slash("whoami", "Which Minecraft account you are linked to, and what you can use")
-		).queue(ok -> { }, failure -> StaffCoreDiscord.LOGGER.warn(
+				Commands.slash("whoami", "Which Minecraft account you are linked to, and what you can use")));
+		if (!settings.appealsChannelId.isEmpty()) {
+			commands.add(Commands.slash("appeal", "Appeal a ban or mute, with the code from the ban screen")
+					.addOption(OptionType.STRING, "code", "The appeal code, like ABCD-EFGH-JKMN", true));
+		}
+		guild.updateCommands().addCommands(commands).queue(ok -> { }, failure -> StaffCoreDiscord.LOGGER.warn(
 				"[StaffCore Discord] Could not register commands in {} ({}).", guild.getName(), describe(failure)));
 
 		checkChannels(guild);
-		// Only now: a bot that never connects must not have silenced the webhook that works.
+		// Only now: a bot that never connects must not have silenced the webhook that works, or told
+		// banned players to use an /appeal nobody is answering.
 		if (settings.postsToChannels()) StaffCoreApi.declareDiscordPosting();
+		if (!settings.appealsChannelId.isEmpty() && !channelProblems.containsKey(Outbound.Channel.APPEALS)) {
+			StaffCoreApi.declareDiscordAppeals();
+		}
 
 		state = "connected as " + event.getJDA().getSelfUser().getName() + " in " + guild.getName();
 		StaffCoreDiscord.LOGGER.info("[StaffCore Discord] {}", state);
@@ -210,6 +227,11 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 				channelProblems.put(channel, "the bot cannot send messages in the " + name + " channel");
 			}
 		}
+		if (!settings.appealIntakeChannelId.isEmpty() && guild.getTextChannelById(settings.appealIntakeChannelId) == null) {
+			intakeProblem = "appeal intake channel " + settings.appealIntakeChannelId + " is not a text channel in "
+					+ guild.getName() + ", so nobody can use /appeal";
+			StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] {}", intakeProblem);
+		}
 		channelProblems.values().forEach(p -> StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] {}", p));
 	}
 
@@ -231,6 +253,7 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 				case Outbound.Send send -> send(connection, send);
 				case Outbound.Update update -> update(connection, update);
 				case Outbound.InThread line -> inThread(connection, line);
+				case Outbound.Direct message -> direct(connection, message);
 			}
 		} catch (RuntimeException e) {
 			failed.incrementAndGet();
@@ -289,6 +312,25 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		thread.sendMessage(new MessageCreateBuilder().setContent(Text.clip(line.text(), 2000))
 				.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)).build()).complete();
 		if (line.archive()) thread.getManager().setArchived(true).complete();
+	}
+
+	/**
+	 * A direct message to a player. They may have direct messages from the server switched off, in which
+	 * case they never hear — so staff are told in the appeal's thread, rather than left believing the
+	 * player was asked.
+	 */
+	private void direct(JDA connection, Outbound.Direct message) {
+		try {
+			net.dv8tion.jda.api.entities.User user = connection.retrieveUserById(message.userId()).complete();
+			user.openPrivateChannel().complete().sendMessage(create(message.message())).complete();
+		} catch (RuntimeException e) {
+			undelivered.incrementAndGet();
+			if (message.fallbackKey() != null) {
+				inThread(connection, new Outbound.InThread(message.fallbackKey(), "The player could not be sent a direct "
+						+ "message (" + describe(e) + "), so they have not seen this. They may have direct messages "
+						+ "from this server switched off.", false));
+			}
+		}
 	}
 
 	/**
@@ -381,8 +423,39 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			}
 			case "unlink" -> answer(event, DiscordAccess.unlink(user).thenApply(DiscordLinkResult::message));
 			case "whoami" -> answer(event, DiscordAccess.standing(user).thenApply(Replies::standing));
+			case "appeal" -> appeal(event);
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
+	}
+
+	/**
+	 * {@code /appeal}: opens the form at once, and checks the code when it is sent.
+	 * <p>
+	 * At once because Discord gives a bot three seconds to open a form, and asking the server first could
+	 * take longer than that on a busy tick. The code is checked, and the attempt counted, when the form
+	 * comes back.
+	 */
+	private void appeal(SlashCommandInteractionEvent event) {
+		if (settings.appealsChannelId.isEmpty()) {
+			event.reply("Appeals are not taken in Discord on this server.").setEphemeral(true).queue();
+			return;
+		}
+		if (!settings.appealIntakeChannelId.isEmpty() && !settings.appealIntakeChannelId.equals(event.getChannel().getId())) {
+			event.reply("Use /appeal in <#" + settings.appealIntakeChannelId + ">.").setEphemeral(true).queue();
+			return;
+		}
+		String code = event.getOption("code", "", OptionMapping::getAsString).replaceAll("[^A-Za-z0-9]", "");
+		if (code.isEmpty() || code.length() > 20) {
+			event.reply("That is not an appeal code. It is the twelve characters on the ban screen, like "
+					+ "ABCD-EFGH-JKMN.").setEphemeral(true).queue();
+			return;
+		}
+		event.replyModal(Modal.create("sc:appealfile:" + code, "Your appeal")
+				.addComponents(Label.of("Why should it be lifted?", TextInput.create("reason", TextInputStyle.PARAGRAPH)
+						.setRequired(true).setMaxLength(1000)
+						.setPlaceholder("What happened, and anything staff should know")
+						.build()))
+				.build()).queue();
 	}
 
 	@Override
@@ -396,9 +469,20 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 
 		DiscordUser user = userOf(event.getMember(), event.getUser());
 		switch (clicked.action()) {
-			case "claim" -> answer(event, DiscordAccess.claimReport(user, clicked.reportId()).thenApply(DiscordResult::message));
-			case "resolve" -> answer(event, DiscordAccess.resolveReport(user, clicked.reportId()).thenApply(DiscordResult::message));
-			case "escalate" -> answer(event, DiscordAccess.escalateReport(user, clicked.reportId()).thenApply(DiscordResult::message));
+			case "claim" -> answer(event, DiscordAccess.claimReport(user, clicked.id()).thenApply(DiscordResult::message));
+			case "resolve" -> answer(event, DiscordAccess.resolveReport(user, clicked.id()).thenApply(DiscordResult::message));
+			case "escalate" -> answer(event, DiscordAccess.escalateReport(user, clicked.id()).thenApply(DiscordResult::message));
+			case "accept" -> answer(event, DiscordAccess.acceptAppeal(user, clicked.id()).thenApply(DiscordResult::message));
+			case "reject" -> answer(event, DiscordAccess.rejectAppeal(user, clicked.id()).thenApply(DiscordResult::message));
+			case "close" -> answer(event, DiscordAccess.closeAppeal(user, clicked.id()).thenApply(DiscordResult::message));
+			case "punishment" -> answer(event, DiscordAccess.punishment(user, clicked.id()).thenApply(Replies::punishment));
+			case "evidence" -> answer(event, DiscordAccess.evidence(user, clicked.id()).thenApply(Replies::evidence));
+			case "info" -> event.replyModal(Modal.create("sc:info:" + clicked.id(), "Ask the player")
+					.addComponents(Label.of("Question", TextInput.create("question", TextInputStyle.PARAGRAPH)
+							.setRequired(true).setMaxLength(1000)
+							.setPlaceholder("They are sent this without your name, and can reply to it")
+							.build()))
+					.build()).queue();
 			case "profile" -> answer(event, DiscordAccess.profile(user, clicked.player()).thenApply(Replies::profile));
 			case "history" -> answer(event, DiscordAccess.history(user, clicked.player()).thenApply(Replies::history));
 			case "freeze" -> answer(event, DiscordAccess.freeze(user, clicked.player()).thenApply(DiscordResult::message));
@@ -414,16 +498,33 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 
 	@Override
 	public void onModalInteraction(ModalInteractionEvent event) {
-		Clicked clicked = Clicked.parse(event.getModalId());
-		if (clicked == null || !"note".equals(clicked.action())) return;
+		String modalId = event.getModalId();
+		if (modalId == null || !modalId.startsWith("sc:")) return;
 		if (!inGuild(event.getGuild())) {
 			event.reply("This bot only answers in its own server.").setEphemeral(true).queue();
 			return;
 		}
-		ModalMapping text = event.getValue("text");
 		DiscordUser user = userOf(event.getMember(), event.getUser());
-		answer(event, DiscordAccess.addNote(user, clicked.player(), text == null ? "" : text.getAsString())
-				.thenApply(DiscordResult::message));
+
+		if (modalId.startsWith("sc:appealfile:")) {
+			answer(event, DiscordAccess.fileAppeal(user, modalId.substring("sc:appealfile:".length()),
+					value(event, "reason")).thenApply(DiscordResult::message));
+			return;
+		}
+		Clicked clicked = Clicked.parse(modalId);
+		if (clicked == null) return;
+		switch (clicked.action()) {
+			case "note" -> answer(event, DiscordAccess.addNote(user, clicked.player(), value(event, "text"))
+					.thenApply(DiscordResult::message));
+			case "info" -> answer(event, DiscordAccess.requestAppealInfo(user, clicked.id(), value(event, "question"))
+					.thenApply(DiscordResult::message));
+			default -> { }
+		}
+	}
+
+	private static String value(ModalInteractionEvent event, String field) {
+		ModalMapping mapping = event.getValue(field);
+		return mapping == null ? "" : mapping.getAsString();
 	}
 
 	/**
@@ -435,7 +536,11 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	 */
 	@Override
 	public void onMessageReceived(MessageReceivedEvent event) {
-		if (settings.staffChatChannelId.isEmpty() || !event.isFromGuild()) return;
+		if (!event.isFromGuild()) {
+			answerDirect(event);
+			return;
+		}
+		if (settings.staffChatChannelId.isEmpty()) return;
 		if (!settings.staffChatChannelId.equals(event.getChannel().getId())) return;
 		if (event.getAuthor().isBot() || event.isWebhookMessage() || !inGuild(event.getGuild())) return;
 
@@ -452,16 +557,39 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 				}, worker);
 	}
 
-	/** A button or modal id the bot made: {@code sc:<action>:<report id or player uuid>}. */
-	record Clicked(String action, long reportId, UUID player) {
+	/**
+	 * A direct message to the bot: a player answering a question about their appeal.
+	 * <p>
+	 * StaffCore decides whether it belongs to anything — only an open appeal this account filed, that
+	 * staff have asked about, takes it — and the player is told either way.
+	 */
+	private void answerDirect(MessageReceivedEvent event) {
+		if (settings.appealsChannelId.isEmpty() || event.getAuthor().isBot()) return;
+		User author = event.getAuthor();
+		DiscordUser user = new DiscordUser(author.getId(), author.getName(), java.util.Set.of());
+		DiscordAccess.replyToAppeal(user, event.getMessage().getContentRaw())
+				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+				.whenCompleteAsync((result, failure) -> {
+					String text = failure != null ? Replies.failure(failure) : result.message();
+					event.getChannel().sendMessage(new MessageCreateBuilder().setContent(Text.clip(token.redact(text), 2000))
+							.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)).build()).queue();
+				}, worker);
+	}
 
-		static Clicked parse(String id) {
-			if (id == null || !id.startsWith("sc:")) return null;
-			String[] parts = id.split(":", 3);
+	/**
+	 * A button or form id the bot made: {@code sc:<action>:<id>}, where the id is a report, appeal or
+	 * punishment number, or a player's uuid.
+	 */
+	record Clicked(String action, long id, UUID player) {
+
+		static Clicked parse(String raw) {
+			if (raw == null || !raw.startsWith("sc:")) return null;
+			String[] parts = raw.split(":", 3);
 			if (parts.length != 3) return null;
 			try {
 				return switch (parts[1]) {
-					case "claim", "resolve", "escalate" -> new Clicked(parts[1], Long.parseLong(parts[2]), null);
+					case "claim", "resolve", "escalate", "accept", "reject", "close", "info", "punishment", "evidence" ->
+							new Clicked(parts[1], Long.parseLong(parts[2]), null);
 					case "profile", "history", "note", "freeze" -> new Clicked(parts[1], 0, UUID.fromString(parts[2]));
 					default -> null;
 				};

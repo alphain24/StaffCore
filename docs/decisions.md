@@ -1986,6 +1986,59 @@ the first event.
 
 ---
 
+## Appeals from Discord
+
+**Date:** 2026-09-15
+
+Phase 5.4: `/appeal` with the code off a ban screen, a thread and buttons per appeal, accepting
+through the punishment service, and the guards the brief asks for.
+
+**Filing is the one write an unlinked account can make.** The security rules say an unlinked Discord
+user can read and never write, and the appeals item says a player appeals from Discord. Both hold
+only if an appeal is not a staff action: it is the punished player's own request, and somebody
+banned cannot join the game to link. So filing checks no permission, and the appeal code does the
+job one would — it names one punishment, is sixty random bits, and every attempt is counted per
+Discord account whether the code was right or not. Answering a question about one's own appeal is
+the only other thing, and it lands only on an open appeal that account filed and staff asked about.
+Every staff action on an appeal goes through the 5.2 gate behind `staff.appeals`.
+
+**Accepting lifts one punishment, and the appeals screen was wrong.** The in-game screen lifted every
+active ban and every active mute when an appeal was accepted. An appeal names one punishment, and an
+upheld mute appeal is not grounds to lift a ban. `PunishmentModule.reverse` lifts one, sharing
+everything that follows a lift — events, case note, the address ban a player's ban brought with it —
+with `revoke`, and `AppealModule.decide` is now the single path the screen and Discord both use.
+Putting the old rule back fails `acceptingLiftsTheAppealedPunishmentAndNothingElse`. Appeals older
+than the `punishment_id` column still get the old rule; it is the only one that can apply to them.
+
+**Stale means the player walked away, not that staff did.** "Abandoned appeals expire to stale" could
+be read as any appeal nobody touched. That would close appeals staff are sitting on and blame the
+player for the wait. An appeal goes stale only when staff asked it a question more than
+`appealStaleDays` ago and the player has not answered since. Reading it the other way fails
+`anAppealThePlayerStoppedAnsweringGoesStale...`. Stale is a state, the row stays, and there is no
+cooldown after it.
+
+**The appellant is reached by direct message.** An appeals channel with staff discussion in its
+threads is somewhere a server will want private, and a player who cannot see it cannot see a
+question asked there. So questions and verdicts go to the filer by direct message, and they answer
+by replying. The bot asks for the direct-message intent, which is not privileged, and Discord gives
+bots the content of messages sent to them directly. Nothing sent to the player names a staff member.
+A message that cannot be delivered is said in the appeal's thread, so staff are not left believing a
+question was asked. `appealIntakeChannelId` lets `/appeal` be used somewhere players can see while
+the posts stay in a staff-only channel.
+
+**Who filed is shown, including when it is not the player.** Anybody with a photograph of the ban
+screen can file; that is accepted rather than defended against, since anything stronger would cost a
+banned player the one route back they can reach. The post shows the filing account and the Minecraft
+account it is linked to, and says so when that is somebody else.
+
+**The form opens before the code is checked.** Discord allows three seconds to open a form, and asking
+the server first could take longer on a busy tick. The code is checked, and the attempt counted, when
+the form is sent.
+
+**API version 3.** `AppealFiled` and `AppealDecided` changed shape and `AppealConversation` was added.
+
+---
+
 ---
 
 <a id="testing-layers"></a>

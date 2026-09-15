@@ -1,6 +1,7 @@
 package io.github.alphain24.staffcore.discord.gateway;
 
 import io.github.alphain24.staffcore.api.DiscordAnswer;
+import io.github.alphain24.staffcore.api.DiscordEvidence;
 import io.github.alphain24.staffcore.api.DiscordProfile;
 import io.github.alphain24.staffcore.api.DiscordPunishment;
 import io.github.alphain24.staffcore.api.DiscordStanding;
@@ -58,6 +59,37 @@ public final class Replies {
 					+ " by " + Text.safe(p.staffName(), 32) + " — " + Text.safe(p.reason(), 120)
 					+ (p.reversedBy() != null ? " *(reversed by " + Text.safe(p.reversedBy(), 32) + ")*"
 							: p.active() ? " *(in force)*" : "");
+			if (out.length() + line.length() + 1 > 1900) {
+				out.append("\n…");
+				break;
+			}
+			if (out.length() > 0) out.append('\n');
+			out.append(line);
+		}
+		return out.toString();
+	}
+
+	/** One punishment in full, for the Punishment button on an appeal. */
+	public static String punishment(DiscordAnswer<DiscordPunishment> answer) {
+		if (!answer.answered()) return answer.refusal();
+		DiscordPunishment p = answer.value();
+		return "**" + Text.punishment(p.type()) + " #" + p.id() + "**"
+				+ (p.reversedBy() != null ? " — reversed by " + Text.safe(p.reversedBy(), 32)
+						: p.active() ? " — in force" : " — no longer in force")
+				+ "\nReason: " + Text.safe(p.reason(), 600)
+				+ "\nIssued by " + Text.safe(p.staffName(), 32) + " " + Text.when(p.issuedAt())
+				+ "\nEnds: " + (p.expiresAt() == null ? "never" : Text.when(p.expiresAt()))
+				+ (p.caseId() == null ? "" : "\nCase: `" + Text.clip(p.caseId(), 16).replace('`', '\'') + "`");
+	}
+
+	/** What is filed on the punishment's case, for the Evidence button. */
+	public static String evidence(DiscordAnswer<List<DiscordEvidence>> answer) {
+		if (!answer.answered()) return answer.refusal();
+		if (answer.value().isEmpty()) return "The case has no evidence filed.";
+		StringBuilder out = new StringBuilder();
+		for (DiscordEvidence item : answer.value()) {
+			String line = "• " + Text.safe(item.description(), 200) + " — filed by " + Text.safe(item.addedBy(), 32)
+					+ " " + Text.relative(item.addedAt());
 			if (out.length() + line.length() + 1 > 1900) {
 				out.append("\n…");
 				break;

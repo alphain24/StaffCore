@@ -229,28 +229,92 @@ class RouterTest {
 
 	// ------------------------------------------------------------------ appeals
 
-	@Test
-	@DisplayName("an appeal is posted with the original punishment spelled out, and a verdict edits it")
-	void appeal() {
-		Send post = send(router.route(new StaffCoreEvent.AppealFiled(NOW, 3, STEVE, "Steve_", 7, "MUTE",
-				"spam", "Mod", NOW - 86_400_000L, "I was set up", 2, "987654321098765432", null)));
-		Embed embed = post.message().embed();
-		assertEquals("<@987654321098765432>", embed.field("Discord"));
-		assertTrue(embed.field("Original punishment").contains("Issued by: Mod"));
-		assertEquals("2 items", embed.field("Evidence"));
-		assertNotNull(post.threadName());
+	private static final String FILER = "987654321098765432";
 
-		var decided = router.route(new StaffCoreEvent.AppealDecided(NOW + 10, 3, "ACCEPTED", "Admin"));
-		assertTrue(assertInstanceOf(Update.class, decided.get(0)).message().embed().field("Status").startsWith("Accepted"));
-		assertTrue(assertInstanceOf(InThread.class, decided.get(1)).archive());
+	private static StaffCoreEvent.AppealFiled appealFiled(long id, String discordId, String linkedTo) {
+		return new StaffCoreEvent.AppealFiled(NOW, id, STEVE, "Steve_", 7, "MUTE", "spam", "Mod",
+				NOW - 86_400_000L, "I was set up", 2, "DISCORD", discordId, linkedTo, null);
 	}
 
 	@Test
-	@DisplayName("a linked Discord id that is not an id is not written into a mention")
+	@DisplayName("an appeal is posted with the original punishment, a thread and the eight buttons")
+	void appeal() {
+		Send post = send(router.route(appealFiled(3, FILER, null)));
+		Embed embed = post.message().embed();
+		assertEquals("<@" + FILER + "> · not linked", embed.field("Discord"));
+		assertTrue(embed.field("Original punishment").contains("Issued by: Mod"));
+		assertTrue(embed.field("Original punishment").contains("<t:"), "issued at needs its relative and absolute time");
+		assertEquals("2 items", embed.field("Evidence"));
+		assertNotNull(post.threadName());
+
+		var rows = post.message().rows();
+		assertEquals(List.of("Accept", "Reject", "Request More Info", "Close"),
+				rows.get(0).stream().map(Outbound.Button::label).toList());
+		assertEquals(List.of("Punishment", "Profile", "Evidence", "Staff Note"),
+				rows.get(1).stream().map(Outbound.Button::label).toList());
+		assertEquals("sc:punishment:7", rows.get(1).get(0).id());
+	}
+
+	@Test
+	@DisplayName("staff can see when the account appealing is linked to somebody other than the punished player")
+	void appellantMismatch() {
+		assertEquals("<@" + FILER + "> · linked to this player",
+				send(router.route(appealFiled(4, FILER, "steve_"))).message().embed().field("Discord"));
+		assertTrue(send(router.route(appealFiled(5, FILER, "Alex"))).message().embed().field("Discord")
+				.contains("linked to **Alex**, not this player"));
+	}
+
+	@Test
+	@DisplayName("a verdict tells the player first, never naming who decided, then edits the post and closes the thread")
+	void appealVerdict() {
+		router.route(appealFiled(3, FILER, null));
+		var decided = router.route(new StaffCoreEvent.AppealDecided(NOW + 10, 3, "REJECTED", "Admin_Secret", FILER,
+				NOW + 7 * 86_400_000L));
+
+		Outbound.Direct dm = assertInstanceOf(Outbound.Direct.class, decided.get(0));
+		assertEquals(FILER, dm.userId());
+		assertEquals("appeal:3", dm.fallbackKey());
+		assertFalse(dm.message().content().contains("Admin"), "the player was told who rejected them");
+		assertTrue(dm.message().content().contains("again <t:"), dm.message().content());
+
+		Update update = assertInstanceOf(Update.class, decided.get(1));
+		assertTrue(update.message().embed().field("Status").startsWith("Rejected"));
+		assertTrue(update.message().rows().get(0).stream().allMatch(Outbound.Button::disabled));
+		assertTrue(update.message().rows().get(1).stream().noneMatch(Outbound.Button::disabled));
+		assertTrue(assertInstanceOf(InThread.class, decided.get(2)).archive());
+	}
+
+	@Test
+	@DisplayName("an appeal filed in game has nobody on Discord to tell")
+	void gameAppealNoMessage() {
+		router.route(new StaffCoreEvent.AppealFiled(NOW, 6, STEVE, "Steve_", 7, "MUTE", "spam", "Mod", NOW, "x", 0,
+				"GAME", FILER, "Steve_", null));
+		var decided = router.route(new StaffCoreEvent.AppealDecided(NOW, 6, "STALE", "StaffCore", null, null));
+		assertTrue(decided.stream().noneMatch(o -> o instanceof Outbound.Direct), decided.toString());
+	}
+
+	@Test
+	@DisplayName("a question goes to the player and into the thread; their answer only into the thread")
+	void appealConversation() {
+		router.route(appealFiled(3, FILER, null));
+		var asked = router.route(new StaffCoreEvent.AppealConversation(NOW, 3, "Mod", "which account?", false, FILER));
+		Outbound.Direct dm = assertInstanceOf(Outbound.Direct.class, asked.get(0));
+		assertTrue(dm.message().content().contains("which account?"));
+		assertFalse(dm.message().content().contains("Mod"), "the player was told which staff member asked");
+		assertTrue(assertInstanceOf(InThread.class, asked.get(1)).text().contains("**Mod** asked"));
+
+		var answered = router.route(new StaffCoreEvent.AppealConversation(NOW, 3, "Steve_", "my main", true, FILER));
+		assertEquals(1, answered.size());
+		assertTrue(assertInstanceOf(InThread.class, answered.get(0)).text().contains("my main"));
+	}
+
+	@Test
+	@DisplayName("a Discord id that is not an id is never written into a mention or messaged")
 	void appealDiscordIdChecked() {
-		Send post = send(router.route(new StaffCoreEvent.AppealFiled(NOW, 4, STEVE, "Steve_", 7, "MUTE", "x",
-				"Mod", NOW, "y", 0, "123> @everyone <@1", null)));
-		assertEquals("Not linked", post.message().embed().field("Discord"));
+		Send post = send(router.route(appealFiled(4, "123> @everyone <@1", null)));
+		assertEquals("Unknown account", post.message().embed().field("Discord"));
+		assertTrue(router.route(new StaffCoreEvent.AppealDecided(NOW, 4, "ACCEPTED", "Mod", "123> @everyone", null))
+				.stream().noneMatch(o -> o instanceof Outbound.Direct));
 	}
 
 	// ------------------------------------------------------------------ staff
@@ -285,7 +349,7 @@ class RouterTest {
 		out.addAll(router.route(report(20, hostile, null)));
 		out.addAll(router.route(new StaffCoreEvent.StaffChat(NOW, "Mod", hostile, false)));
 		out.addAll(router.route(new StaffCoreEvent.AppealFiled(NOW, 5, STEVE, "Steve_", 1, "BAN", hostile, "Mod",
-				NOW, hostile, 0, null, null)));
+				NOW, hostile, 0, "GAME", null, null, null)));
 
 		for (Outbound outbound : out) {
 			Send post = (Send) outbound;

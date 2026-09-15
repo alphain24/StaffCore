@@ -387,9 +387,14 @@ public class PunishmentModule implements Module {
 		out.append(Icon.text("Think this is a mistake? You can appeal.\n", Theme.TEXT));
 
 		String invite = StaffConfig.get().discordInvite;
+		boolean discordAppeals = io.github.alphain24.staffcore.api.StaffCoreApi.discordAppealsTaken();
 		if (invite != null && !invite.isBlank()) {
-			out.append(Icon.text("Join our Discord and open a ban appeal:\n", Theme.MUTED));
+			out.append(Icon.text(discordAppeals
+					? "Join our Discord and type /appeal with the appeal code below:\n"
+					: "Join our Discord and open a ban appeal:\n", Theme.MUTED));
 			out.append(Icon.text(invite + "\n", Theme.ACCENT));
+		} else if (discordAppeals) {
+			out.append(Icon.text("In our Discord, type /appeal with the appeal code below.\n", Theme.MUTED));
 		} else {
 			out.append(Icon.text("Contact a staff member to open an appeal.\n", Theme.MUTED));
 		}
@@ -564,41 +569,83 @@ public class PunishmentModule implements Module {
 			ps.setString(3, reason);
 			ps.setString(4, target.toString());
 			int n = ps.executeUpdate();
-
-			long liftedAt = System.currentTimeMillis();
-			for (Punishment lifted : lifting) {
-				io.github.alphain24.staffcore.api.StaffCoreApi.publish(
-						new io.github.alphain24.staffcore.api.StaffCoreEvent.PunishmentReversed(
-								liftedAt, lifted.id(), lifted.targetUuid(), lifted.targetName(),
-								lifted.type().name(), staffName, reason, lifted.caseId()));
-			}
-			for (Punishment lifted : lifting) {
-				if (!lifted.hasCase()) continue;
-				Mods.cases().store().note(lifted.caseId(), staffName,
-						lifted.type().name().toLowerCase(java.util.Locale.ROOT) + " #"
-								+ lifted.id() + " reversed"
-								+ (reason == null || reason.isBlank() ? "" : ": " + reason));
-			}
-
-			// Unbanning a person unbans the connection that was banned because of them. The
-			// reverse is not true: /staff unipban lifts only the address, for somebody who
-			// shares it, and leaves the person's own ban where it was.
-			if (bans) {
-				n += addressBans.liftFor(target, staffName, reason);
-			}
-
-			if (n > 0 && !bans) {
-				ServerPlayer online = server.getPlayerList().getPlayer(target);
-				if (online != null) {
-					online.sendSystemMessage(Theme.good("You have been unmuted."));
-					Sfx.success(online);
-				}
-			}
-			return n;
+			return n + afterLifting(server, target, lifting, staffName, reason, bans, n > 0);
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Punish] revoke failed", e);
 			return 0;
 		}
+	}
+
+	/**
+	 * Lifts one punishment and nothing else: the one an appeal was made against.
+	 * <p>
+	 * {@link #revoke} lifts every ban or every mute a player has, which is what {@code /staff unban}
+	 * means. An accepted appeal means less than that. It is about one punishment, and a player
+	 * whose mute appeal is upheld has not thereby had an unrelated ban overturned. Marked reversed,
+	 * never deleted, with the same events, case note and address-ban lift as {@link #revoke}.
+	 *
+	 * @return how many rows were lifted: 0 when it was not in force, more than 1 when a ban took an
+	 *         address ban with it
+	 */
+	public int reverse(MinecraftServer server, long punishmentId, String staffName, String reason) {
+		Connection c = conn();
+		Punishment lifting = byId(punishmentId);
+		if (c == null || lifting == null || !lifting.active()) return 0;
+
+		try (PreparedStatement ps = c.prepareStatement(
+				"UPDATE punishments SET active=0, revoked_by=?, revoked_at=?, revoke_reason=? "
+						+ "WHERE id=? AND active=1")) {
+			ps.setString(1, staffName);
+			ps.setLong(2, System.currentTimeMillis());
+			ps.setString(3, reason);
+			ps.setLong(4, punishmentId);
+			int n = ps.executeUpdate();
+			if (n == 0) return 0;
+			return n + afterLifting(server, lifting.targetUuid(), List.of(lifting), staffName, reason,
+					lifting.type().isBan(), true);
+		} catch (SQLException e) {
+			StaffCore.LOGGER.error("[Punish] reverse failed", e);
+			return 0;
+		}
+	}
+
+	/**
+	 * Everything that follows a lift, shared so that lifting everything and lifting one cannot come
+	 * to disagree about what a lift does.
+	 *
+	 * @return address bans lifted along with a ban
+	 */
+	private int afterLifting(MinecraftServer server, UUID target, List<Punishment> lifting,
+			String staffName, String reason, boolean bans, boolean anything) {
+
+		long liftedAt = System.currentTimeMillis();
+		for (Punishment lifted : lifting) {
+			io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+					new io.github.alphain24.staffcore.api.StaffCoreEvent.PunishmentReversed(
+							liftedAt, lifted.id(), lifted.targetUuid(), lifted.targetName(),
+							lifted.type().name(), staffName, reason, lifted.caseId()));
+		}
+		for (Punishment lifted : lifting) {
+			if (!lifted.hasCase()) continue;
+			Mods.cases().store().note(lifted.caseId(), staffName,
+					lifted.type().name().toLowerCase(java.util.Locale.ROOT) + " #"
+							+ lifted.id() + " reversed"
+							+ (reason == null || reason.isBlank() ? "" : ": " + reason));
+		}
+
+		// Unbanning a person unbans the connection that was banned because of them. The
+		// reverse is not true: /staff unipban lifts only the address, for somebody who
+		// shares it, and leaves the person's own ban where it was.
+		int addresses = bans ? addressBans.liftFor(target, staffName, reason) : 0;
+
+		if (anything && !bans && server != null) {
+			ServerPlayer online = server.getPlayerList().getPlayer(target);
+			if (online != null) {
+				online.sendSystemMessage(Theme.good("You have been unmuted."));
+				Sfx.success(online);
+			}
+		}
+		return addresses;
 	}
 
 	// -------------------------------------------------------------------- querying

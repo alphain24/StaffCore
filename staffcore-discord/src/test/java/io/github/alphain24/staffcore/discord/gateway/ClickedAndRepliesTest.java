@@ -24,7 +24,11 @@ class ClickedAndRepliesTest {
 	@Test
 	@DisplayName("the bot's own button ids are read back; anything else is ignored rather than guessed at")
 	void parsing() {
-		assertEquals(12, JdaGateway.Clicked.parse("sc:claim:12").reportId());
+		assertEquals(12, JdaGateway.Clicked.parse("sc:claim:12").id());
+		assertEquals(3, JdaGateway.Clicked.parse("sc:accept:3").id());
+		assertEquals(7, JdaGateway.Clicked.parse("sc:evidence:7").id());
+		assertEquals("info", JdaGateway.Clicked.parse("sc:info:3").action());
+		assertNull(JdaGateway.Clicked.parse("sc:accept:" + STEVE), "an appeal button with a player where its number goes");
 		assertEquals(STEVE, JdaGateway.Clicked.parse("sc:freeze:" + STEVE).player());
 		assertNull(JdaGateway.Clicked.parse("sc:ban:" + STEVE), "an action no button offers");
 		assertNull(JdaGateway.Clicked.parse("sc:claim:twelve"));
@@ -46,6 +50,23 @@ class ClickedAndRepliesTest {
 		assertTrue(text.contains("`CASE1234`"), text);
 
 		assertEquals("no", Replies.profile(DiscordAnswer.no("no")));
+	}
+
+	@Test
+	@DisplayName("a punishment and its case's evidence read in full, escaped")
+	void punishmentAndEvidence() {
+		String text = Replies.punishment(DiscordAnswer.of(new DiscordPunishment(7, "TEMPBAN", "x-ray _fast_", "Mod", 5L,
+				9_000_000_000_000L, true, null, "CASE1234")));
+		assertTrue(text.contains("Temporary ban #7"), text);
+		assertTrue(text.contains("in force"), text);
+		assertFalse(text.contains("_fast_"), text);
+
+		String evidence = Replies.evidence(DiscordAnswer.of(List.of(
+				new io.github.alphain24.staffcore.api.DiscordEvidence(1, "Replay", "Replay of Steve, 14:02 for 10 minutes",
+						5L, "system"))));
+		assertTrue(evidence.contains("Replay of Steve"), evidence);
+		assertEquals("The case has no evidence filed.", Replies.evidence(DiscordAnswer.of(List.of())));
+		assertEquals("nope", Replies.evidence(DiscordAnswer.no("nope")));
 	}
 
 	@Test

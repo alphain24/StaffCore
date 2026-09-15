@@ -109,6 +109,15 @@ class DiscordSettingsTest {
 	}
 
 	@Test
+	@DisplayName("an appeal intake channel without an appeals channel is reported, since nothing would be taken")
+	void intakeNeedsAppeals() throws IOException {
+		var loaded = load("{\"appealIntakeChannelId\": \"345678901234567890\"}");
+		assertTrue(loaded.problems().stream().anyMatch(p -> p.startsWith("appealIntakeChannelId")), loaded.problems().toString());
+		assertTrue(load("{\"appealIntakeChannelId\": \"345678901234567890\", \"appealsChannelId\": \"345678901234567891\"}")
+				.problems().isEmpty());
+	}
+
+	@Test
 	@DisplayName("alert severity is clamped, and a head address has to be https with {uuid} in it")
 	void alertsAndHeads() throws IOException {
 		assertEquals(100, load("{\"discordAlertSeverity\": 400}").settings().discordAlertSeverity);

@@ -76,6 +76,15 @@ public sealed interface Outbound {
 	record Update(String key, Message message) implements Outbound {}
 
 	/**
+	 * A direct message to one Discord account: the player behind an appeal.
+	 *
+	 * @param userId      the account, as an id
+	 * @param fallbackKey where to say so when the message cannot be delivered — a player with direct
+	 *                    messages off never hears, and staff need to know that; or null
+	 */
+	record Direct(String userId, Message message, String fallbackKey) implements Outbound {}
+
+	/**
 	 * A line in the thread remembered under this key.
 	 *
 	 * @param archive close the thread afterwards, because what it was about is finished

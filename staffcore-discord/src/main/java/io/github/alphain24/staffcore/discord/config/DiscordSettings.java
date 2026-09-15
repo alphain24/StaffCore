@@ -101,8 +101,20 @@ public final class DiscordSettings {
 	 */
 	public String alertsChannelId = "";
 
-	/** Where appeals are posted, each with a thread; a verdict edits the post. Empty posts none. */
+	/**
+	 * Where appeals are posted for staff, each with a thread and buttons to accept, reject, ask the
+	 * player something and close; a verdict edits the post. Setting it also turns on {@code /appeal}
+	 * for players, and the bot then reads its direct messages, which is where a player answers a
+	 * question about their appeal and hears the verdict. Empty takes no appeals from Discord.
+	 */
 	public String appealsChannelId = "";
+
+	/**
+	 * The one channel {@code /appeal} is answered in, for a server that wants appeals made somewhere
+	 * players can see. Appeals are still posted to {@link #appealsChannelId}, which can stay private
+	 * to staff. Empty answers {@code /appeal} in any channel of the guild.
+	 */
+	public String appealIntakeChannelId = "";
 
 	/**
 	 * Where every audited staff action is posted: who, what, the player it names, when, and its
@@ -264,6 +276,11 @@ public final class DiscordSettings {
 		appealsChannelId = channel("appealsChannelId", appealsChannelId, problems);
 		staffLogChannelId = channel("staffLogChannelId", staffLogChannelId, problems);
 		staffChatChannelId = channel("staffChatChannelId", staffChatChannelId, problems);
+		appealIntakeChannelId = channel("appealIntakeChannelId", appealIntakeChannelId, problems);
+		if (!appealIntakeChannelId.isEmpty() && appealsChannelId.isEmpty()) {
+			problems.add("appealIntakeChannelId is set but appealsChannelId is not, so there is nowhere to post "
+					+ "appeals and /appeal is not offered. Set appealsChannelId too.");
+		}
 
 		if (discordAlertSeverity < 0 || discordAlertSeverity > 100) {
 			int was = discordAlertSeverity;

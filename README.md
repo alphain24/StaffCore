@@ -321,6 +321,9 @@ Changing a default in the code alone would never reach a server that has already
   "offences": [ ... ],                 // the punish menu is built from this
   "discordInvite": "",                 // e.g. https://discord.gg/abc123 - shown on the ban screen so people can appeal
   "allowInGameAppeals": true,
+  "appealCooldownDays": 7,             // after a rejection, before that punishment can be appealed again; 0 = no wait
+  "appealStaleDays": 7,                // an appeal staff asked a question on closes as stale if unanswered this long; 0 = never
+  "appealAttemptsPerHour": 5,          // per Discord account, wrong codes included; 0 = no limit
   "detectBanEvasion": true,
   "altSubnetMatching": true,           // also link accounts sharing an address *range*
   "connectionRetentionDays": 90,       // personal data; 0 keeps forever
@@ -442,8 +445,9 @@ should not carry them.
 **What it does today:** lets staff link their Discord account to their Minecraft account; posts
 punishments, reports, alerts, appeals and the staff log to channels you choose, each report, appeal
 and case with a thread; puts buttons on reports to claim, resolve, escalate, look at the player, add
-a note and freeze them; and bridges staff chat both ways. Punishing and looking players up with
-slash commands, and filing and deciding appeals from Discord, are not built yet.
+a note and freeze them; takes ban and mute appeals with `/appeal` and the code from the ban screen,
+with buttons to accept, reject, ask the player something and close; and bridges staff chat both
+ways. Punishing and looking players up with slash commands is not built yet.
 
 ### Setting it up
 
@@ -471,7 +475,8 @@ companion is doing instead.
 | `punishmentsChannelId` | empty | Where punishments are posted. Empty posts none. |
 | `reportsChannelId` | empty | Where reports are posted, with a thread and buttons. Empty posts none, and reports reach Discord only as alerts. |
 | `alertsChannelId` | empty | Where detector signals are posted and where cases get their threads. Empty posts none, and only cases a report opened get a thread. |
-| `appealsChannelId` | empty | Where appeals are posted, each with a thread. Empty posts none. |
+| `appealsChannelId` | empty | Where appeals are posted for staff, each with a thread and buttons. Setting it offers `/appeal` to players and has the bot read direct messages sent to it, which is where players answer questions and hear verdicts. Empty takes no appeals from Discord. |
+| `appealIntakeChannelId` | empty | The one channel `/appeal` is answered in, so appeals can be made somewhere players see while `appealsChannelId` stays staff-only. Empty answers `/appeal` anywhere in the server. |
 | `staffLogChannelId` | empty | Where every audited staff action is posted — one post per command on a busy server. Empty posts none. |
 | `staffChatChannelId` | empty | A channel bridged with staff chat both ways. Setting it makes the bot ask for Message Content Intent; without that switched on in the portal it cannot log in. Empty bridges nothing. |
 | `discordAlertSeverity` | `70` | The lowest signal confidence (0–100) posted to the alerts channel on its own. A signal that opens a case is always posted, because the case needs its thread. |
@@ -489,7 +494,7 @@ posting.
 | Punishments | Reason, staff, the player and their prior count, duration, expiry, case, punishment id | A reversal edits the post |
 | Reports | Reason, player and prior count, reporter, assignee, status, server, when, case; a thread; Claim, Resolve, Escalate, Profile, History, Add Note and Freeze buttons | Claiming and resolving edit the post and are said in the thread; resolving turns the report's own buttons off and closes the thread |
 | Alerts | The signal, its confidence and its case; a thread when it opened the case | Notes, assignments, punishments and closing are said in the case's thread; weaker signals about the case go there too |
-| Appeals | The player, their linked Discord account, the punishment with its reason, who issued it and when, the appeal, evidence count, when, case; a thread | A verdict edits the post and closes the thread |
+| Appeals | The player, the Discord account that filed and whose Minecraft account it is linked to, the punishment with its reason, who issued it and when, the appeal, evidence count, when, case; a thread; Accept, Reject, Request More Info, Close, Punishment, Profile, Evidence and Staff Note buttons | Questions to the player and their answers are said in the thread; a verdict edits the post, turns the verdict buttons off and closes the thread |
 | Staff log | Who, the command as recorded, the player it names, when, case | — |
 | Staff chat | Every staff chat line from the game | Lines typed there go into staff chat in game, marked `[Discord]` |
 
@@ -508,6 +513,38 @@ connects from, and not the accounts linked to them that way.
 
 Only linked staff holding `staff.chat` are bridged into staff chat; anybody else gets a short reply
 that disappears. Lines from the game are sent with mentions switched off.
+
+### Appeals
+
+A banned player types `/appeal` with the code from their ban screen, and a form asks why the
+punishment should be lifted. The appeal is posted to `appealsChannelId` with a thread. On the ban
+screen, "type /appeal with the appeal code below" appears once the bot is connected and taking
+appeals.
+
+**Filing is the one thing an unlinked Discord account can do.** Somebody banned cannot join to link,
+so the code stands in for a permission: it names one punishment, cannot be guessed, and every
+attempt counts against the account — `appealAttemptsPerHour`, wrong codes included. Anybody
+holding a photograph of the ban screen can file; the post shows which Discord account filed and
+which Minecraft account it is linked to, and says so when that is not the punished player.
+
+- One open appeal per punishment.
+- After a rejection, that punishment cannot be appealed again for `appealCooldownDays`. A close
+  without a decision leaves no wait.
+- **Accept** lifts the punishment the appeal was against, and only that one, marked reversed with
+  the appeal named; **Reject** leaves it standing; **Close** ends the appeal without a verdict. Each
+  is written into the punishment's case. All three need `staff.appeals`, as the appeals screen does.
+- **Request More Info** sends the player a question without the asking staff member's name. They
+  answer by replying to the bot's direct message, and the answer is added to the thread. Replies are
+  accepted only from the account that filed, on an appeal staff have asked about.
+- An appeal staff asked about and the player did not answer for `appealStaleDays` is closed as
+  stale; the player can appeal again. An appeal staff have not got to is never marked stale.
+- The player is sent the verdict by direct message, without the name of whoever decided. A player
+  with direct messages from the server switched off never hears, and the thread says so.
+- **Punishment** (`staff.history`), **Profile** (`staff.gui`) and **Evidence** (`staff.gui`) answer
+  privately; **Staff Note** (`staff.notes`) goes on the player's record, never into the thread.
+
+Accepting an appeal in game, from `/staff appeals`, now goes through the same path, so it too lifts
+only the appealed punishment rather than every ban and mute the player has.
 
 **Nothing a player typed can ping or link.** Report reasons, appeals and names have markdown, links
 and mentions escaped, and every message is sent with mentions disabled as well.
@@ -676,10 +713,10 @@ known gap — not a bug list.
 **Not built**
 
 - **The Discord companion is partly built.** It links accounts, posts to channels with
-  threads, acts from report buttons and bridges staff chat
+  threads, acts from report and appeal buttons, takes appeals and bridges staff chat
   ([above](#discord-companion--staffcore-discord)). There are no slash commands yet for
-  punishing or looking players up, appeals cannot be filed or decided from Discord, and a post
-  made while the bot is disconnected is counted and dropped rather than queued.
+  punishing or looking players up, and a post made while the bot is disconnected is counted and
+  dropped rather than queued.
 - **No map integrations.** BlueMap, Dynmap and Squaremap would each need that mod present as
   a compile dependency.
 

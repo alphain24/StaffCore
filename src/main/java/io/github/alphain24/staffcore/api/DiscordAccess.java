@@ -95,6 +95,56 @@ public final class DiscordAccess {
 		return DiscordGate.staffChat(user, message);
 	}
 
+	// ------------------------------------------------------------------ appeals
+
+	/**
+	 * Files an appeal with the code from a ban screen. Open to any Discord account, linked or not —
+	 * the code is the permission — and limited per account, wrong codes included.
+	 */
+	public static CompletableFuture<DiscordResult> fileAppeal(DiscordUser filer, String code, String text) {
+		return DiscordGate.fileAppeal(filer, code, text);
+	}
+
+	/** The filer's answer to a question staff asked about their appeal. */
+	public static CompletableFuture<DiscordResult> replyToAppeal(DiscordUser appellant, String text) {
+		return DiscordGate.replyToAppeal(appellant, text);
+	}
+
+	/** Accepts an appeal, lifting the punishment it was against and nothing else. */
+	public static CompletableFuture<DiscordResult> acceptAppeal(DiscordUser user, long appealId) {
+		return DiscordGate.decideAppeal(user, appealId,
+				io.github.alphain24.staffcore.modules.appeal.AppealModule.Verdict.ACCEPTED);
+	}
+
+	public static CompletableFuture<DiscordResult> rejectAppeal(DiscordUser user, long appealId) {
+		return DiscordGate.decideAppeal(user, appealId,
+				io.github.alphain24.staffcore.modules.appeal.AppealModule.Verdict.REJECTED);
+	}
+
+	/** Closes an appeal without a verdict: a duplicate, or one about something already sorted out. */
+	public static CompletableFuture<DiscordResult> closeAppeal(DiscordUser user, long appealId) {
+		return DiscordGate.decideAppeal(user, appealId,
+				io.github.alphain24.staffcore.modules.appeal.AppealModule.Verdict.CLOSED);
+	}
+
+	/** Asks the player something; they are told, and can answer. */
+	public static CompletableFuture<DiscordResult> requestAppealInfo(DiscordUser user, long appealId,
+			String question) {
+		return DiscordGate.requestAppealInfo(user, appealId, question);
+	}
+
+	/** One punishment, whatever state it is in. */
+	public static CompletableFuture<DiscordAnswer<DiscordPunishment>> punishment(DiscordUser user,
+			long punishmentId) {
+		return DiscordGate.punishment(user, punishmentId);
+	}
+
+	/** The evidence filed on the case a punishment came from. */
+	public static CompletableFuture<DiscordAnswer<List<DiscordEvidence>>> evidence(DiscordUser user,
+			long punishmentId) {
+		return DiscordGate.evidence(user, punishmentId);
+	}
+
 	/** Every node StaffCore defines, so a companion can reject a role mapping naming anything else. */
 	public static Set<String> knownNodes() {
 		return Actor.all();

@@ -38,6 +38,12 @@ public class DiscordModule implements Module {
 			.build();
 
 	private final DiscordLinks links = new DiscordLinks();
+	private final AppealAttempts appealAttempts = new AppealAttempts();
+
+	/** How often each Discord account has tried to file or answer an appeal lately. */
+	public AppealAttempts appealAttempts() {
+		return appealAttempts;
+	}
 
 	/** Which Discord account belongs to which Minecraft account, for the Discord companion. */
 	public DiscordLinks links() {

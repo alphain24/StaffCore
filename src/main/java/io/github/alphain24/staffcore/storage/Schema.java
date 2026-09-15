@@ -1189,6 +1189,24 @@ final class Schema {
 					st.executeUpdate(io.github.alphain24.staffcore.modules.discord.DiscordLinks.DISCORD_INDEX);
 					st.executeUpdate(io.github.alphain24.staffcore.modules.discord.DiscordLinks.PLAYER_INDEX);
 				}
+			},
+
+			// 29 - appeals from Discord, and appeals that wait on the player.
+			//
+			//      Where an appeal came from and which Discord account filed it, so staff can see
+			//      who is asking and the bot can answer them; when staff last asked the player a
+			//      question and when the player last answered, so an appeal the player walked away
+			//      from can be marked stale without one staff members are sitting on being marked
+			//      with it. See AppealModule.
+			conn -> {
+				addColumn(conn, "appeals", "source", "TEXT");
+				addColumn(conn, "appeals", "discord_id", "TEXT");
+				addColumn(conn, "appeals", "discord_name", "TEXT");
+				addColumn(conn, "appeals", "info_requested_at", "INTEGER");
+				addColumn(conn, "appeals", "replied_at", "INTEGER");
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_appeals_punishment ON appeals(punishment_id, status)");
+				}
 			}
 	);
 
@@ -1284,6 +1302,11 @@ final class Schema {
 			{"punishments", "points", "INTEGER NOT NULL DEFAULT 0"},
 			{"inventory_audit", "actor_resolved_at", "INTEGER"},
 			{"command_log", "actor_resolved_at", "INTEGER"},
+			{"appeals", "source", "TEXT"},
+			{"appeals", "discord_id", "TEXT"},
+			{"appeals", "discord_name", "TEXT"},
+			{"appeals", "info_requested_at", "INTEGER"},
+			{"appeals", "replied_at", "INTEGER"},
 	};
 
 	/**

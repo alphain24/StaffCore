@@ -36,13 +36,17 @@ public final class StaffCoreApi {
 	 * <p>
 	 * 2: events for cases and appeals, a case on reports, a target on staff actions, and the report,
 	 * note, freeze and staff chat calls on {@link DiscordAccess}.
+	 * <p>
+	 * 3: appeals from Discord — who filed, the conversation, stale verdicts, and the appeal calls on
+	 * {@link DiscordAccess}.
 	 */
-	public static final int VERSION = 2;
+	public static final int VERSION = 3;
 
 	private static final List<StaffCoreListener> LISTENERS = new CopyOnWriteArrayList<>();
 	private static final Map<String, Supplier<List<String>>> STATUS = new ConcurrentHashMap<>();
 	private static volatile boolean discordCompanion;
 	private static volatile boolean discordPosting;
+	private static volatile boolean discordAppeals;
 
 	/** Starts telling this listener about events. */
 	public static void addListener(StaffCoreListener listener) {
@@ -83,6 +87,18 @@ public final class StaffCoreApi {
 
 	public static boolean discordPostingHandled() {
 		return discordPosting;
+	}
+
+	/**
+	 * Says that the companion takes ban appeals in Discord, so the ban screen can tell a player to use
+	 * {@code /appeal} with their code rather than to find a staff member.
+	 */
+	public static void declareDiscordAppeals() {
+		discordAppeals = true;
+	}
+
+	public static boolean discordAppealsTaken() {
+		return discordAppeals;
 	}
 
 	/**

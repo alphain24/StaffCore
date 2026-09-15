@@ -79,9 +79,15 @@ public class AppealsMenu extends PagedGui<AppealModule.Appeal> {
 						.action("Left-click", "accept and lift the punishment")
 						.action("Right-click", "reject");
 			}
+		} else if ("STALE".equals(appeal.status())) {
+			icon.lore("○ Went stale: no answer from them", Theme.MUTED);
 		} else {
-			icon.lore(accepted ? "○ Accepted by " + appeal.handledBy() : "○ Rejected by " + appeal.handledBy(),
-					accepted ? Theme.GOOD : Theme.BAD);
+			String verdict = appeal.verdict() == null ? "" : appeal.verdict();
+			icon.lore(switch (verdict) {
+						case "ACCEPTED" -> "○ Accepted by " + appeal.handledBy();
+						case "REJECTED" -> "○ Rejected by " + appeal.handledBy();
+						default -> "○ Closed by " + appeal.handledBy();
+					}, accepted ? Theme.GOOD : "REJECTED".equals(verdict) ? Theme.BAD : Theme.MUTED);
 			if (appeal.handledAt() != null) {
 				icon.field("Decided", TimeFormat.ago(appeal.handledAt()));
 			}
@@ -135,7 +141,7 @@ public class AppealsMenu extends PagedGui<AppealModule.Appeal> {
 				.paragraph(appeal.text(), Theme.MUTED)
 				.gap()
 				.lore(accept
-						? "Their active ban and mute are both lifted."
+						? "The punishment they appealed is lifted."
 						: "The punishment stands. They are told the outcome.", Theme.TEXT)
 				.build();
 
@@ -148,37 +154,17 @@ public class AppealsMenu extends PagedGui<AppealModule.Appeal> {
 		MinecraftServer server = Mc.server(viewer);
 		if (server == null) return;
 
-		String staff = Mc.name(viewer);
-		boolean done = accept
-				? Mods.appeals().accept(appeal.id(), staff)
-				: Mods.appeals().reject(appeal.id(), staff);
-
-		if (!done) {
-			viewer.sendSystemMessage(Theme.warn("Somebody decided that one first."));
+		// The same decision Discord's buttons make: lifting the appealed punishment, the case note,
+		// telling the player and staff all happen in AppealModule, so the two cannot differ.
+		var outcome = Mods.appeals().decide(server, appeal.id(),
+				accept ? AppealModule.Verdict.ACCEPTED : AppealModule.Verdict.REJECTED, Mc.name(viewer));
+		if (!outcome.done()) {
+			viewer.sendSystemMessage(Theme.warn(outcome.message()));
 			Sfx.deny(viewer);
 			reopen(viewer, only);
 			return;
 		}
-
-		if (accept) {
-			// An accepted appeal that leaves the ban in place is worse than none at all.
-			int lifted = Mods.punish().revoke(server, appeal.targetUuid(), staff, true)
-					+ Mods.punish().revoke(server, appeal.targetUuid(), staff, false);
-			viewer.sendSystemMessage(Theme.good(
-					"Appeal accepted — " + lifted + " punishment(s) lifted for " + appeal.targetName() + "."));
-		} else {
-			viewer.sendSystemMessage(Theme.info("Appeal rejected. The punishment stands."));
-		}
-
-		ServerPlayer online = server.getPlayerList().getPlayer(appeal.targetUuid());
-		if (online != null) {
-			online.sendSystemMessage(accept
-					? Theme.good("Your appeal was accepted. Welcome back.")
-					: Theme.bad("Your appeal was reviewed and rejected."));
-		}
-
-		Mods.alerts().onStaffAction(server, "%s %s %s's appeal"
-				.formatted(staff, accept ? "accepted" : "rejected", appeal.targetName()));
+		viewer.sendSystemMessage(accept ? Theme.good(outcome.message()) : Theme.info(outcome.message()));
 		Sfx.bigSuccess(viewer);
 		reopen(viewer, only);
 	}

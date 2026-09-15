@@ -362,6 +362,145 @@ public final class DiscordGate {
 		return out.toString().strip().replaceAll(" {2,}", " ");
 	}
 
+	// ------------------------------------------------------------------ appeals
+
+	/** The longest appeal from Discord: what Discord's own form allows, and enough to make a case. */
+	static final int APPEAL_LIMIT = 1000;
+
+	/**
+	 * How many answers one account may send about its appeals in an hour. Not a setting: it only has
+	 * to stop a flood, and somebody answering a question in several messages should never meet it.
+	 */
+	static final int REPLIES_PER_HOUR = 20;
+
+	/**
+	 * Files an appeal from Discord with the code off a ban screen.
+	 * <p>
+	 * <b>The one action an unlinked Discord account can take.</b> Everybody appealing a ban is, by
+	 * definition, somebody who cannot be linked staff: the ban keeps them out of the game where a link
+	 * is made. So no permission is checked, and the code is what stands in for one — it names one
+	 * punishment and nothing else, it cannot be guessed, and attempts are counted per Discord account
+	 * whether the code was right or not. Who filed is recorded and shown to staff, including when
+	 * that account is linked to a different player.
+	 */
+	public static CompletableFuture<DiscordResult> fileAppeal(DiscordUser filer, String code, String text) {
+		return onServer(server -> {
+			if (filer == null) return DiscordResult.no("No Discord account.");
+
+			Long wait = Mods.discord().appealAttempts().attempt("file:" + filer.id(),
+					StaffConfig.get().appealAttemptsPerHour);
+			if (wait != null) {
+				return DiscordResult.no("You have tried to appeal too many times in the last hour. Try again in "
+						+ Math.max(1, wait / 60_000L) + " minute(s).");
+			}
+
+			String clean = cleanText(text, APPEAL_LIMIT);
+			if (clean.isEmpty()) return DiscordResult.no("An appeal needs a reason.");
+
+			Punishment against = Mods.punish().byAppealCode(code);
+			if (against == null) {
+				return DiscordResult.no("That code does not match any ban or mute. It is the twelve characters "
+						+ "on the ban screen, like ABCD-EFGH-JKMN; letters and numbers are easy to mix up in a "
+						+ "photograph.");
+			}
+
+			var filed = Mods.appeals().fileAgainst(against, clean, "DISCORD", filer.id(), filer.name());
+			StaffCore.LOGGER.info("[Appeal] {} from Discord by {} against {} #{}", filed.result(), filer.name(),
+					against.type().name().toLowerCase(java.util.Locale.ROOT), against.id());
+			return switch (filed.result()) {
+				case OK -> new DiscordResult(true, "Appeal #" + filed.appeal().id() + " filed. Staff will review it. "
+						+ "If they need to know more, or when it is decided, this bot will message you — so keep "
+						+ "direct messages from this server switched on.");
+				case ALREADY_OPEN -> DiscordResult.no("There is already an appeal open against this punishment. "
+						+ "Staff will get to it; a second one would not be read any sooner.");
+				case COOLDOWN -> DiscordResult.no("An appeal against this punishment was rejected recently. You can "
+						+ "appeal it again " + discordTime(filed.mayAppealAgain()) + ".");
+				case NOT_IN_FORCE -> DiscordResult.no("That punishment is no longer in force, so there is nothing "
+						+ "to appeal.");
+				default -> DiscordResult.no("Appeals are unavailable right now. Try again later.");
+			};
+		}, DiscordResult.no(STOPPED));
+	}
+
+	/**
+	 * The player's answer to a question staff asked about their appeal, from the account that filed it.
+	 * No permission, for the same reason as {@link #fileAppeal}; it lands only on an open appeal that
+	 * account filed and staff asked about.
+	 */
+	public static CompletableFuture<DiscordResult> replyToAppeal(DiscordUser appellant, String text) {
+		return onServer(server -> {
+			if (appellant == null) return DiscordResult.no("No Discord account.");
+			Long wait = Mods.discord().appealAttempts().attempt("reply:" + appellant.id(), REPLIES_PER_HOUR);
+			if (wait != null) return DiscordResult.no("That is a lot of messages. Try again in a few minutes.");
+
+			String clean = cleanText(text, APPEAL_LIMIT);
+			if (clean.isEmpty()) return DiscordResult.no("Nothing to add.");
+			var outcome = Mods.appeals().reply(appellant.id(), clean);
+			return new DiscordResult(outcome.done(), outcome.message());
+		}, DiscordResult.no(STOPPED));
+	}
+
+	public static CompletableFuture<DiscordResult> decideAppeal(DiscordUser user, long appealId,
+			io.github.alphain24.staffcore.modules.appeal.AppealModule.Verdict verdict) {
+		return act(user, DiscordOperation.HANDLE_APPEAL, (server, resolved) -> {
+			var outcome = Mods.appeals().decide(server, appealId, verdict, resolved.standing().minecraftName());
+			if (outcome.done()) {
+				var appeal = Mods.appeals().byId(appealId);
+				audit(resolved, user, verdict.name().toLowerCase(java.util.Locale.ROOT) + " "
+						+ (appeal == null ? "?" : appeal.targetName()) + " appeal #" + appealId, null);
+			}
+			return new DiscordResult(outcome.done(), outcome.message());
+		});
+	}
+
+	public static CompletableFuture<DiscordResult> requestAppealInfo(DiscordUser user, long appealId,
+			String question) {
+		return act(user, DiscordOperation.HANDLE_APPEAL, (server, resolved) -> {
+			String clean = cleanText(question, APPEAL_LIMIT);
+			if (clean.isEmpty()) return DiscordResult.no("A question needs some text.");
+			var outcome = Mods.appeals().requestInfo(appealId, resolved.standing().minecraftName(), clean);
+			if (outcome.done()) {
+				var appeal = Mods.appeals().byId(appealId);
+				audit(resolved, user, "ask " + (appeal == null ? "?" : appeal.targetName()) + " appeal #" + appealId,
+						null);
+			}
+			return new DiscordResult(outcome.done(), outcome.message());
+		});
+	}
+
+	public static CompletableFuture<DiscordAnswer<DiscordPunishment>> punishment(DiscordUser user,
+			long punishmentId) {
+		return read(user, DiscordOperation.VIEW_HISTORY, (server, resolved) -> {
+			Punishment p = Mods.punish().byId(punishmentId);
+			if (p == null) return DiscordAnswer.no("There is no punishment #" + punishmentId + ".");
+			audit(resolved, user, "punishment " + p.targetName() + " #" + punishmentId, p.caseId());
+			return DiscordAnswer.of(published(p));
+		});
+	}
+
+	/** The evidence on the case a punishment came from. */
+	public static CompletableFuture<DiscordAnswer<List<io.github.alphain24.staffcore.api.DiscordEvidence>>> evidence(
+			DiscordUser user, long punishmentId) {
+		return read(user, DiscordOperation.VIEW_EVIDENCE, (server, resolved) -> {
+			Punishment p = Mods.punish().byId(punishmentId);
+			if (p == null) return DiscordAnswer.no("There is no punishment #" + punishmentId + ".");
+			if (!p.hasCase()) return DiscordAnswer.no("Punishment #" + punishmentId + " was not issued from a case, "
+					+ "so no evidence is filed against it.");
+			List<io.github.alphain24.staffcore.api.DiscordEvidence> out = new ArrayList<>();
+			for (var item : Mods.cases().evidence().forCase(p.caseId())) {
+				out.add(new io.github.alphain24.staffcore.api.DiscordEvidence(item.id(), item.kind().label(),
+						item.describe(), item.addedAt(), item.addedBy()));
+			}
+			audit(resolved, user, "evidence " + p.targetName() + " case " + p.caseId(), p.caseId());
+			return DiscordAnswer.of(out);
+		});
+	}
+
+	/** A time as Discord shows it to each reader in their own timezone. */
+	private static String discordTime(Long epochMillis) {
+		return epochMillis == null ? "later" : "<t:" + epochMillis / 1000 + ":R>";
+	}
+
 	// ------------------------------------------------------------------ shared
 
 	private static final String STOPPED = "The server is not running.";

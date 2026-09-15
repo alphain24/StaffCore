@@ -39,7 +39,11 @@ public enum DiscordOperation {
 	RESOLVE_REPORT(Nodes.REPORT_VIEW, true),
 	/** Opens or joins a case, which in game is {@code /staff case open}, behind the case screen's node. */
 	ESCALATE_REPORT(Nodes.STAFF_GUI, true),
-	STAFF_CHAT(Nodes.CHAT, true);
+	STAFF_CHAT(Nodes.CHAT, true),
+
+	// ---- appeals
+	/** Accepting, rejecting, closing and asking the player something: the appeals screen's node. */
+	HANDLE_APPEAL(Nodes.APPEALS, true);
 
 	private final String node;
 	private final boolean writes;

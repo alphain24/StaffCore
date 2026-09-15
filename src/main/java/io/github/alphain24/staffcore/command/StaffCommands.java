@@ -730,7 +730,10 @@ public final class StaffCommands {
 		ServerPlayer player = ctx.getSource().getPlayerOrException();
 		String text = StringArgumentType.getString(ctx, "text");
 
-		var result = Mods.appeals().file(player.getUUID(), Mc.name(player), text);
+		var mute = Mods.punish().activeMute(player.getUUID());
+		var filed = mute == null ? null : Mods.appeals().fileAgainst(mute, text, "GAME", null, null);
+		var result = filed == null ? io.github.alphain24.staffcore.modules.appeal.AppealModule.Result.NOTHING_TO_APPEAL
+				: filed.result();
 		switch (result) {
 			case OK -> {
 				Mods.alerts().onStaffAction(ctx.getSource().getServer(),
@@ -741,6 +744,11 @@ public final class StaffCommands {
 			case ALREADY_OPEN -> {
 				Sfx.deny(player);
 				return fail(ctx, "You already have an appeal waiting on a verdict.");
+			}
+			case COOLDOWN -> {
+				Sfx.deny(player);
+				return fail(ctx, "Your last appeal against this mute was rejected. You can appeal it again on "
+						+ io.github.alphain24.staffcore.util.TimeFormat.stamp(filed.mayAppealAgain()) + ".");
 			}
 			case NOTHING_TO_APPEAL -> {
 				Sfx.deny(player);

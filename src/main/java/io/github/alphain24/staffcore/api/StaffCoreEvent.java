@@ -79,22 +79,39 @@ public sealed interface StaffCoreEvent {
 	/**
 	 * A player appealed a punishment.
 	 *
-	 * @param punishmentAt     when the appealed punishment was issued
-	 * @param evidenceCount    evidence filed on the punishment's case, 0 when it has none
-	 * @param linkedDiscordId  the Discord account linked to the player, or null
-	 * @param caseId           the punishment's case, or null
+	 * @param punishmentAt    when the appealed punishment was issued
+	 * @param evidenceCount   evidence filed on the punishment's case, 0 when it has none
+	 * @param source          {@code GAME} or {@code DISCORD}
+	 * @param discordId       from Discord, the account that filed it; from the game, the player's own
+	 *                        linked account; null when there is neither
+	 * @param discordLinkedTo the Minecraft account that Discord account is linked to, or null — which
+	 *                        is not always the punished player, since anybody with the code can file
+	 * @param caseId          the punishment's case, or null
 	 */
 	record AppealFiled(long at, long id, UUID playerId, String playerName, long punishmentId,
 			String punishmentType, String punishmentReason, String punishmentBy, long punishmentAt,
-			String text, int evidenceCount, String linkedDiscordId, String caseId)
-			implements StaffCoreEvent {}
+			String text, int evidenceCount, String source, String discordId, String discordLinkedTo,
+			String caseId) implements StaffCoreEvent {}
 
 	/**
-	 * An appeal was decided.
+	 * An appeal was decided, or went stale.
 	 *
-	 * @param verdict {@code ACCEPTED} or {@code REJECTED}
+	 * @param verdict          {@code ACCEPTED}, {@code REJECTED}, {@code CLOSED} or {@code STALE}
+	 * @param discordId        the Discord account that filed it, to be told; or null
+	 * @param mayAppealAgainAt for a rejection, when the same punishment can be appealed again; else null
 	 */
-	record AppealDecided(long at, long id, String verdict, String staffName) implements StaffCoreEvent {}
+	record AppealDecided(long at, long id, String verdict, String staffName, String discordId,
+			Long mayAppealAgainAt) implements StaffCoreEvent {}
+
+	/**
+	 * Staff asked the player something about an appeal, or the player answered.
+	 *
+	 * @param author        the staff member asking, or the player answering
+	 * @param fromAppellant true for the player's answer
+	 * @param discordId     the Discord account that filed the appeal
+	 */
+	record AppealConversation(long at, long id, String author, String text, boolean fromAppellant,
+			String discordId) implements StaffCoreEvent {}
 
 	/**
 	 * A staff member did something that went into the audit log.

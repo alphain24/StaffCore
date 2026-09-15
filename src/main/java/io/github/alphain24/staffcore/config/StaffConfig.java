@@ -350,6 +350,34 @@ public final class StaffConfig {
 	public String discordInvite = "";
 	public boolean allowInGameAppeals = true;
 
+	/**
+	 * Days after an appeal is rejected before the same punishment can be appealed again.
+	 * <p>
+	 * Without a wait, a rejected appeal is filed again the same minute, and again, and the queue
+	 * fills with one person. Longer protects staff time; shorter is kinder to somebody with
+	 * something genuinely new to say, who can always ask a staff member directly. 0 lets a rejected
+	 * appeal be filed again at once. Only the punishment that was appealed is affected.
+	 */
+	public int appealCooldownDays = 7;
+
+	/**
+	 * Days an appeal waits for the player to answer a question from staff before it is marked stale.
+	 * <p>
+	 * Only appeals waiting on the player: one staff have not got round to is never marked stale,
+	 * because that is not the player walking away. Stale is a closed state, not a deletion, and the
+	 * player can appeal again straight away. 0 leaves unanswered appeals open for good.
+	 */
+	public int appealStaleDays = 7;
+
+	/**
+	 * Appeals one Discord account may file, or try to file, in an hour — wrong codes included.
+	 * <p>
+	 * Filing an appeal is the one thing an unlinked Discord account can do, so it is the one thing a
+	 * stranger can do over and over. Lower slows somebody trying codes or flooding the queue; higher
+	 * is kinder to somebody mistyping a code off a photograph. 0 removes the limit.
+	 */
+	public int appealAttemptsPerHour = 5;
+
 	// ---- reports -------------------------------------------------------------
 	public int reportCooldownSeconds = 60;
 
@@ -1035,6 +1063,22 @@ public final class StaffConfig {
 			problems.add("discordInvite is \"" + cfg.discordInvite + "\", which is not a web "
 					+ "link, so it cannot be clicked in chat. Use an invite such as "
 					+ "https://discord.gg/abc123.");
+		}
+
+		for (String key : java.util.List.of("appealCooldownDays", "appealStaleDays", "appealAttemptsPerHour")) {
+			int value = switch (key) {
+				case "appealCooldownDays" -> cfg.appealCooldownDays;
+				case "appealStaleDays" -> cfg.appealStaleDays;
+				default -> cfg.appealAttemptsPerHour;
+			};
+			if (value >= 0) continue;
+			problems.add(key + " is " + value + ", which is below 0. Treating it as 0, which switches "
+					+ "it off. Set a positive number, or 0 deliberately.");
+			switch (key) {
+				case "appealCooldownDays" -> cfg.appealCooldownDays = 0;
+				case "appealStaleDays" -> cfg.appealStaleDays = 0;
+				default -> cfg.appealAttemptsPerHour = 0;
+			}
 		}
 
 		if (cfg.canaryDensity < 0 || cfg.canaryDensity > 64) {
