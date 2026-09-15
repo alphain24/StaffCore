@@ -92,6 +92,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	private final AtomicLong undelivered = new AtomicLong();
 	private final Map<Outbound.Channel, String> channelProblems = new ConcurrentHashMap<>();
 	private volatile String intakeProblem;
+	private final List<String> setupProblems = new java.util.concurrent.CopyOnWriteArrayList<>();
+	private static final java.util.regex.Pattern SNOWFLAKE = java.util.regex.Pattern.compile("\\d{15,22}");
 
 	/**
 	 * @param worker the companion's own thread: posts are made and answers sent from here, never from
@@ -153,7 +155,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 
 	@Override
 	public List<String> problems() {
-		List<String> out = new ArrayList<>(channelProblems.values());
+		List<String> out = new ArrayList<>(setupProblems);
+		out.addAll(channelProblems.values());
 		if (intakeProblem != null) out.add(intakeProblem);
 		if (failed.get() > 0) out.add("posts Discord refused: " + failed.get() + " (the log names why)");
 		if (skipped.get() > 0) out.add("posts not made because the bot was not connected: " + skipped.get());
@@ -189,16 +192,31 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		guild.updateCommands().addCommands(commands).queue(ok -> { }, failure -> StaffCoreDiscord.LOGGER.warn(
 				"[StaffCore Discord] Could not register commands in {} ({}).", guild.getName(), describe(failure)));
 
-		checkChannels(guild);
-		// Only now: a bot that never connects must not have silenced the webhook that works, or told
-		// banned players to use an /appeal nobody is answering.
-		if (settings.postsToChannels()) StaffCoreApi.declareDiscordPosting();
-		if (!settings.appealsChannelId.isEmpty() && !channelProblems.containsKey(Outbound.Channel.APPEALS)) {
-			StaffCoreApi.declareDiscordAppeals();
-		}
-
 		state = "connected as " + event.getJDA().getSelfUser().getName() + " in " + guild.getName();
 		StaffCoreDiscord.LOGGER.info("[StaffCore Discord] {}", state);
+
+		// On the worker, ahead of any post that arrives from now: making channels waits on Discord, and
+		// a post must not reach a channel that is still being made.
+		worker.execute(() -> {
+			setUpChannels(guild);
+			checkChannels(guild);
+			// Only now: a bot that never connects must not have silenced the webhook that works, or told
+			// banned players to use an /appeal nobody is answering.
+			if (settings.postsToChannels()) StaffCoreApi.declareDiscordPosting();
+			if (!settings.appealsChannelId.isEmpty() && !channelProblems.containsKey(Outbound.Channel.APPEALS)) {
+				StaffCoreApi.declareDiscordAppeals();
+			}
+		});
+	}
+
+	/** Makes the channels set to "create", and writes their ids into the settings file. */
+	private void setUpChannels(Guild guild) {
+		setupProblems.clear();
+		ChannelSetup.Outcome outcome = ChannelSetup.run(guild, settings);
+		setupProblems.addAll(outcome.problems());
+		String saving = settings.recordCreated(outcome.created());
+		if (saving != null) setupProblems.add(saving);
+		setupProblems.forEach(p -> StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] {}", p));
 	}
 
 	@Override
@@ -219,8 +237,12 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		for (Outbound.Channel channel : Outbound.Channel.values()) {
 			String id = settings.channelId(channel);
 			if (id.isEmpty()) continue;
-			TextChannel text = guild.getTextChannelById(id);
 			String name = channel.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+			if (!SNOWFLAKE.matcher(id).matches()) {
+				channelProblems.put(channel, "the " + name + " channel has not been made yet, so nothing is posted there");
+				continue;
+			}
+			TextChannel text = guild.getTextChannelById(id);
 			if (text == null) {
 				channelProblems.put(channel, name + " channel " + id + " is not a text channel in " + guild.getName());
 			} else if (!text.canTalk()) {
@@ -262,7 +284,13 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	}
 
 	private void send(JDA connection, Outbound.Send send) {
-		TextChannel channel = connection.getTextChannelById(settings.channelId(send.channel()));
+		String id = settings.channelId(send.channel());
+		if (!SNOWFLAKE.matcher(id).matches()) {
+			// Still "create": the channel was not made, and the status already says why.
+			skipped.incrementAndGet();
+			return;
+		}
+		TextChannel channel = connection.getTextChannelById(id);
 		if (channel == null) {
 			failed.incrementAndGet();
 			return;

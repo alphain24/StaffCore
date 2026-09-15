@@ -455,9 +455,11 @@ ways. Punishing and looking players up with slash commands is not built yet.
 and inviting the bot, filling in the settings, linking accounts, appeals and troubleshooting. In short:
 
 1. Create an application and a bot in the Discord developer portal, and invite the bot to your
-   server. It needs no privileged intents unless you bridge staff chat, which needs **Message
-   Content Intent** switched on for the bot. In each channel you give it, it needs to view the
-   channel, send messages, embed links, create public threads and send messages in threads.
+   server with the link in the guide. It needs no privileged intents unless you bridge staff chat,
+   which needs **Message Content Intent** switched on for the bot. It needs to view, send messages,
+   embed links, read message history, create public threads and send messages in threads — and
+   Manage Channels and Manage Roles to make its own private channels, which can be taken away again
+   once it has.
 2. Put both jars in `mods/` and start the server once. It writes `config/staffcore-discord.json`
    and an empty `config/staffcore-discord.token` (readable only by the server's account, on Linux).
 3. Paste the bot token, and nothing else, into the token file; fill in the settings; restart.
@@ -475,16 +477,23 @@ companion is doing instead.
 | `guildId` | empty | The Discord server the bot works in. It answers only there and reads roles only from there. The bot stays off until this is a real server id. |
 | `roleNodes` | empty | Role id → the StaffCore permissions that role may use from Discord, each named. Wildcards and unknown permissions are refused and logged. An unmapped role allows nothing. |
 | `requestTimeoutSeconds` | `10` | How long a Discord user waits for the server before being told it timed out (2–60). The request still completes if the server gets to it later. |
-| `punishmentsChannelId` | empty | Where punishments are posted. Empty posts none. |
-| `reportsChannelId` | empty | Where reports are posted, with a thread and buttons. Empty posts none, and reports reach Discord only as alerts. |
-| `alertsChannelId` | empty | Where detector signals are posted and where cases get their threads. Empty posts none, and only cases a report opened get a thread. |
-| `appealsChannelId` | empty | Where appeals are posted for staff, each with a thread and buttons. Setting it offers `/appeal` to players and has the bot read direct messages sent to it, which is where players answer questions and hear verdicts. Empty takes no appeals from Discord. |
-| `appealIntakeChannelId` | empty | The one channel `/appeal` is answered in, so appeals can be made somewhere players see while `appealsChannelId` stays staff-only. Empty answers `/appeal` anywhere in the server. |
-| `staffLogChannelId` | empty | Where every audited staff action is posted — one post per command on a busy server. Empty posts none. |
-| `staffChatChannelId` | empty | A channel bridged with staff chat both ways. Setting it makes the bot ask for Message Content Intent; without that switched on in the portal it cannot log in. Empty bridges nothing. |
+| `punishmentsChannelId` | `create` | Where punishments are posted. Empty posts none. |
+| `reportsChannelId` | `create` | Where reports are posted, with a thread and buttons. Empty posts none, and reports reach Discord only as alerts. |
+| `alertsChannelId` | `create` | Where detector signals are posted and where cases get their threads. Empty posts none, and only cases a report opened get a thread. |
+| `appealsChannelId` | `create` | Where appeals are posted for staff, each with a thread and buttons. Setting it offers `/appeal` to players and has the bot read direct messages sent to it, which is where players answer questions and hear verdicts. Empty takes no appeals from Discord. |
+| `appealIntakeChannelId` | empty | The one channel `/appeal` is answered in, so appeals can be made somewhere players see while `appealsChannelId` stays staff-only. Empty answers `/appeal` anywhere in the server. Never `create`: it is for players, so you make it. |
+| `staffLogChannelId` | `create` | Where every audited staff action is posted — one post per command on a busy server. Empty posts none. |
+| `staffChatChannelId` | empty | A channel bridged with staff chat both ways. Setting it makes the bot ask for Message Content Intent; without that switched on in the portal it cannot log in, which is why it is not `create` to begin with. Empty bridges nothing. |
 | `discordAlertSeverity` | `70` | The lowest signal confidence (0–100) posted to the alerts channel on its own. A signal that opens a case is always posted, because the case needs its thread. |
 | `serverName` | empty | Shown on report posts, for a network sharing one Discord. Empty shows nothing. |
 | `playerHeadUrl` | `https://mc-heads.net/avatar/{uuid}/64` | The head picture on posts about a player. Discord fetches it, so that service sees player ids and nothing else. Empty shows no heads. |
+
+Each channel setting is a channel id, `"create"`, or empty. **`"create"` has the bot make the
+channel when it connects**: under a **StaffCore** category, private — hidden from `@everyone`, open
+to the bot and to the staff roles in `roleNodes`, and to administrators as Discord always is — and
+its id is written back into the file in place of `"create"`, so it is made once. Threads in those
+channels are as private as the channels. The bot never changes a channel's permissions after making
+it, and making channels needs Manage Channels and Manage Roles, which can be removed afterwards.
 
 Setting any of the first five channels makes StaffCore's own `discordWebhookUrl` stop posting once
 the bot has connected, so nothing arrives twice. A bot that never connects leaves the webhook

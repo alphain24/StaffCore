@@ -75,23 +75,28 @@ public final class DiscordSettings {
 
 	// ---- channels ------------------------------------------------------------
 	//
-	// Each is a channel id in guildId, and each is optional: empty means that kind of post is not
-	// made. Set any of the first five and StaffCore's own discordWebhookUrl stops posting once the
+	// Each is one of three things. A channel id in guildId posts there. "create" has the bot make the
+	// channel when it connects - private, under a StaffCore category, seen only by the bot and the staff
+	// roles in roleNodes - and write its id back here in place of "create". Empty means that kind of post
+	// is not made. Set any of the first five and StaffCore's own discordWebhookUrl stops posting once the
 	// bot connects, so nothing arrives twice. The bot needs to see, send messages, embed links and
-	// create public threads in each.
+	// create public threads in each; to make channels it also needs Manage Channels and Manage Roles.
+
+	/** The value that asks for a channel to be made. */
+	public static final String CREATE = "create";
 
 	/**
 	 * Where punishments are posted: reason, staff, the player with their prior count, duration,
 	 * expiry, case and punishment id. A reversal edits the post. Empty posts none.
 	 */
-	public String punishmentsChannelId = "";
+	public volatile String punishmentsChannelId = CREATE;
 
 	/**
 	 * Where reports are posted, each with a thread and buttons to claim, resolve, escalate, look at
 	 * the player's profile and history, add a note and freeze them. Claiming and resolving edit the
 	 * post. Empty posts none, and reports then reach Discord only as alerts.
 	 */
-	public String reportsChannelId = "";
+	public volatile String reportsChannelId = CREATE;
 
 	/**
 	 * Where detector signals are posted, and where every case gets its thread. A signal is posted
@@ -99,7 +104,7 @@ public final class DiscordSettings {
 	 * case that already has a thread are added to the thread instead. Empty posts none, and cases
 	 * get no threads unless a report opened them.
 	 */
-	public String alertsChannelId = "";
+	public volatile String alertsChannelId = CREATE;
 
 	/**
 	 * Where appeals are posted for staff, each with a thread and buttons to accept, reject, ask the
@@ -107,29 +112,32 @@ public final class DiscordSettings {
 	 * for players, and the bot then reads its direct messages, which is where a player answers a
 	 * question about their appeal and hears the verdict. Empty takes no appeals from Discord.
 	 */
-	public String appealsChannelId = "";
+	public volatile String appealsChannelId = CREATE;
 
 	/**
 	 * The one channel {@code /appeal} is answered in, for a server that wants appeals made somewhere
 	 * players can see. Appeals are still posted to {@link #appealsChannelId}, which can stay private
-	 * to staff. Empty answers {@code /appeal} in any channel of the guild.
+	 * to staff. Empty answers {@code /appeal} in any channel of the guild, and the player's reply is
+	 * private to them wherever they use it. Never {@code "create"}: a channel for players is not one to
+	 * make private, so it is one an owner makes themselves.
 	 */
-	public String appealIntakeChannelId = "";
+	public volatile String appealIntakeChannelId = "";
 
 	/**
 	 * Where every audited staff action is posted: who, what, the player it names, when, and its
 	 * case. This is one post per command on a busy server. Empty posts none.
 	 */
-	public String staffLogChannelId = "";
+	public volatile String staffLogChannelId = CREATE;
 
 	/**
 	 * A channel bridged with staff chat in game, both ways. Lines from Discord are marked
 	 * {@code [Discord]} in game and only linked staff holding {@code staff.chat} are bridged.
 	 * Setting it makes the bot ask Discord for message content, which is a privileged intent: turn on
 	 * Message Content Intent for the bot in the developer portal first, or it cannot log in. Empty
-	 * bridges nothing and asks for no intents.
+	 * bridges nothing and asks for no intents — which is why, unlike the others, it is empty rather than
+	 * {@code "create"} to begin with.
 	 */
-	public String staffChatChannelId = "";
+	public volatile String staffChatChannelId = "";
 
 	/**
 	 * The lowest signal confidence, 0 to 100, posted to the alerts channel on its own.
@@ -164,6 +172,71 @@ public final class DiscordSettings {
 			case STAFF_CHAT -> staffChatChannelId;
 		};
 		return id == null ? "" : id;
+	}
+
+	/** Whether this channel is waiting for the bot to make it. */
+	public boolean toCreate(io.github.alphain24.staffcore.discord.channels.Outbound.Channel channel) {
+		return CREATE.equals(channelId(channel));
+	}
+
+	/** The settings key for a channel, as it is written in the file. */
+	public static String key(io.github.alphain24.staffcore.discord.channels.Outbound.Channel channel) {
+		return switch (channel) {
+			case PUNISHMENTS -> "punishmentsChannelId";
+			case REPORTS -> "reportsChannelId";
+			case ALERTS -> "alertsChannelId";
+			case APPEALS -> "appealsChannelId";
+			case STAFF_LOG -> "staffLogChannelId";
+			case STAFF_CHAT -> "staffChatChannelId";
+		};
+	}
+
+	/** Where these settings were read from, for writing a made channel's id back. Not a setting. */
+	transient Path source;
+
+	/**
+	 * Puts the ids of channels the bot made in place of {@code "create"}, here and in the file.
+	 * <p>
+	 * The file is changed key by key rather than rewritten from these settings. These have been through
+	 * {@link #validate}, which drops a wildcard or a mistyped role; writing them back would quietly delete
+	 * the owner's mistakes along with the evidence of them, and the next start's warning with it.
+	 *
+	 * @return why the file could not be changed, or null when it was
+	 */
+	public String recordCreated(Map<io.github.alphain24.staffcore.discord.channels.Outbound.Channel, String> ids) {
+		if (ids.isEmpty()) return null;
+		ids.forEach((channel, id) -> {
+			switch (channel) {
+				case PUNISHMENTS -> punishmentsChannelId = id;
+				case REPORTS -> reportsChannelId = id;
+				case ALERTS -> alertsChannelId = id;
+				case APPEALS -> appealsChannelId = id;
+				case STAFF_LOG -> staffLogChannelId = id;
+				case STAFF_CHAT -> staffChatChannelId = id;
+			}
+		});
+		if (source == null) return null;
+		try {
+			com.google.gson.JsonObject root = Files.isRegularFile(source)
+					? com.google.gson.JsonParser.parseString(Files.readString(source, StandardCharsets.UTF_8)).getAsJsonObject()
+					: new com.google.gson.JsonObject();
+			ids.forEach((channel, id) -> root.addProperty(key(channel), id));
+			Path temp = source.resolveSibling(source.getFileName() + ".tmp");
+			try (Writer writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8)) {
+				GSON.toJson(root, writer);
+			}
+			try {
+				Files.move(temp, source, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+						java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+			} catch (IOException atomicUnsupported) {
+				Files.move(temp, source, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			}
+			return null;
+		} catch (IOException | RuntimeException e) {
+			return FILE_NAME + " could not be updated with the new channel ids (" + e.getClass().getSimpleName()
+					+ "). They are used until the server stops; put them in the file by hand, or the channels are "
+					+ "found by name again at the next start.";
+		}
 	}
 
 	/** Whether any channel StaffCore's webhook would otherwise post to is set. */
@@ -213,6 +286,7 @@ public final class DiscordSettings {
 		}
 
 		problems.addAll(settings.validate(knownNodes));
+		settings.source = file;
 		return new Loaded(settings, problems);
 	}
 
@@ -270,13 +344,13 @@ public final class DiscordSettings {
 		}
 		roleNodes = kept;
 
-		punishmentsChannelId = channel("punishmentsChannelId", punishmentsChannelId, problems);
-		reportsChannelId = channel("reportsChannelId", reportsChannelId, problems);
-		alertsChannelId = channel("alertsChannelId", alertsChannelId, problems);
-		appealsChannelId = channel("appealsChannelId", appealsChannelId, problems);
-		staffLogChannelId = channel("staffLogChannelId", staffLogChannelId, problems);
-		staffChatChannelId = channel("staffChatChannelId", staffChatChannelId, problems);
-		appealIntakeChannelId = channel("appealIntakeChannelId", appealIntakeChannelId, problems);
+		punishmentsChannelId = channel("punishmentsChannelId", punishmentsChannelId, true, problems);
+		reportsChannelId = channel("reportsChannelId", reportsChannelId, true, problems);
+		alertsChannelId = channel("alertsChannelId", alertsChannelId, true, problems);
+		appealsChannelId = channel("appealsChannelId", appealsChannelId, true, problems);
+		staffLogChannelId = channel("staffLogChannelId", staffLogChannelId, true, problems);
+		staffChatChannelId = channel("staffChatChannelId", staffChatChannelId, true, problems);
+		appealIntakeChannelId = channel("appealIntakeChannelId", appealIntakeChannelId, false, problems);
 		if (!appealIntakeChannelId.isEmpty() && appealsChannelId.isEmpty()) {
 			problems.add("appealIntakeChannelId is set but appealsChannelId is not, so there is nowhere to post "
 					+ "appeals and /appeal is not offered. Set appealsChannelId too.");
@@ -312,10 +386,19 @@ public final class DiscordSettings {
 		return problems;
 	}
 
-	/** A channel id, or empty. Anything else is reported and treated as empty, so nothing is posted. */
-	private static String channel(String key, String value, List<String> problems) {
+	/**
+	 * A channel id, {@code "create"} where the bot may make it, or empty. Anything else is reported and
+	 * treated as empty, so nothing is posted.
+	 */
+	private static String channel(String key, String value, boolean creatable, List<String> problems) {
 		String id = value == null ? "" : value.strip();
 		if (id.isEmpty() || SNOWFLAKE.matcher(id).matches()) return id;
+		if (CREATE.equalsIgnoreCase(id)) {
+			if (creatable) return CREATE;
+			problems.add(key + " cannot be \"create\": the bot only makes private channels, and this one is for "
+					+ "players. Make it yourself and put its id here, or leave it empty. Leaving it empty.");
+			return "";
+		}
 		problems.add(key + " is \"" + id + "\", which is not a channel id. Posting nothing there. Copy the "
 				+ "id with Developer Mode on: right-click the channel, Copy Channel ID.");
 		return "";

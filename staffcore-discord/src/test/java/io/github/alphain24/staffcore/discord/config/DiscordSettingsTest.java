@@ -103,7 +103,9 @@ class DiscordSettingsTest {
 		assertTrue(loaded.problems().stream().anyMatch(p -> p.startsWith("reportsChannelId")));
 		assertTrue(loaded.settings().postsToChannels());
 
-		var chatOnly = load("{\"staffChatChannelId\": \"345678901234567890\"}");
+		var chatOnly = load("{\"staffChatChannelId\": \"345678901234567890\", \"punishmentsChannelId\": \"\", "
+				+ "\"reportsChannelId\": \"\", \"alertsChannelId\": \"\", \"appealsChannelId\": \"\", "
+				+ "\"staffLogChannelId\": \"\"}");
 		assertFalse(chatOnly.settings().postsToChannels(),
 				"a staff chat bridge alone must not silence the webhook, which posts other things");
 	}
@@ -111,10 +113,63 @@ class DiscordSettingsTest {
 	@Test
 	@DisplayName("an appeal intake channel without an appeals channel is reported, since nothing would be taken")
 	void intakeNeedsAppeals() throws IOException {
-		var loaded = load("{\"appealIntakeChannelId\": \"345678901234567890\"}");
+		var loaded = load("{\"appealIntakeChannelId\": \"345678901234567890\", \"appealsChannelId\": \"\"}");
 		assertTrue(loaded.problems().stream().anyMatch(p -> p.startsWith("appealIntakeChannelId")), loaded.problems().toString());
 		assertTrue(load("{\"appealIntakeChannelId\": \"345678901234567890\", \"appealsChannelId\": \"345678901234567891\"}")
 				.problems().isEmpty());
+	}
+
+	@Test
+	@DisplayName("a new file asks for the five posting channels to be made, and leaves staff chat and intake alone")
+	void channelsAreCreatedByDefault() {
+		var loaded = DiscordSettings.load(dir.resolve(DiscordSettings.FILE_NAME), KNOWN);
+		DiscordSettings s = loaded.settings();
+		for (var channel : List.of(io.github.alphain24.staffcore.discord.channels.Outbound.Channel.PUNISHMENTS,
+				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.REPORTS,
+				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.ALERTS,
+				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.APPEALS,
+				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.STAFF_LOG)) {
+			assertTrue(s.toCreate(channel), channel + " is not made by default");
+		}
+		// Staff chat needs a privileged intent switched on in Discord first; making its channel by default
+		// would stop the bot logging in on every server that had not.
+		assertEquals("", s.staffChatChannelId);
+		assertEquals("", s.appealIntakeChannelId);
+	}
+
+	@Test
+	@DisplayName("\"create\" is accepted in any case, except for the players' intake channel")
+	void createValue() throws IOException {
+		var loaded = load("{\"reportsChannelId\": \"Create\", \"appealIntakeChannelId\": \"create\"}");
+		assertEquals(DiscordSettings.CREATE, loaded.settings().reportsChannelId);
+		assertEquals("", loaded.settings().appealIntakeChannelId);
+		assertTrue(loaded.problems().stream().anyMatch(p -> p.startsWith("appealIntakeChannelId cannot be")),
+				loaded.problems().toString());
+	}
+
+	@Test
+	@DisplayName("made channels are written into the file in place of \"create\", and nothing else is rewritten")
+	void createdIdsAreWrittenBack() throws IOException {
+		String original = "{\"enabled\": true, \"guildId\": \"" + GUILD + "\", \"reportsChannelId\": \"create\", "
+				+ "\"alertsChannelId\": \"create\", \"roleNodes\": {\"" + ROLE + "\": [\"staff.*\"]}, \"somethingElse\": 5}";
+		var loaded = load(original);
+		assertTrue(loaded.settings().roleNodes.get(ROLE).isEmpty(), "the wildcard should have been dropped in memory");
+
+		String problem = loaded.settings().recordCreated(java.util.Map.of(
+				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.REPORTS, "456789012345678901"));
+		assertEquals(null, problem);
+		assertEquals("456789012345678901", loaded.settings().reportsChannelId);
+
+		String written = Files.readString(dir.resolve(DiscordSettings.FILE_NAME));
+		var json = com.google.gson.JsonParser.parseString(written).getAsJsonObject();
+		assertEquals("456789012345678901", json.get("reportsChannelId").getAsString());
+		assertEquals("create", json.get("alertsChannelId").getAsString(), "a channel not made yet was changed");
+		assertEquals("staff.*", json.getAsJsonObject("roleNodes").getAsJsonArray(ROLE).get(0).getAsString(),
+				"writing the ids back deleted the owner's mistake, and the warning about it with it");
+		assertEquals(5, json.get("somethingElse").getAsInt(), "a key this build does not know was removed");
+
+		var reloaded = DiscordSettings.load(dir.resolve(DiscordSettings.FILE_NAME), KNOWN);
+		assertEquals("456789012345678901", reloaded.settings().reportsChannelId);
 	}
 
 	@Test

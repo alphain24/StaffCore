@@ -10,7 +10,7 @@ wrong. For what every setting does in detail, see the
 [2. Start the server once](#2-start-the-server-once) ·
 [3. Make the bot](#3-make-the-bot-in-discord) ·
 [4. Invite it](#4-invite-the-bot-to-your-server) ·
-[5. Copy the ids](#5-copy-the-ids-you-need) ·
+[5. Copy the ids](#5-copy-the-two-kinds-of-id-you-need) ·
 [6. Fill in the settings](#6-fill-in-configstaffcore-discordjson) ·
 [7. Restart and check](#7-restart-and-check-it-connected) ·
 [8. Link staff accounts](#8-link-your-staff-accounts) ·
@@ -25,7 +25,7 @@ wrong. For what every setting does in detail, see the
   **Fabric API**.
 - **Both jars from the same build**: `staffcore-1.1.0.jar` and `staffcore-discord-1.0.0.jar`. The
   bot will not start with a StaffCore from a different build.
-- A Discord server where you can manage the server (to invite a bot and set channel permissions).
+- A Discord server where you can manage the server (to invite a bot and give it permissions).
 - A host that lets the Minecraft server connect out to Discord. Nearly all do; nothing has to be
   opened for incoming connections.
 
@@ -120,50 +120,44 @@ Open this link in a browser, with your Application ID in place of `APPLICATION_I
 server:
 
 ```
-https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=309237730304
+https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=309506165776
 ```
 
 That asks for exactly these permissions and nothing more:
 
 | Permission | Why |
 |---|---|
-| View Channels | To find the channels you give it |
+| View Channels | To find its channels |
 | Send Messages | To post |
 | Embed Links | Posts are embeds |
 | Read Message History | To find a thread again once Discord has archived it |
 | Create Public Threads | Every report, appeal and case gets a thread |
 | Send Messages in Threads | To say what happened in each thread |
+| Manage Channels | To make its private channels |
+| Manage Roles | To make those channels private — hidden from everyone except staff |
 
-It needs no administrator or moderation permissions, and should not be given any.
+It needs no administrator permission, and should not be given it.
 
-If your staff channels are private, the bot cannot see them until you let it in: open each
-channel's **Edit Channel → Permissions**, add the bot (or its role), and allow the six permissions
-above.
+**Manage Channels and Manage Roles are only for making the channels.** Once the bot has made them
+(step 7), you can take those two away in *Server Settings → Roles → the bot's role*. The bot keeps
+its access to its own channels, because that access is set on each channel, not on its role. Give
+them back if you ever set another channel to `"create"`.
 
 ---
 
-## 5. Copy the ids you need
+## 5. Copy the two kinds of id you need
 
 Discord ids are long numbers. To copy them, turn on **Developer Mode** first:
 *User Settings → Advanced → Developer Mode*.
 
 | You need | How to copy it |
 |---|---|
-| Server id (`guildId`) | Right-click the server icon → **Copy Server ID** |
-| Channel ids | Right-click the channel → **Copy Channel ID** |
-| Role ids (`roleNodes`) | *Server Settings → Roles*, right-click the role → **Copy Role ID** |
+| Your server's id (`guildId`) | Right-click the server icon → **Copy Server ID** |
+| Each staff role's id (`roleNodes`) | *Server Settings → Roles*, right-click the role → **Copy Role ID** |
 
-A set of channels that works well — make whichever you want, every one is optional:
-
-| Channel | Who should see it |
-|---|---|
-| `#punishments` | Staff (or everyone, if you post punishments publicly) |
-| `#reports` | Staff |
-| `#alerts` | Staff |
-| `#appeals` | Staff |
-| `#appeal-here` | Everyone — where players run `/appeal` (optional) |
-| `#staff-log` | Senior staff |
-| `#staff-chat` | Staff |
+You do not need channel ids: **the bot makes its channels for you** (step 6). If you would rather
+use channels you have already made, right-click each one → **Copy Channel ID** and use those ids
+instead of `"create"`.
 
 ---
 
@@ -180,13 +174,13 @@ Open the file the server wrote and fill it in. A complete example — your ids w
     "333333333333333333": ["staff.history", "report.view", "staff.gui", "staff.notes", "staff.freeze", "staff.chat", "staff.appeals"]
   },
   "requestTimeoutSeconds": 10,
-  "punishmentsChannelId": "444444444444444401",
-  "reportsChannelId": "444444444444444402",
-  "alertsChannelId": "444444444444444403",
-  "appealsChannelId": "444444444444444404",
-  "appealIntakeChannelId": "444444444444444405",
-  "staffLogChannelId": "444444444444444406",
-  "staffChatChannelId": "444444444444444407",
+  "punishmentsChannelId": "create",
+  "reportsChannelId": "create",
+  "alertsChannelId": "create",
+  "appealsChannelId": "create",
+  "appealIntakeChannelId": "",
+  "staffLogChannelId": "create",
+  "staffChatChannelId": "",
   "discordAlertSeverity": 70,
   "serverName": "",
   "playerHeadUrl": "https://mc-heads.net/avatar/{uuid}/64"
@@ -195,9 +189,55 @@ Open the file the server wrote and fill it in. A complete example — your ids w
 
 - **`enabled`** — `true` to start the bot.
 - **`guildId`** — your server id.
-- **Channel ids** — leave any you do not want as `""`. That kind of post is simply not made.
-- **`roleNodes`** — which StaffCore permissions each Discord role may use from Discord, by role id.
-  The example has a *Helper* role and a *Moderator* role.
+- **`roleNodes`** — your staff roles, by role id, and which StaffCore permissions each may use from
+  Discord. The example has a *Helper* role and a *Moderator* role. These roles are also the ones
+  that can see the channels the bot makes.
+- **Channels** — each is one of three things:
+
+  | Value | What happens |
+  |---|---|
+  | `"create"` | The bot makes the channel when it connects, and writes its id back into this file in place of `"create"` |
+  | a channel id | The bot posts in that existing channel |
+  | `""` | That kind of post is not made at all |
+
+### The channels the bot makes
+
+When the bot connects, it makes a **StaffCore** category and puts every channel set to `"create"`
+inside it:
+
+| Channel | Setting | What goes there |
+|---|---|---|
+| `#punishments` | `punishmentsChannelId` | Every ban, mute, warning and kick |
+| `#reports` | `reportsChannelId` | Player reports, with buttons |
+| `#alerts` | `alertsChannelId` | Detector alerts, and a thread per case |
+| `#appeals` | `appealsChannelId` | Appeals, with buttons |
+| `#staff-log` | `staffLogChannelId` | Every staff command — busy |
+| `#staff-chat` | `staffChatChannelId` | Staff chat, both ways |
+
+**All of them are private.** Nobody can see the category or its channels except:
+
+- the bot,
+- the staff roles listed in `roleNodes` — they can read everything, reply in threads, and type in
+  `#staff-chat`,
+- anybody with Administrator, as always in Discord.
+
+Threads are as private as their channel, so every report, appeal and case thread is private too.
+
+After that first connection the settings file holds the new channel ids instead of `"create"`, so
+restarting never makes them again. You can rename or move the channels, and change their
+permissions — the bot goes by id and never touches permissions again. To let another role see them,
+add it to the category's permissions in Discord.
+
+A new settings file sets the first five to `"create"`. Two are left empty on purpose:
+
+- **`staffChatChannelId`** — bridging staff chat needs **Message Content Intent** turned on
+  (step 3). Turn it on first, then set this to `"create"`.
+- **`appealIntakeChannelId`** — this one is for players, so it cannot be private and the bot does
+  not make it. Leave it empty and players can use `/appeal` in any channel; see
+  [step 9](#9-set-up-appeals).
+
+> **Your file was written by an earlier build?** Its channel settings will be `""`. Change the ones
+> you want to `"create"`.
 
 ### How the role mapping works
 
@@ -227,7 +267,16 @@ it cannot be read, the bot stays off and the log says so — the file is not rep
 
 ## 7. Restart and check it connected
 
-Restart the Minecraft server. Then, in game, run:
+Restart the Minecraft server. In `logs/latest.log` you should see the channels being made:
+
+```
+[StaffCore Discord] connected as StaffCore in Your Server
+[StaffCore Discord] Made private channel #punishments in StaffCore.
+[StaffCore Discord] Made private channel #reports in StaffCore.
+…
+```
+
+Then, in game, run:
 
 ```
 /staff status
@@ -239,9 +288,11 @@ You want a line like:
 Discord: connected as StaffCore in Your Server
 ```
 
-In Discord, type `/` in your server and you should see the bot's commands: `/link`, `/unlink`,
-`/whoami`, and `/appeal` if you set an appeals channel. If they do not show up, press `Ctrl+R` in
-Discord to reload it.
+with no other `Discord:` lines under it. In Discord you should see the **StaffCore** category with
+its channels, and typing `/` shows the bot's commands: `/link`, `/unlink`, `/whoami`, and `/appeal`.
+If the commands do not show up, press `Ctrl+R` in Discord to reload it.
+
+Open `config/staffcore-discord.json` again: the `"create"` values are now channel ids.
 
 If the status says anything else, see [Troubleshooting](#troubleshooting).
 
@@ -249,8 +300,8 @@ If the status says anything else, see [Troubleshooting](#troubleshooting).
 
 ## 8. Link your staff accounts
 
-Every staff member links their own Discord account once. Nothing but reading the channels works
-until they do.
+Every staff member links their own Discord account once. Until they do, they can read the channels
+their role lets them see, and nothing else.
 
 1. In game: `/staff discord link`. You get a code like `ABCD-EFGH`. It lasts 10 minutes and works
    once.
@@ -270,10 +321,10 @@ With `appealsChannelId` set, banned and muted players can appeal from Discord.
 1. In `config/staffcore.json`, set `discordInvite` to an invite link for your Discord, so the ban
    screen tells players where to go. With the bot taking appeals, the ban screen tells them to type
    `/appeal` with the appeal code shown underneath.
-2. Make `#appeals` **staff-only**. Appeals and staff discussion go there.
-3. Optionally make a public channel such as `#appeal-here` and put its id in
-   `appealIntakeChannelId`. `/appeal` then only works there. Players need **View Channel** and
-   **Use Application Commands** in it — both are on for `@everyone` by default.
+2. `#appeals` is private to staff. Appeals and staff discussion go there, and players never see it.
+3. Players type `/appeal` in **any channel they can see** — `#general` is fine. The form and the
+   bot's answers are visible only to them. If you want appeals made in one particular channel, make
+   a public channel yourself (for example `#appeal-here`) and put its id in `appealIntakeChannelId`.
 4. Tell players to allow **direct messages from server members** (*Server name → Privacy Settings*).
    Questions from staff and the verdict reach them by direct message, and they answer by replying
    to the bot. If their direct messages are off, the appeal's thread tells staff they did not hear.
@@ -282,12 +333,12 @@ With `appealsChannelId` set, banned and muted players can appeal from Discord.
 
 ## Updating
 
-Replace **both** jars together, from the same build, then restart. Your settings, token and links are
-kept. If only one is replaced, the log says
+Replace **both** jars together, from the same build, then restart. Your settings, token, channels
+and links are kept. If only one is replaced, the log says
 `This companion was built for StaffCore API version …` and the bot does not start.
 
-To switch the bot off without removing it, set `"enabled": false` and restart. Links are kept for
-when you switch it back on.
+To switch the bot off without removing it, set `"enabled": false` and restart. Links and channels
+are kept for when you switch it back on.
 
 ---
 
@@ -306,14 +357,24 @@ Everything the bot has to say is in `/staff status` (lines starting `Discord:`) 
 | `could not log in: Discord refused the token` or `could not start (InvalidTokenException)` | The token was reset or copied wrong. Reset it again and paste the new one. |
 | `stopped: staffChatChannelId needs Message Content Intent…` | Turn on **Message Content Intent** on the Bot page, or empty `staffChatChannelId`. Restart. |
 | `connected as …, but not in the guild named by guildId` | The bot is not in that server, or `guildId` is wrong. Invite it (step 4) or copy the id again. |
+| `channels set to "create" were not made: the bot needs Manage Channels and Manage Roles…` | Invite the bot again with the link in [step 4](#4-invite-the-bot-to-your-server) — it updates the permissions — and restart. |
+| `the … channel has not been made yet, so nothing is posted there` | Look at the line above it for why. Channels still set to `"create"` are tried again at every start. |
+| `making the private channels stopped part way (…)` | The bracket names what Discord refused, such as `MISSING_PERMISSIONS` or `InsufficientPermissionException`: the bot is missing one of the permissions from [step 4](#4-invite-the-bot-to-your-server). Give it back and restart; channels already made are used, not made twice. |
+| `role … in roleNodes is not in …` | That role id is wrong or the role was deleted. It was left out of the channels' permissions. |
 | `… channel … is not a text channel in …` | That id is wrong, is a category, voice or forum channel, or is a private channel the bot cannot see. |
 | `the bot cannot send messages in the … channel` | Give the bot the permissions from step 4 in that channel. |
 | `appeal intake channel … is not a text channel…` | Fix `appealIntakeChannelId`, or empty it. |
 | `posts Discord refused: …` | The log line `A post was not made (…)` names the reason — usually `MISSING_PERMISSIONS` in one channel. |
-| `posts not made because the bot was not connected: …` | Something happened while the bot was offline or still connecting. Those posts are not sent later. |
+| `posts not made because the bot was not connected: …` | Something happened while the bot was offline, still connecting, or before its channels existed. Those posts are not sent later. |
 | `direct messages players did not receive: …` | Those players have direct messages off. Each appeal's thread says which. |
 | `warning: the token file is readable by every user on this machine` | Restrict the file — see [step 3](#3-make-the-bot-in-discord). |
 | `disabled: built for a different StaffCore API version` | The two jars are from different builds. Replace both — see [Updating](#updating). |
+
+**Staff can't see the channels.** Only roles listed in `roleNodes` were given access when the channels
+were made. In Discord, add the role to the **StaffCore** category (*Edit Category → Permissions*)
+with *View Channel*, *Read Message History* and *Send Messages in Threads*. The channels made with it
+are synced to the category and follow; `#staff-chat` has its own permissions, so add the role there
+too, with *Send Messages* as well.
 
 **`/link` says the code is not valid.** Codes last 10 minutes and work once. Run
 `/staff discord link` again for a new one.

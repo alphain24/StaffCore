@@ -2490,7 +2490,7 @@
         </p>
         <h3>Setting it up</h3>
         <ol>
-          <li>Create a bot in the Discord developer portal and invite it to your server. It needs no privileged intents unless you bridge staff chat, which needs Message Content Intent. In each channel it needs to view, send messages, embed links, create public threads and send messages in threads.</li>
+          <li>Create a bot in the Discord developer portal and invite it to your server with the link in the installation guide. It needs no privileged intents unless you bridge staff chat, which needs Message Content Intent. It needs to view, send messages, embed links, read message history, create public threads and send messages in threads, plus Manage Channels and Manage Roles to make its own private channels — those two can be removed once it has.</li>
           <li>Put both jars in <code>mods/</code> and start the server once. It writes <code>config/staffcore-discord.json</code> and an empty <code>config/staffcore-discord.token</code> (readable only by the server's account, on Linux).</li>
           <li>Paste the token, and nothing else, into the token file, fill in the settings, and restart. <code>/staff status</code> shows whether the bot is off, connecting, connected, or what stopped it.</li>
         </ol>
@@ -2512,20 +2512,25 @@
         </div>
         <h3>Channels</h3>
         <p>
-          Each channel is optional; an empty id posts nothing. Setting any of punishments, reports,
-          alerts, appeals or staff log makes the webhook above stop posting once the bot has connected.
+          Each channel setting is a channel id, <code>"create"</code>, or empty, which posts nothing.
+          <strong><code>"create"</code> has the bot make the channel when it connects</strong>, under a
+          <strong>StaffCore</strong> category: private, hidden from <code>@everyone</code> and open to the bot
+          and the staff roles in <code>roleNodes</code>. Its id is written back into the file, so it is made
+          once, and its permissions are never touched again. Threads are as private as their channel. Setting
+          any of punishments, reports, alerts, appeals or staff log makes the webhook above stop posting once
+          the bot has connected.
         </p>
         <div class="scroller">
           <table>
             <thead><tr><th>Key</th><th>Default</th><th class="wrap">What changing it does</th></tr></thead>
             <tbody>
-              <tr><td class="mono">punishmentsChannelId</td><td class="mono">empty</td><td class="wrap">Reason, staff, the player and their prior count, duration, expiry, case and id. A reversal edits the post.</td></tr>
-              <tr><td class="mono">reportsChannelId</td><td class="mono">empty</td><td class="wrap">Each report with a thread and Claim, Resolve, Escalate, Profile, History, Add Note and Freeze buttons. Claims and resolutions edit the post and are said in the thread. Empty: reports reach Discord only as alerts.</td></tr>
-              <tr><td class="mono">alertsChannelId</td><td class="mono">empty</td><td class="wrap">Detector signals, and a thread for every case. Notes, assignments, punishments and closing go into the case's thread.</td></tr>
-              <tr><td class="mono">appealsChannelId</td><td class="mono">empty</td><td class="wrap">Each appeal with the original punishment spelled out, a thread, and Accept, Reject, Request More Info, Close, Punishment, Profile, Evidence and Staff Note buttons. Setting it offers <code>/appeal</code> and has the bot read direct messages sent to it. Empty takes no appeals from Discord.</td></tr>
+              <tr><td class="mono">punishmentsChannelId</td><td class="mono">create</td><td class="wrap">Reason, staff, the player and their prior count, duration, expiry, case and id. A reversal edits the post.</td></tr>
+              <tr><td class="mono">reportsChannelId</td><td class="mono">create</td><td class="wrap">Each report with a thread and Claim, Resolve, Escalate, Profile, History, Add Note and Freeze buttons. Claims and resolutions edit the post and are said in the thread. Empty: reports reach Discord only as alerts.</td></tr>
+              <tr><td class="mono">alertsChannelId</td><td class="mono">create</td><td class="wrap">Detector signals, and a thread for every case. Notes, assignments, punishments and closing go into the case's thread.</td></tr>
+              <tr><td class="mono">appealsChannelId</td><td class="mono">create</td><td class="wrap">Each appeal with the original punishment spelled out, a thread, and Accept, Reject, Request More Info, Close, Punishment, Profile, Evidence and Staff Note buttons. Setting it offers <code>/appeal</code> and has the bot read direct messages sent to it. Empty takes no appeals from Discord.</td></tr>
               <tr><td class="mono">appealIntakeChannelId</td><td class="mono">empty</td><td class="wrap">The one channel <code>/appeal</code> is answered in, so appeals can be made where players see while the appeals channel stays staff-only. Empty answers it anywhere.</td></tr>
-              <tr><td class="mono">staffLogChannelId</td><td class="mono">empty</td><td class="wrap">Every audited staff action: who, the command, the player it names, when, the case. One post per command.</td></tr>
-              <tr><td class="mono">staffChatChannelId</td><td class="mono">empty</td><td class="wrap">Staff chat both ways; lines from Discord are marked <code>[Discord]</code> in game. Needs Message Content Intent switched on for the bot, or it cannot log in.</td></tr>
+              <tr><td class="mono">staffLogChannelId</td><td class="mono">create</td><td class="wrap">Every audited staff action: who, the command, the player it names, when, the case. One post per command.</td></tr>
+              <tr><td class="mono">staffChatChannelId</td><td class="mono">empty</td><td class="wrap">Staff chat both ways; lines from Discord are marked <code>[Discord]</code> in game. Needs Message Content Intent switched on for the bot, or it cannot log in — so it is not <code>create</code> to begin with.</td></tr>
               <tr><td class="mono">discordAlertSeverity</td><td class="mono">70</td><td class="wrap">The lowest signal confidence (0&ndash;100) posted to alerts on its own. A signal that opens a case is always posted.</td></tr>
               <tr><td class="mono">serverName</td><td class="mono">empty</td><td class="wrap">Shown on report posts, for a network sharing one Discord.</td></tr>
               <tr><td class="mono">playerHeadUrl</td><td class="mono">https://mc-heads.net/avatar/{uuid}/64</td><td class="wrap">The head picture on posts. Discord fetches it, so the service sees player ids only. Empty shows none.</td></tr>
