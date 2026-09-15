@@ -2,6 +2,8 @@ package io.github.alphain24.staffcore.discord;
 
 import io.github.alphain24.staffcore.api.DiscordAccess;
 import io.github.alphain24.staffcore.api.StaffCoreApi;
+import io.github.alphain24.staffcore.discord.channels.Router;
+import io.github.alphain24.staffcore.discord.channels.ThreadBook;
 import io.github.alphain24.staffcore.discord.config.BotToken;
 import io.github.alphain24.staffcore.discord.config.DiscordSettings;
 import io.github.alphain24.staffcore.discord.gateway.DiscordGateway;
@@ -26,12 +28,14 @@ final class DiscordBot {
 
 	/** Builds the connection once the configuration is known to be usable. */
 	interface GatewayFactory {
-		DiscordGateway create(BotToken token, DiscordSettings settings, RoleMap roles, ExecutorService worker);
+		DiscordGateway create(BotToken token, DiscordSettings settings, RoleMap roles, ExecutorService worker,
+				ThreadBook book);
 	}
 
 	static final GatewayFactory JDA = JdaGateway::new;
 
 	private final Path configDir;
+	private final Path dataDir;
 	private final Set<String> knownNodes;
 	private final GatewayFactory factory;
 
@@ -45,15 +49,22 @@ final class DiscordBot {
 	private volatile DiscordGateway gateway;
 	private volatile TokenShield shield;
 	private volatile boolean tokenExposed;
+	private volatile Router router;
 
-	DiscordBot(Path configDir, Set<String> knownNodes, GatewayFactory factory) {
+	/**
+	 * @param dataDir where the companion keeps what it remembers between restarts — beside the world,
+	 *                because which Discord message a report was posted as belongs to this world; null
+	 *                remembers nothing
+	 */
+	DiscordBot(Path configDir, Path dataDir, Set<String> knownNodes, GatewayFactory factory) {
 		this.configDir = configDir;
+		this.dataDir = dataDir;
 		this.knownNodes = knownNodes;
 		this.factory = factory;
 	}
 
-	DiscordBot(Path configDir) {
-		this(configDir, DiscordAccess.knownNodes(), JDA);
+	DiscordBot(Path configDir, Path dataDir) {
+		this(configDir, dataDir, DiscordAccess.knownNodes(), JDA);
 	}
 
 	/** Reads the configuration and, if it is complete, starts connecting on the worker. */
@@ -97,10 +108,17 @@ final class DiscordBot {
 		// /staff status.
 		StaffCoreApi.declareDiscordCompanion();
 
+		ThreadBook book = new ThreadBook(dataDir == null ? null : dataDir.resolve("threads.json"),
+				System::currentTimeMillis);
 		DiscordGateway connection = factory.create(token.token(), settings,
-				new RoleMap(settings.roleNodes), worker);
+				new RoleMap(settings.roleNodes), worker, book);
 		gateway = connection;
 		state = "starting";
+
+		// Listening from now; anything that happens before the bot has connected is counted and
+		// not posted, and says so in /staff status.
+		router = new Router(settings, book, connection::deliver);
+		StaffCoreApi.addListener(router);
 		worker.execute(() -> {
 			try {
 				connection.start();
@@ -116,6 +134,10 @@ final class DiscordBot {
 
 	/** Starts disconnecting; returns at once. */
 	void stop() {
+		Router listening = router;
+		router = null;
+		if (listening != null) StaffCoreApi.removeListener(listening);
+
 		DiscordGateway connection = gateway;
 		gateway = null;
 		if (connection != null) {
@@ -141,6 +163,7 @@ final class DiscordBot {
 		List<String> lines = new ArrayList<>();
 		DiscordGateway connection = gateway;
 		lines.add(connection != null && state.equals("starting") ? connection.state() : state);
+		if (connection != null) lines.addAll(connection.problems());
 		if (tokenExposed) lines.add("warning: the token file is readable by every user on this machine");
 		TokenShield current = shield;
 		if (current != null && current.withheld() > 0) {

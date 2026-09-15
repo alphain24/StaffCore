@@ -433,15 +433,18 @@ inside the server process, so there is nothing else to host. It is its own jar b
 Discord library and what it needs come to about 11 MB, and a server that does not want Discord
 should not carry them.
 
-**What it does today:** connects the bot, lets staff link their Discord account to their
-Minecraft account, and answers `/link`, `/unlink` and `/whoami` in your Discord server. Posting
-punishments and reports to channels, acting from Discord, the staff chat bridge and appeals
-are not built yet; until they are, StaffCore's own `discordWebhookUrl` keeps doing the posting.
+**What it does today:** lets staff link their Discord account to their Minecraft account; posts
+punishments, reports, alerts, appeals and the staff log to channels you choose, each report, appeal
+and case with a thread; puts buttons on reports to claim, resolve, escalate, look at the player, add
+a note and freeze them; and bridges staff chat both ways. Punishing and looking players up with
+slash commands, and filing and deciding appeals from Discord, are not built yet.
 
 ### Setting it up
 
 1. Create an application and a bot in the Discord developer portal, and invite the bot to your
-   server. It needs no privileged intents.
+   server. It needs no privileged intents unless you bridge staff chat, which needs **Message
+   Content Intent** switched on for the bot. In each channel you give it, it needs to view the
+   channel, send messages, embed links, create public threads and send messages in threads.
 2. Put the bot token, and nothing else, in `config/staffcore-discord.token`. On Linux, run
    `chmod 600 config/staffcore-discord.token`.
 3. Start the server once so `config/staffcore-discord.json` is written, fill it in, and restart.
@@ -459,6 +462,55 @@ companion is doing instead.
 | `guildId` | empty | The Discord server the bot works in. It answers only there and reads roles only from there. The bot stays off until this is a real server id. |
 | `roleNodes` | empty | Role id → the StaffCore permissions that role may use from Discord, each named. Wildcards and unknown permissions are refused and logged. An unmapped role allows nothing. |
 | `requestTimeoutSeconds` | `10` | How long a Discord user waits for the server before being told it timed out (2–60). The request still completes if the server gets to it later. |
+| `punishmentsChannelId` | empty | Where punishments are posted. Empty posts none. |
+| `reportsChannelId` | empty | Where reports are posted, with a thread and buttons. Empty posts none, and reports reach Discord only as alerts. |
+| `alertsChannelId` | empty | Where detector signals are posted and where cases get their threads. Empty posts none, and only cases a report opened get a thread. |
+| `appealsChannelId` | empty | Where appeals are posted, each with a thread. Empty posts none. |
+| `staffLogChannelId` | empty | Where every audited staff action is posted — one post per command on a busy server. Empty posts none. |
+| `staffChatChannelId` | empty | A channel bridged with staff chat both ways. Setting it makes the bot ask for Message Content Intent; without that switched on in the portal it cannot log in. Empty bridges nothing. |
+| `discordAlertSeverity` | `70` | The lowest signal confidence (0–100) posted to the alerts channel on its own. A signal that opens a case is always posted, because the case needs its thread. |
+| `serverName` | empty | Shown on report posts, for a network sharing one Discord. Empty shows nothing. |
+| `playerHeadUrl` | `https://mc-heads.net/avatar/{uuid}/64` | The head picture on posts about a player. Discord fetches it, so that service sees player ids and nothing else. Empty shows no heads. |
+
+Setting any of the first five channels makes StaffCore's own `discordWebhookUrl` stop posting once
+the bot has connected, so nothing arrives twice. A bot that never connects leaves the webhook
+posting.
+
+### Channels
+
+| Channel | Each post | Afterwards |
+|---|---|---|
+| Punishments | Reason, staff, the player and their prior count, duration, expiry, case, punishment id | A reversal edits the post |
+| Reports | Reason, player and prior count, reporter, assignee, status, server, when, case; a thread; Claim, Resolve, Escalate, Profile, History, Add Note and Freeze buttons | Claiming and resolving edit the post and are said in the thread; resolving turns the report's own buttons off and closes the thread |
+| Alerts | The signal, its confidence and its case; a thread when it opened the case | Notes, assignments, punishments and closing are said in the case's thread; weaker signals about the case go there too |
+| Appeals | The player, their linked Discord account, the punishment with its reason, who issued it and when, the appeal, evidence count, when, case; a thread | A verdict edits the post and closes the thread |
+| Staff log | Who, the command as recorded, the player it names, when, case | — |
+| Staff chat | Every staff chat line from the game | Lines typed there go into staff chat in game, marked `[Discord]` |
+
+A case opened by a report is discussed in the report's thread rather than a second one. Cases
+opened by hand get a post in the alerts channel.
+
+**The buttons are the in-game actions, through the same checks.** Claim takes a report over from
+whoever holds it, as clicking it in the queue does, and Resolve closes it; both need
+`report.view`. Escalate hands the report to the player's open case, or opens one, links the report
+and marks the case as being investigated; it needs `staff.gui`, the node `/staff case open` needs.
+Profile (`staff.gui`) and History (`staff.history`) answer privately. Add Note (`staff.notes`) goes
+onto the player's record and their open case, as `/staff note` does. Freeze (`staff.freeze`) holds a
+player who is online. Every one is subject to the permission rules below and recorded against the
+linked account, lookups included. Profile shows conduct only: nothing drawn from where a player
+connects from, and not the accounts linked to them that way.
+
+Only linked staff holding `staff.chat` are bridged into staff chat; anybody else gets a short reply
+that disappears. Lines from the game are sent with mentions switched off.
+
+**Nothing a player typed can ping or link.** Report reasons, appeals and names have markdown, links
+and mentions escaped, and every message is sent with mentions disabled as well.
+
+Where each post went is remembered in `world/staffcore-discord/threads.json`, so edits and thread
+lines still find their post after a restart. It holds Discord ids and the posts' text, is kept for
+90 days, and losing it costs a new post where an edit would have gone.
+
+Posts made while the bot is not connected are counted in `/staff status` and not made.
 
 ### The token
 
@@ -617,11 +669,11 @@ known gap — not a bug list.
 
 **Not built**
 
-- **The Discord companion is partly built.** It connects a bot, links staff accounts and
-  enforces the permission rules [above](#discord-companion--staffcore-discord), and that is
-  all so far: it does not yet post to channels, take actions, bridge staff chat or handle
-  appeals. Punishments, reports and alerts still reach Discord through StaffCore's own
-  webhook, which is outbound only.
+- **The Discord companion is partly built.** It links accounts, posts to channels with
+  threads, acts from report buttons and bridges staff chat
+  ([above](#discord-companion--staffcore-discord)). There are no slash commands yet for
+  punishing or looking players up, appeals cannot be filed or decided from Discord, and a post
+  made while the bot is disconnected is counted and dropped rather than queued.
 - **No map integrations.** BlueMap, Dynmap and Squaremap would each need that mod present as
   a compile dependency.
 

@@ -62,9 +62,27 @@ public class StaffChatModule implements Module {
 	 * @return how many staff received it, including the sender
 	 */
 	public int send(MinecraftServer server, String senderName, String message) {
-		Component line = Theme.prefix()
-				.append(Icon.text("Staff ", Theme.ACCENT).withStyle(s -> s.withBold(true)))
-				.append(Icon.text(senderName, Theme.TEXT))
+		return send(server, senderName, message, false);
+	}
+
+	/**
+	 * A line that came in from Discord, marked as such.
+	 * <p>
+	 * Marked in the line itself rather than only in the log, because a staff member reading staff
+	 * chat has to be able to tell somebody typing in game from somebody typing on a phone — it
+	 * decides whether "I'm at spawn" means anything.
+	 *
+	 * @param senderName the linked Minecraft account's name
+	 */
+	public int sendFromDiscord(MinecraftServer server, String senderName, String message) {
+		return send(server, senderName, message, true);
+	}
+
+	private int send(MinecraftServer server, String senderName, String message, boolean fromDiscord) {
+		net.minecraft.network.chat.MutableComponent line = Theme.prefix()
+				.append(Icon.text("Staff ", Theme.ACCENT).withStyle(s -> s.withBold(true)));
+		if (fromDiscord) line = line.append(Icon.text("[Discord] ", Theme.DISCORD));
+		line = line.append(Icon.text(senderName, Theme.TEXT))
 				.append(Icon.text(": ", Theme.MUTED))
 				.append(Icon.text(message, Theme.TEXT));
 
@@ -76,10 +94,11 @@ public class StaffChatModule implements Module {
 				delivered++;
 			}
 		}
-		StaffCore.LOGGER.info("[StaffChat] {}: {} (to {} staff)", senderName, message, delivered);
+		StaffCore.LOGGER.info("[StaffChat] {}{}: {} (to {} staff)", fromDiscord ? "[Discord] " : "",
+				senderName, message, delivered);
 		io.github.alphain24.staffcore.api.StaffCoreApi.publish(
 				new io.github.alphain24.staffcore.api.StaffCoreEvent.StaffChat(
-						System.currentTimeMillis(), senderName, message, false));
+						System.currentTimeMillis(), senderName, message, fromDiscord));
 		return delivered;
 	}
 

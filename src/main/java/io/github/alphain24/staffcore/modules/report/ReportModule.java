@@ -70,11 +70,6 @@ public class ReportModule implements Module {
 			try (ResultSet keys = ps.getGeneratedKeys()) {
 				if (keys.next()) reportId = keys.getLong(1);
 			}
-			io.github.alphain24.staffcore.api.StaffCoreApi.publish(
-					new io.github.alphain24.staffcore.api.StaffCoreEvent.ReportFiled(now, reportId,
-							target, targetName,
-							io.github.alphain24.staffcore.module.Mods.punish().historyCount(target),
-							reporterName, reason));
 
 			// A player report is a signal like any other, and the one with the best claim to
 			// be taken seriously: a human watched something happen and chose to tell somebody.
@@ -99,11 +94,19 @@ public class ReportModule implements Module {
 						target, targetName, world, online.blockPosition(),
 						"where " + targetName + " was when reported"));
 			}
-			io.github.alphain24.staffcore.module.Mods.cases().emit(server,
+			var landing = io.github.alphain24.staffcore.module.Mods.cases().emit(server,
 					io.github.alphain24.staffcore.modules.cases.Signal.Type.REPORT,
 					target, targetName,
 					io.github.alphain24.staffcore.config.StaffConfig.get().reportSignalConfidence,
 					reporterName + " reported: " + reason, "report", drafts);
+
+			// After the signal, so companions are told which case the report opened or joined and
+			// a report and its case can share one thread.
+			io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+					new io.github.alphain24.staffcore.api.StaffCoreEvent.ReportFiled(now, reportId,
+							target, targetName,
+							io.github.alphain24.staffcore.module.Mods.punish().historyCount(target),
+							reporterName, reason, landing == null ? null : landing.caseId()));
 			return Result.OK;
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Report] file failed", e);
@@ -169,6 +172,38 @@ public class ReportModule implements Module {
 		return changed(id, "RESOLVED", staffName,
 				update("UPDATE reports SET status='RESOLVED', claimed_by=COALESCE(claimed_by, ?) WHERE id=?",
 						staffName, id));
+	}
+
+	/**
+	 * Claims a report, taking it over from whoever holds it.
+	 * <p>
+	 * What clicking a report in the queue does, from the screen and from Discord alike: the claim
+	 * moves to the person who clicked. Released first because {@link #claim} only moves a report
+	 * out of OPEN, which is what makes two staff racing for an unclaimed one safe.
+	 *
+	 * @return false when the report is resolved, gone, or somebody else claimed it in between
+	 */
+	public boolean claimOrTakeOver(long id, String staffName) {
+		Report report = byId(id);
+		if (report == null || "RESOLVED".equals(report.status())) return false;
+		if (staffName.equals(report.claimedBy())) return true;
+		if ("CLAIMED".equals(report.status())) unclaim(id);
+		return claim(id, staffName);
+	}
+
+	/** One report by id, whatever state it is in, or null. */
+	public Report byId(long id) {
+		Connection c = conn();
+		if (c == null) return null;
+		try (PreparedStatement ps = c.prepareStatement("SELECT * FROM reports WHERE id=?")) {
+			ps.setLong(1, id);
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? map(rs) : null;
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Report] could not read report {}: {}", id, e.getMessage());
+			return null;
+		}
 	}
 
 	public boolean unclaim(long id) {

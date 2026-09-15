@@ -3030,20 +3030,15 @@ public final class StaffCommands {
 		String text = StringArgumentType.getString(ctx, "text");
 		String author = ctx.getSource().getTextName();
 
-		String caseId = Mods.cases().store().openCaseFor(target.id())
-				.map(io.github.alphain24.staffcore.modules.cases.Case::id).orElse(null);
-
-		if (!Mods.notes().add(target.id(), author, text, caseId)) {
+		var written = Mods.notes().write(target.id(), target.name(), author, text);
+		if (!written.saved()) {
 			return fail(ctx, "The note could not be saved. The server log says why.");
 		}
-
-		if (caseId != null) {
-			Mods.cases().store().note(caseId, author, "note on " + target.name() + ": " + text);
-		}
+		String caseId = written.caseId();
 
 		audit(ctx, "/staff note " + target.name(), caseId);
 
-		int total = Mods.notes().count(target.id());
+		int total = written.total();
 		ctx.getSource().sendSuccess(() -> Theme.good(
 				"Noted on " + target.name() + " (" + total + " total)."), false);
 

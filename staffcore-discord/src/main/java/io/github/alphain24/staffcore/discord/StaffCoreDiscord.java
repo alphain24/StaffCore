@@ -22,7 +22,7 @@ public final class StaffCoreDiscord implements ModInitializer {
 	public static final Logger LOGGER = LoggerFactory.getLogger("staffcore-discord");
 
 	/** The API version this build of the companion was written against. */
-	static final int API_VERSION = 1;
+	static final int API_VERSION = 2;
 
 	@Override
 	public void onInitialize() {
@@ -39,7 +39,9 @@ public final class StaffCoreDiscord implements ModInitializer {
 		// open before the first Discord request can arrive.
 		DiscordBot[] bot = new DiscordBot[1];
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-			bot[0] = new DiscordBot(FabricLoader.getInstance().getConfigDir());
+			bot[0] = new DiscordBot(FabricLoader.getInstance().getConfigDir(),
+					server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+							.resolve("staffcore-discord").normalize());
 			StaffCoreApi.addStatus("Discord", bot[0]::status);
 			bot[0].start();
 		});

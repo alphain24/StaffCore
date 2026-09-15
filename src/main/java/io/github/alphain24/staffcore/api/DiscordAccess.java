@@ -3,7 +3,9 @@ package io.github.alphain24.staffcore.api;
 import io.github.alphain24.staffcore.api.internal.DiscordGate;
 import io.github.alphain24.staffcore.permission.Actor;
 
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -48,6 +50,49 @@ public final class DiscordAccess {
 	/** Ends this Discord user's link, if they have one. */
 	public static CompletableFuture<DiscordLinkResult> unlink(DiscordUser user) {
 		return DiscordGate.unlink(user);
+	}
+
+	// ------------------------------------------------------------------ reports
+
+	/** Claims a report, taking it over from whoever held it, as clicking it in the queue does. */
+	public static CompletableFuture<DiscordResult> claimReport(DiscordUser user, long reportId) {
+		return DiscordGate.claimReport(user, reportId);
+	}
+
+	public static CompletableFuture<DiscordResult> resolveReport(DiscordUser user, long reportId) {
+		return DiscordGate.resolveReport(user, reportId);
+	}
+
+	/** Hands a report to the player's case, opening one if they have none, and marks it investigating. */
+	public static CompletableFuture<DiscordResult> escalateReport(DiscordUser user, long reportId) {
+		return DiscordGate.escalateReport(user, reportId);
+	}
+
+	// ------------------------------------------------------------------ players
+
+	public static CompletableFuture<DiscordAnswer<DiscordProfile>> profile(DiscordUser user, UUID playerId) {
+		return DiscordGate.profile(user, playerId);
+	}
+
+	/** Their punishments, newest first, at most twenty. */
+	public static CompletableFuture<DiscordAnswer<List<DiscordPunishment>>> history(DiscordUser user,
+			UUID playerId) {
+		return DiscordGate.history(user, playerId);
+	}
+
+	/** A note on their record, attached to their open case if they have one. */
+	public static CompletableFuture<DiscordResult> addNote(DiscordUser user, UUID playerId, String text) {
+		return DiscordGate.addNote(user, playerId, text);
+	}
+
+	/** Freezes a player who is online. Refused for somebody already frozen, and for somebody offline. */
+	public static CompletableFuture<DiscordResult> freeze(DiscordUser user, UUID playerId) {
+		return DiscordGate.freeze(user, playerId);
+	}
+
+	/** A line into staff chat in game, marked as coming from Discord. */
+	public static CompletableFuture<DiscordResult> staffChat(DiscordUser user, String message) {
+		return DiscordGate.staffChat(user, message);
 	}
 
 	/** Every node StaffCore defines, so a companion can reject a role mapping naming anything else. */

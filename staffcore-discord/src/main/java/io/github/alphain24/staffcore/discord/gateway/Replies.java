@@ -1,7 +1,12 @@
 package io.github.alphain24.staffcore.discord.gateway;
 
+import io.github.alphain24.staffcore.api.DiscordAnswer;
+import io.github.alphain24.staffcore.api.DiscordProfile;
+import io.github.alphain24.staffcore.api.DiscordPunishment;
 import io.github.alphain24.staffcore.api.DiscordStanding;
+import io.github.alphain24.staffcore.discord.channels.Text;
 
+import java.util.List;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeoutException;
 
@@ -23,6 +28,49 @@ public final class Replies {
 			out.append("\nYou can use: ").append(String.join(", ", standing.nodes()));
 		}
 		return out.toString();
+	}
+
+	/** A player's standing, for the Profile button. */
+	public static String profile(DiscordAnswer<DiscordProfile> answer) {
+		if (!answer.answered()) return answer.refusal();
+		DiscordProfile p = answer.value();
+		StringBuilder out = new StringBuilder("**").append(Text.safe(p.name(), 64)).append("**")
+				.append(p.online() ? " — online" : " — offline");
+		out.append("\nPunishments: ").append(p.punishments())
+				.append(" · Warning points: ").append(p.warningPoints())
+				.append(" · Notes: ").append(p.notes())
+				.append(" · Open appeals: ").append(p.openAppeals());
+		out.append("\nBan: ").append(p.activeBan() == null ? "none" : inForce(p.activeBan()));
+		out.append("\nMute: ").append(p.activeMute() == null ? "none" : inForce(p.activeMute()));
+		out.append("\nOpen cases: ").append(p.openCases().isEmpty() ? "none"
+				: String.join(", ", p.openCases().stream().map(id -> "`" + Text.clip(id, 16).replace('`', '\'') + "`")
+						.toList()));
+		return out.toString();
+	}
+
+	/** Their punishments, newest first, for the History button. */
+	public static String history(DiscordAnswer<List<DiscordPunishment>> answer) {
+		if (!answer.answered()) return answer.refusal();
+		if (answer.value().isEmpty()) return "No punishments on record.";
+		StringBuilder out = new StringBuilder();
+		for (DiscordPunishment p : answer.value()) {
+			String line = "#" + p.id() + " **" + Text.punishment(p.type()) + "** " + Text.relative(p.issuedAt())
+					+ " by " + Text.safe(p.staffName(), 32) + " — " + Text.safe(p.reason(), 120)
+					+ (p.reversedBy() != null ? " *(reversed by " + Text.safe(p.reversedBy(), 32) + ")*"
+							: p.active() ? " *(in force)*" : "");
+			if (out.length() + line.length() + 1 > 1900) {
+				out.append("\n…");
+				break;
+			}
+			if (out.length() > 0) out.append('\n');
+			out.append(line);
+		}
+		return out.toString();
+	}
+
+	private static String inForce(DiscordPunishment p) {
+		return Text.punishment(p.type()) + " — " + Text.safe(p.reason(), 200)
+				+ (p.expiresAt() == null ? ", permanent" : ", ends " + Text.relative(p.expiresAt()));
 	}
 
 	/**

@@ -59,15 +59,22 @@ public class AppealModule implements Module {
 		if (against == null) return Result.NOTHING_TO_APPEAL;
 		if (hasOpen(target)) return Result.ALREADY_OPEN;
 
+		long now = System.currentTimeMillis();
 		try (PreparedStatement ps = c.prepareStatement(
 				"INSERT INTO appeals (target_uuid, target_name, text, status, created_at, punishment_id) "
-						+ "VALUES (?,?,?,'OPEN',?,?)")) {
+						+ "VALUES (?,?,?,'OPEN',?,?)", java.sql.Statement.RETURN_GENERATED_KEYS)) {
 			ps.setString(1, target.toString());
 			ps.setString(2, targetName);
 			ps.setString(3, text);
-			ps.setLong(4, System.currentTimeMillis());
+			ps.setLong(4, now);
 			ps.setLong(5, against.id());
 			ps.executeUpdate();
+
+			long appealId = 0;
+			try (ResultSet keys = ps.getGeneratedKeys()) {
+				if (keys.next()) appealId = keys.getLong(1);
+			}
+			published(appealId, target, targetName, text, now, against);
 			return Result.OK;
 		} catch (SQLException e) {
 			StaffCore.LOGGER.error("[Appeal] file failed", e);
@@ -113,11 +120,36 @@ public class AppealModule implements Module {
 	// ------------------------------------------------------------------ verdicts
 
 	public boolean accept(long id, String staffName) {
-		return close(id, staffName, "ACCEPTED");
+		return decided(id, staffName, "ACCEPTED", close(id, staffName, "ACCEPTED"));
 	}
 
 	public boolean reject(long id, String staffName) {
-		return close(id, staffName, "REJECTED");
+		return decided(id, staffName, "REJECTED", close(id, staffName, "REJECTED"));
+	}
+
+	private static boolean decided(long id, String staffName, String verdict, boolean happened) {
+		if (happened) {
+			io.github.alphain24.staffcore.api.StaffCoreApi.publish(new io.github.alphain24.staffcore.api.StaffCoreEvent.AppealDecided(
+					System.currentTimeMillis(), id, verdict, staffName));
+		}
+		return happened;
+	}
+
+	/**
+	 * Tells companions about a new appeal, with the punishment it is against spelled out so an appeal
+	 * can be read without looking anything else up.
+	 */
+	private static void published(long id, UUID player, String playerName, String text, long at,
+			io.github.alphain24.staffcore.modules.punish.Punishment against) {
+
+		if (!io.github.alphain24.staffcore.api.StaffCoreApi.hasListeners()) return;
+		var cases = io.github.alphain24.staffcore.module.Mods.cases();
+		int evidence = against.caseId() == null ? 0 : cases.evidence().forCase(against.caseId()).size();
+		var link = io.github.alphain24.staffcore.module.Mods.discord().links().forPlayer(player);
+		io.github.alphain24.staffcore.api.StaffCoreApi.publish(new io.github.alphain24.staffcore.api.StaffCoreEvent.AppealFiled(at, id, player,
+				playerName, against.id(), against.type().name(), against.reason(), against.staffName(),
+				against.createdAt(), text, evidence, link == null ? null : link.discordId(),
+				against.caseId()));
 	}
 
 	private boolean close(long id, String staffName, String verdict) {

@@ -31,8 +31,13 @@ import java.util.function.Supplier;
 public final class StaffCoreApi {
 	private StaffCoreApi() {}
 
-	/** Bumped when something here changes in a way a companion has to know about. */
-	public static final int VERSION = 1;
+	/**
+	 * Bumped when something here changes in a way a companion has to know about.
+	 * <p>
+	 * 2: events for cases and appeals, a case on reports, a target on staff actions, and the report,
+	 * note, freeze and staff chat calls on {@link DiscordAccess}.
+	 */
+	public static final int VERSION = 2;
 
 	private static final List<StaffCoreListener> LISTENERS = new CopyOnWriteArrayList<>();
 	private static final Map<String, Supplier<List<String>>> STATUS = new ConcurrentHashMap<>();

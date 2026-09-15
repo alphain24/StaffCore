@@ -73,6 +73,93 @@ public final class DiscordSettings {
 	 */
 	public int requestTimeoutSeconds = 10;
 
+	// ---- channels ------------------------------------------------------------
+	//
+	// Each is a channel id in guildId, and each is optional: empty means that kind of post is not
+	// made. Set any of the first five and StaffCore's own discordWebhookUrl stops posting once the
+	// bot connects, so nothing arrives twice. The bot needs to see, send messages, embed links and
+	// create public threads in each.
+
+	/**
+	 * Where punishments are posted: reason, staff, the player with their prior count, duration,
+	 * expiry, case and punishment id. A reversal edits the post. Empty posts none.
+	 */
+	public String punishmentsChannelId = "";
+
+	/**
+	 * Where reports are posted, each with a thread and buttons to claim, resolve, escalate, look at
+	 * the player's profile and history, add a note and freeze them. Claiming and resolving edit the
+	 * post. Empty posts none, and reports then reach Discord only as alerts.
+	 */
+	public String reportsChannelId = "";
+
+	/**
+	 * Where detector signals are posted, and where every case gets its thread. A signal is posted
+	 * when it reaches {@link #discordAlertSeverity} or when it opens a case; weaker signals about a
+	 * case that already has a thread are added to the thread instead. Empty posts none, and cases
+	 * get no threads unless a report opened them.
+	 */
+	public String alertsChannelId = "";
+
+	/** Where appeals are posted, each with a thread; a verdict edits the post. Empty posts none. */
+	public String appealsChannelId = "";
+
+	/**
+	 * Where every audited staff action is posted: who, what, the player it names, when, and its
+	 * case. This is one post per command on a busy server. Empty posts none.
+	 */
+	public String staffLogChannelId = "";
+
+	/**
+	 * A channel bridged with staff chat in game, both ways. Lines from Discord are marked
+	 * {@code [Discord]} in game and only linked staff holding {@code staff.chat} are bridged.
+	 * Setting it makes the bot ask Discord for message content, which is a privileged intent: turn on
+	 * Message Content Intent for the bot in the developer portal first, or it cannot log in. Empty
+	 * bridges nothing and asks for no intents.
+	 */
+	public String staffChatChannelId = "";
+
+	/**
+	 * The lowest signal confidence, 0 to 100, posted to the alerts channel on its own.
+	 * <p>
+	 * Signals are scored like cases are: StaffCore opens a case at 70 by default. Lower posts more of
+	 * what staff are told in game; higher keeps the channel to the findings most likely to matter. A
+	 * signal that opens a case is posted whatever this says, because the case needs its thread.
+	 */
+	public int discordAlertSeverity = 70;
+
+	/**
+	 * A name shown on report posts, for a network where several servers share one Discord. Empty
+	 * shows nothing.
+	 */
+	public String serverName = "";
+
+	/**
+	 * The picture of a player's head shown on posts about them, with {@code {uuid}} where their id
+	 * goes. Discord fetches the image, so the service named here sees player ids and nothing else.
+	 * Empty shows no heads.
+	 */
+	public String playerHeadUrl = "https://mc-heads.net/avatar/{uuid}/64";
+
+	/** The channel id for this kind of post, or empty when it is not posted. */
+	public String channelId(io.github.alphain24.staffcore.discord.channels.Outbound.Channel channel) {
+		String id = switch (channel) {
+			case PUNISHMENTS -> punishmentsChannelId;
+			case REPORTS -> reportsChannelId;
+			case ALERTS -> alertsChannelId;
+			case APPEALS -> appealsChannelId;
+			case STAFF_LOG -> staffLogChannelId;
+			case STAFF_CHAT -> staffChatChannelId;
+		};
+		return id == null ? "" : id;
+	}
+
+	/** Whether any channel StaffCore's webhook would otherwise post to is set. */
+	public boolean postsToChannels() {
+		return !punishmentsChannelId.isEmpty() || !reportsChannelId.isEmpty() || !alertsChannelId.isEmpty()
+				|| !appealsChannelId.isEmpty() || !staffLogChannelId.isEmpty();
+	}
+
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 	private static final Pattern SNOWFLAKE = Pattern.compile("\\d{15,22}");
 
@@ -171,10 +258,49 @@ public final class DiscordSettings {
 		}
 		roleNodes = kept;
 
+		punishmentsChannelId = channel("punishmentsChannelId", punishmentsChannelId, problems);
+		reportsChannelId = channel("reportsChannelId", reportsChannelId, problems);
+		alertsChannelId = channel("alertsChannelId", alertsChannelId, problems);
+		appealsChannelId = channel("appealsChannelId", appealsChannelId, problems);
+		staffLogChannelId = channel("staffLogChannelId", staffLogChannelId, problems);
+		staffChatChannelId = channel("staffChatChannelId", staffChatChannelId, problems);
+
+		if (discordAlertSeverity < 0 || discordAlertSeverity > 100) {
+			int was = discordAlertSeverity;
+			discordAlertSeverity = Math.max(0, Math.min(100, discordAlertSeverity));
+			problems.add("discordAlertSeverity is " + was + ", which is outside 0-100. Using "
+					+ discordAlertSeverity + ".");
+		}
+
+		if (serverName == null) serverName = "";
+		serverName = serverName.strip();
+		if (serverName.length() > 64) {
+			serverName = serverName.substring(0, 64);
+			problems.add("serverName is longer than 64 characters. Using the first 64.");
+		}
+
+		if (playerHeadUrl == null) playerHeadUrl = "";
+		playerHeadUrl = playerHeadUrl.strip();
+		if (!playerHeadUrl.isEmpty()
+				&& (!playerHeadUrl.startsWith("https://") || !playerHeadUrl.contains("{uuid}"))) {
+			problems.add("playerHeadUrl is \"" + playerHeadUrl + "\", which is not an https address with "
+					+ "{uuid} in it. Showing no heads.");
+			playerHeadUrl = "";
+		}
+
 		if (enabled && roleNodes.values().stream().allMatch(List::isEmpty)) {
 			problems.add("roleNodes maps no role to any permission, so linked staff can link and check "
 					+ "who they are but can use nothing from Discord.");
 		}
 		return problems;
+	}
+
+	/** A channel id, or empty. Anything else is reported and treated as empty, so nothing is posted. */
+	private static String channel(String key, String value, List<String> problems) {
+		String id = value == null ? "" : value.strip();
+		if (id.isEmpty() || SNOWFLAKE.matcher(id).matches()) return id;
+		problems.add(key + " is \"" + id + "\", which is not a channel id. Posting nothing there. Copy the "
+				+ "id with Developer Mode on: right-click the channel, Copy Channel ID.");
+		return "";
 	}
 }

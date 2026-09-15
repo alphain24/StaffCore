@@ -2480,14 +2480,14 @@
           not carry them.
         </p>
         <p>
-          <strong>What it does today:</strong> connects the bot, lets staff link their Discord and
-          Minecraft accounts, and answers <code>/link</code>, <code>/unlink</code> and
-          <code>/whoami</code> in your Discord server. Posting to channels, acting from Discord, the
-          staff chat bridge and appeals are not built yet, so the webhook above keeps posting.
+          <strong>What it does today:</strong> links staff accounts; posts punishments, reports, alerts,
+          appeals and the staff log to channels you choose, with a thread for each report, appeal and case;
+          acts from buttons on reports; and bridges staff chat both ways. Slash commands for punishing and
+          looking players up, and filing and deciding appeals from Discord, are not built yet.
         </p>
         <h3>Setting it up</h3>
         <ol>
-          <li>Create a bot in the Discord developer portal and invite it to your server. It needs no privileged intents.</li>
+          <li>Create a bot in the Discord developer portal and invite it to your server. It needs no privileged intents unless you bridge staff chat, which needs Message Content Intent. In each channel it needs to view, send messages, embed links, create public threads and send messages in threads.</li>
           <li>Put the token, and nothing else, in <code>config/staffcore-discord.token</code>. On Linux, <code>chmod 600</code> it.</li>
           <li>Start the server once so <code>config/staffcore-discord.json</code> is written, fill it in, and restart. <code>/staff status</code> shows whether the bot is off, connecting, connected, or what stopped it.</li>
         </ol>
@@ -2502,6 +2502,44 @@
             </tbody>
           </table>
         </div>
+        <h3>Channels</h3>
+        <p>
+          Each channel is optional; an empty id posts nothing. Setting any of punishments, reports,
+          alerts, appeals or staff log makes the webhook above stop posting once the bot has connected.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Key</th><th>Default</th><th class="wrap">What changing it does</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">punishmentsChannelId</td><td class="mono">empty</td><td class="wrap">Reason, staff, the player and their prior count, duration, expiry, case and id. A reversal edits the post.</td></tr>
+              <tr><td class="mono">reportsChannelId</td><td class="mono">empty</td><td class="wrap">Each report with a thread and Claim, Resolve, Escalate, Profile, History, Add Note and Freeze buttons. Claims and resolutions edit the post and are said in the thread. Empty: reports reach Discord only as alerts.</td></tr>
+              <tr><td class="mono">alertsChannelId</td><td class="mono">empty</td><td class="wrap">Detector signals, and a thread for every case. Notes, assignments, punishments and closing go into the case's thread.</td></tr>
+              <tr><td class="mono">appealsChannelId</td><td class="mono">empty</td><td class="wrap">Each appeal with the original punishment spelled out and a thread. A verdict edits the post and closes the thread.</td></tr>
+              <tr><td class="mono">staffLogChannelId</td><td class="mono">empty</td><td class="wrap">Every audited staff action: who, the command, the player it names, when, the case. One post per command.</td></tr>
+              <tr><td class="mono">staffChatChannelId</td><td class="mono">empty</td><td class="wrap">Staff chat both ways; lines from Discord are marked <code>[Discord]</code> in game. Needs Message Content Intent switched on for the bot, or it cannot log in.</td></tr>
+              <tr><td class="mono">discordAlertSeverity</td><td class="mono">70</td><td class="wrap">The lowest signal confidence (0&ndash;100) posted to alerts on its own. A signal that opens a case is always posted.</td></tr>
+              <tr><td class="mono">serverName</td><td class="mono">empty</td><td class="wrap">Shown on report posts, for a network sharing one Discord.</td></tr>
+              <tr><td class="mono">playerHeadUrl</td><td class="mono">https://mc-heads.net/avatar/{uuid}/64</td><td class="wrap">The head picture on posts. Discord fetches it, so the service sees player ids only. Empty shows none.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          <strong>The buttons are the in-game actions, through the same checks.</strong> Claim takes a
+          report over, as clicking it in the queue does; Resolve closes it (both <code>report.view</code>).
+          Escalate hands the report to the player's open case or opens one, links it and marks the case as
+          being investigated (<code>staff.gui</code>, as <code>/staff case open</code>). Profile
+          (<code>staff.gui</code>) and History (<code>staff.history</code>) answer privately; Profile shows
+          conduct only, nothing drawn from where a player connects from. Add Note (<code>staff.notes</code>)
+          goes onto the record and the open case, as <code>/staff note</code> does. Freeze
+          (<code>staff.freeze</code>) holds a player who is online. Every one is recorded against the linked
+          account, lookups included.
+        </p>
+        <p>
+          A case opened by a report is discussed in the report's thread. Nothing a player typed can ping or
+          link: text is escaped and every message is sent with mentions disabled. Where each post went is kept
+          in <code>world/staffcore-discord/threads.json</code> for 90 days, so edits survive a restart. Posts
+          made while the bot is disconnected are counted in <code>/staff status</code> and not made.
+        </p>
         <h3>The token</h3>
         <p>
           It lives in its own file, never in <code>staffcore.json</code> or the settings file, because
@@ -3281,7 +3319,7 @@
           </ul>
           <h3>Not built</h3>
           <ul>
-            <li><strong>The Discord companion is partly built.</strong> It connects a bot, links staff accounts and enforces the permission rules in <a href="#discord">Discord</a>, and that is all so far: it does not yet post to channels, take actions, bridge staff chat or handle appeals. Punishments, reports and alerts still reach Discord through the webhook, which is outbound only.</li>
+            <li><strong>The Discord companion is partly built.</strong> It links accounts, posts to channels with threads, acts from report buttons and bridges staff chat (see <a href="#discord">Discord</a>). There are no slash commands yet for punishing or looking players up, appeals cannot be filed or decided from Discord, and a post made while the bot is disconnected is counted and dropped rather than queued.</li>
             <li><strong>No map integrations.</strong> BlueMap, Dynmap and Squaremap would each need that mod present as a compile dependency.</li>
           </ul>
           <h3>Structural</h3>

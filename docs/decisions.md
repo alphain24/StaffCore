@@ -1910,7 +1910,79 @@ Authenticated Users — Java reports Everyone as `\Everyone`, which the first ve
 **Two flags, not one.** 5.1 silenced StaffCore's webhook as soon as a companion declared itself.
 A companion that only links accounts would then have left the server posting nothing to Discord
 at all. `declareDiscordCompanion` now only enables linking; `declareDiscordPosting`, which 5.3
-will call, is what silences the webhook.
+calls, is what silences the webhook.
+
+---
+
+## Channels, threads and the buttons on a report
+
+**Date:** 2026-09-15
+
+Phase 5.3: the companion posts punishments, reports, alerts, appeals and the staff log, gives each
+report, appeal and case a thread, puts seven buttons on a report, and bridges staff chat.
+
+**Deciding is apart from doing.** `Router` turns StaffCore's events into plain `Outbound`
+operations — send, edit, a line in a thread — with no Discord in sight, which is how `RouterTest`
+covers every event without a bot. `JdaGateway` carries them out one at a time, in order, on the
+companion's own thread, waiting for each answer because the next operation needs the ids Discord
+hands back.
+
+**The router remembers what it sent, not only what Discord confirmed.** The first version decided
+from the thread book, which is only written once Discord answers. A claim arriving a moment after
+its report found nothing to edit and was posted as a stray line; an auto-assignment straight after
+a case opened was dropped. The router now keeps the last message it asked for under each key
+(bounded at 2,000, the book covers anything older). Putting the book back as the only source fails
+seven of `RouterTest`'s cases.
+
+**A report and its case share a thread.** A player report is also a signal, and at the default
+confidence it opens a case. Posting it as a report and again as an alert put one report in front of
+staff twice, with the investigation in a second thread. So with a reports channel set, a report
+signal is not posted as an alert, and the case it opened is given the report's thread.
+`ReportFiled` is now published after the signal lands, carrying its case id, so the companion knows
+which case it is. Cases opened by hand are posted in the alerts channel.
+
+**What Escalate means.** StaffCore has no escalation for reports, so the button maps onto what a
+staff member escalating would do in game: hand the report to the player's open case, or open one of
+the kind its words suggest, link the report, and mark the case investigating. It needs `staff.gui`,
+which is what `/staff case open` needs. The report itself is left open: somebody still has to answer
+it.
+
+**One path, two doors.** Where a Discord button needed a service the command did not have, the
+command's logic moved into a service both use: `ReportModule.claimOrTakeOver` (the queue screen's
+takeover), `NotesModule.write` (`/staff note`'s case attachment). Neither door has its own copy to
+drift.
+
+**The alert threshold does not decide threads.** `discordAlertSeverity` decides which signals are
+posted on their own; a signal that opens a case is always posted, because otherwise a server that
+raised the threshold would have cases with nowhere to discuss them. Weaker signals about a case
+that has a thread go into the thread.
+
+**The staff log's target is read, not passed.** Audit rows record the command as typed, and dozens of
+call sites write them. Rather than change every one, `StaffAudit.targetIn` takes the word after the
+subcommand and accepts it only when it is a name the server has seen — online, or in
+`name_history`. Local lookups only; `PlayerLookup.profile` was avoided because it can go to Mojang.
+
+**What players typed is inert.** Every piece of player text is escaped for markdown, links and
+mentions, and every message is sent with mentions disabled, so a report reason of `@everyone
+[free](https://…)` is shown and not obeyed. Embeds are cut to Discord's limits before sending —
+`EmbedAndTextTest` found that a title, description and footer at their separate maximums already
+exceed the 6,000-character total, which Discord answers by refusing the whole post.
+
+**No privileged intent unless asked for.** Reading a channel's messages is the one thing that needs
+Message Content Intent, and only the staff chat bridge reads messages. The bot asks for it only
+when `staffChatChannelId` is set, and says in `/staff status` which setting needs it if Discord
+refuses.
+
+**The webhook stands aside only once the bot is connected.** `declareDiscordPosting` is called on
+ready, and only when a posting channel is set, so a bot that never connects leaves the webhook
+posting.
+
+**Posts while disconnected are counted and dropped.** Bounded queueing is item 5.6. Until then a
+post the bot cannot make is counted in `/staff status` rather than held.
+
+**API version 2.** Record shapes changed (`ReportFiled` gained a case, `StaffAction` a target) and
+events were added, so a companion built for version 1 now refuses to start instead of failing on
+the first event.
 
 ---
 

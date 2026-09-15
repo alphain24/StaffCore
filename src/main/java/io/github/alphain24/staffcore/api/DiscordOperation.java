@@ -32,7 +32,14 @@ public enum DiscordOperation {
 	WARN(Nodes.WARN, true),
 	FREEZE(Nodes.FREEZE, true),
 	UNFREEZE(Nodes.FREEZE, true),
-	NOTE(Nodes.NOTES, true);
+	NOTE(Nodes.NOTES, true),
+
+	// ---- reports and staff chat
+	CLAIM_REPORT(Nodes.REPORT_VIEW, true),
+	RESOLVE_REPORT(Nodes.REPORT_VIEW, true),
+	/** Opens or joins a case, which in game is {@code /staff case open}, behind the case screen's node. */
+	ESCALATE_REPORT(Nodes.STAFF_GUI, true),
+	STAFF_CHAT(Nodes.CHAT, true);
 
 	private final String node;
 	private final boolean writes;

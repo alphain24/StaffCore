@@ -117,8 +117,9 @@ public final class CaseStore {
 
 		if (!ready()) return null;
 		String[] id = { null };
+		boolean[] created = { false };
 
-		StaffCore.storage().inTransaction(conn -> {
+		boolean committed = StaffCore.storage().inTransaction(conn -> {
 			Optional<Case> existing = openCaseFor(conn, subject, category);
 			if (existing.isPresent()) {
 				id[0] = existing.get().id();
@@ -127,8 +128,22 @@ public final class CaseStore {
 				return;
 			}
 			id[0] = insertCase(conn, subject, subjectName, openedBy, summary, severity, category);
+			created[0] = true;
 			appendEvent(conn, id[0], openedBy, "opened", summary);
 		});
+
+		// Told after the commit, never from inside it: a companion must not post a case that a
+		// rollback then unmade.
+		if (committed && id[0] != null) {
+			if (created[0]) {
+				io.github.alphain24.staffcore.api.StaffCoreApi.publish(new io.github.alphain24.staffcore.api.StaffCoreEvent.CaseOpened(
+						System.currentTimeMillis(), id[0], subject, subjectName, category.label(),
+						openedBy, summary));
+			} else {
+				changed(id[0], "note", openedBy, "asked to open a " + category.label() + " case: " + summary,
+						false);
+			}
+		}
 		return id[0];
 	}
 
@@ -316,7 +331,7 @@ public final class CaseStore {
 
 		if (!ready()) return false;
 
-		return StaffCore.storage().inTransaction(conn -> {
+		boolean committed = StaffCore.storage().inTransaction(conn -> {
 			setStatus(conn, caseId, status);
 			if (status.isClosed()) {
 				try (PreparedStatement ps = conn.prepareStatement(
@@ -333,12 +348,23 @@ public final class CaseStore {
 			appendEvent(conn, caseId, actor, status.stored(),
 					why == null ? reason : why.label() + " — " + reason);
 		});
+		if (committed) {
+			changed(caseId, status.stored(), actor, why == null ? reason : why.label() + " — " + reason,
+					status.isClosed());
+		}
+		return committed;
+	}
+
+	/** Tells companions about something a person wrote into a case, once it is committed. */
+	private static void changed(String caseId, String kind, String actor, String body, boolean closed) {
+		io.github.alphain24.staffcore.api.StaffCoreApi.publish(new io.github.alphain24.staffcore.api.StaffCoreEvent.CaseChanged(
+				System.currentTimeMillis(), caseId, kind, actor, body, closed));
 	}
 
 	public boolean assign(String caseId, String assignee, String actor) {
 		if (!ready()) return false;
 
-		return StaffCore.storage().inTransaction(conn -> {
+		boolean committed = StaffCore.storage().inTransaction(conn -> {
 			try (PreparedStatement ps = conn.prepareStatement(
 					"UPDATE cases SET assigned_to = ? WHERE id = ?")) {
 				ps.setString(1, assignee);
@@ -348,12 +374,20 @@ public final class CaseStore {
 			appendEvent(conn, caseId, actor, "assigned",
 					assignee == null ? "unassigned" : "assigned to " + assignee);
 		});
+		if (committed) {
+			changed(caseId, "assigned", actor, assignee == null ? "unassigned" : "assigned to " + assignee,
+					false);
+		}
+		return committed;
 	}
 
 	/** Adds a line to the log without changing anything else. */
 	public boolean note(String caseId, String actor, String body) {
 		if (!ready()) return false;
-		return StaffCore.storage().inTransaction(conn -> appendEvent(conn, caseId, actor, "note", body));
+		boolean committed = StaffCore.storage().inTransaction(
+				conn -> appendEvent(conn, caseId, actor, "note", body));
+		if (committed) changed(caseId, "note", actor, body, false);
+		return committed;
 	}
 
 	/** Points a case at a punishment, report, appeal, rollback, snapshot or debit. */
@@ -703,6 +737,7 @@ public final class CaseStore {
 			}
 			if (done[0]) appendEvent(conn, caseId, Case.SYSTEM, "assigned", why);
 		});
+		if (done[0]) changed(caseId, "assigned", Case.SYSTEM, "assigned to " + assignee + " — " + why, false);
 		return done[0];
 	}
 

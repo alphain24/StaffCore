@@ -99,9 +99,56 @@ public final class StaffAudit {
 		}
 		// Who, what and which case. The address and session written to the row above are not in
 		// it and cannot be: the event has no field for them.
-		io.github.alphain24.staffcore.api.StaffCoreApi.publish(
-				new io.github.alphain24.staffcore.api.StaffCoreEvent.StaffAction(
-						System.currentTimeMillis(), staffName, command, caseId));
+		if (io.github.alphain24.staffcore.api.StaffCoreApi.hasListeners()) {
+			io.github.alphain24.staffcore.api.StaffCoreApi.publish(
+					new io.github.alphain24.staffcore.api.StaffCoreEvent.StaffAction(
+							System.currentTimeMillis(), staffName, command,
+							targetIn(command, this::isKnownName), caseId));
+		}
+	}
+
+	/**
+	 * The player a recorded command is about, when it names one.
+	 * <p>
+	 * Commands are recorded as the text that was typed, and nearly every command about a player
+	 * puts the name straight after the subcommand — {@code /staff ban Steve_ griefing}. A word in
+	 * that position counts only when it is a name this server has actually seen, so a case id, a
+	 * radius or the first word of a reason is never mistaken for a person.
+	 *
+	 * @return the name as the server knows it, or null
+	 */
+	static String targetIn(String command, java.util.function.Predicate<String> known) {
+		if (command == null) return null;
+		String[] words = command.trim().split("\\s+");
+		int start = words.length > 0 && words[0].startsWith("/") ? 2 : 1;
+		for (int i = start; i < Math.min(words.length, start + 2); i++) {
+			String word = words[i];
+			if (word.length() >= 3 && word.length() <= 16 && word.matches("[A-Za-z0-9_]+")
+					&& known.test(word)) {
+				return word;
+			}
+		}
+		return null;
+	}
+
+	/** Online now, or in the name history. Local lookups only; never the network. */
+	private boolean isKnownName(String name) {
+		var server = StaffCore.server();
+		if (server != null) {
+			for (ServerPlayer online : server.getPlayerList().getPlayers()) {
+				if (online.nameAndId().name().equalsIgnoreCase(name)) return true;
+			}
+		}
+		if (!ready()) return false;
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(
+				"SELECT 1 FROM name_history WHERE name = ? COLLATE NOCASE LIMIT 1")) {
+			ps.setString(1, name);
+			try (var rs = ps.executeQuery()) {
+				return rs.next();
+			}
+		} catch (SQLException e) {
+			return false;
+		}
 	}
 
 	/**

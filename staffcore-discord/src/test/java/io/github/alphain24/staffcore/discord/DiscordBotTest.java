@@ -93,7 +93,7 @@ class DiscordBotTest {
 		configure(true, FAKE);
 		AtomicReference<LeakyGateway> made = new AtomicReference<>();
 
-		DiscordBot bot = new DiscordBot(config, Set.of("staff.history"), (token, settings, roles, worker) -> {
+		DiscordBot bot = new DiscordBot(config, null, Set.of("staff.history"), (token, settings, roles, worker, book) -> {
 			LeakyGateway gateway = new LeakyGateway(token);
 			made.set(gateway);
 			return gateway;
@@ -128,7 +128,7 @@ class DiscordBotTest {
 	@DisplayName("a token file that is almost right is not quoted back in the log")
 	void badTokenFileDoesNotLeak() throws Exception {
 		configure(true, FAKE + "#");
-		DiscordBot bot = new DiscordBot(config, Set.of(), (t, s, r, w) -> {
+		DiscordBot bot = new DiscordBot(config, null, Set.of(), (t, s, r, w, b) -> {
 			throw new AssertionError("a bad token must not reach a connection");
 		});
 		List<String> logged;
@@ -145,7 +145,7 @@ class DiscordBotTest {
 	@DisplayName("switched off, the token file is not even read")
 	void offMeansOff() throws Exception {
 		configure(false, FAKE);
-		DiscordBot bot = new DiscordBot(config, Set.of(), (t, s, r, w) -> {
+		DiscordBot bot = new DiscordBot(config, null, Set.of(), (t, s, r, w, b) -> {
 			throw new AssertionError("a disabled bot connected");
 		});
 		bot.start();

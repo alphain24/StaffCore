@@ -30,9 +30,13 @@ public sealed interface StaffCoreEvent {
 	record PunishmentReversed(long at, long id, UUID targetId, String targetName, String type,
 			String reversedBy, String reason, String caseId) implements StaffCoreEvent {}
 
-	/** A player filed a report. */
+	/**
+	 * A player filed a report.
+	 *
+	 * @param caseId the case the report opened or joined, or null when it did neither
+	 */
 	record ReportFiled(long at, long id, UUID targetId, String targetName, int priorPunishments,
-			String reporterName, String reason) implements StaffCoreEvent {}
+			String reporterName, String reason, String caseId) implements StaffCoreEvent {}
 
 	/**
 	 * A report changed hands or was closed.
@@ -44,6 +48,7 @@ public sealed interface StaffCoreEvent {
 	/**
 	 * A detector raised a signal.
 	 *
+	 * @param type       the signal type's name, {@code XRAY}, {@code REPORT} and so on
 	 * @param confidence 0-99, the severity the case model and the alert threshold work in
 	 * @param summary    what staff are told about it in game
 	 * @param caseId     the case it landed in, or null when it was too weak to open one
@@ -52,11 +57,52 @@ public sealed interface StaffCoreEvent {
 			String summary, String caseId, boolean openedCase) implements StaffCoreEvent {}
 
 	/**
+	 * A staff member opened a case by hand. Cases a signal opens arrive as
+	 * {@link SignalRaised} with {@code openedCase} set instead.
+	 *
+	 * @param category the kind of case, as shown in game
+	 */
+	record CaseOpened(long at, String caseId, UUID subjectId, String subjectName, String category,
+			String openedBy, String summary) implements StaffCoreEvent {}
+
+	/**
+	 * Something was written into a case's history by a person: a note, an assignment, a change of
+	 * status.
+	 *
+	 * @param kind   {@code note}, {@code assigned}, or the new status: {@code investigating},
+	 *               {@code actioned}, {@code cleared}, {@code stale}, {@code open}
+	 * @param closed true when this closed the case
+	 */
+	record CaseChanged(long at, String caseId, String kind, String actor, String body, boolean closed)
+			implements StaffCoreEvent {}
+
+	/**
+	 * A player appealed a punishment.
+	 *
+	 * @param punishmentAt     when the appealed punishment was issued
+	 * @param evidenceCount    evidence filed on the punishment's case, 0 when it has none
+	 * @param linkedDiscordId  the Discord account linked to the player, or null
+	 * @param caseId           the punishment's case, or null
+	 */
+	record AppealFiled(long at, long id, UUID playerId, String playerName, long punishmentId,
+			String punishmentType, String punishmentReason, String punishmentBy, long punishmentAt,
+			String text, int evidenceCount, String linkedDiscordId, String caseId)
+			implements StaffCoreEvent {}
+
+	/**
+	 * An appeal was decided.
+	 *
+	 * @param verdict {@code ACCEPTED} or {@code REJECTED}
+	 */
+	record AppealDecided(long at, long id, String verdict, String staffName) implements StaffCoreEvent {}
+
+	/**
 	 * A staff member did something that went into the audit log.
 	 *
 	 * @param action the command or screen action, as recorded
+	 * @param target the player it names, when it names one StaffCore knows; otherwise null
 	 */
-	record StaffAction(long at, String staffName, String action, String caseId)
+	record StaffAction(long at, String staffName, String action, String target, String caseId)
 			implements StaffCoreEvent {}
 
 	/**

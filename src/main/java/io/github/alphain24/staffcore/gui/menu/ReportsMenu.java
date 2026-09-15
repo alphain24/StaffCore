@@ -116,13 +116,8 @@ public class ReportsMenu extends PagedGui<ReportModule.Report> {
 	}
 
 	private void claim(MinecraftServer server, ReportModule.Report report) {
-		// Taking over someone else's claim means releasing it first: `claim` only moves a
-		// report out of OPEN, which is what makes two staff racing for the same one safe.
-		if ("CLAIMED".equals(report.status())) {
-			Mods.reports().unclaim(report.id());
-		}
-
-		if (Mods.reports().claim(report.id(), Mc.name(viewer))) {
+		// The same takeover a claim from Discord does, so the two cannot drift apart.
+		if (Mods.reports().claimOrTakeOver(report.id(), Mc.name(viewer))) {
 			viewer.sendSystemMessage(Theme.good("Claimed report #" + report.id()
 					+ " against " + report.targetName() + "."));
 			Mods.alerts().onStaffAction(server, Mc.name(viewer) + " claimed report #" + report.id());

@@ -95,6 +95,30 @@ class DiscordSettingsTest {
 	}
 
 	@Test
+	@DisplayName("channels are ids or empty, and anything else posts nothing")
+	void channels() throws IOException {
+		var loaded = load("{\"reportsChannelId\": \"#reports\", \"alertsChannelId\": \" 345678901234567890 \"}");
+		assertEquals("", loaded.settings().reportsChannelId);
+		assertEquals("345678901234567890", loaded.settings().alertsChannelId);
+		assertTrue(loaded.problems().stream().anyMatch(p -> p.startsWith("reportsChannelId")));
+		assertTrue(loaded.settings().postsToChannels());
+
+		var chatOnly = load("{\"staffChatChannelId\": \"345678901234567890\"}");
+		assertFalse(chatOnly.settings().postsToChannels(),
+				"a staff chat bridge alone must not silence the webhook, which posts other things");
+	}
+
+	@Test
+	@DisplayName("alert severity is clamped, and a head address has to be https with {uuid} in it")
+	void alertsAndHeads() throws IOException {
+		assertEquals(100, load("{\"discordAlertSeverity\": 400}").settings().discordAlertSeverity);
+		assertEquals("", load("{\"playerHeadUrl\": \"http://example.com/{uuid}\"}").settings().playerHeadUrl);
+		assertEquals("", load("{\"playerHeadUrl\": \"https://example.com/head\"}").settings().playerHeadUrl);
+		assertEquals("https://example.com/{uuid}.png",
+				load("{\"playerHeadUrl\": \"https://example.com/{uuid}.png\"}").settings().playerHeadUrl);
+	}
+
+	@Test
 	@DisplayName("roles add up, and a role nobody mapped adds nothing")
 	void roleMap() {
 		RoleMap map = new RoleMap(Map.of("1", List.of("a"), "2", List.of("b", "a")));

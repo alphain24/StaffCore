@@ -67,6 +67,31 @@ public class NotesModule implements Module {
 		}
 	}
 
+	/**
+	 * What writing a note onto somebody's record did.
+	 *
+	 * @param caseId the open case it was attached to, or null
+	 * @param total  how many notes the player has now
+	 */
+	public record Written(boolean saved, String caseId, int total) {}
+
+	/**
+	 * Writes a note the way staff write one: attached to the player's open case when they have one,
+	 * with a line in that case's history saying so.
+	 * <p>
+	 * {@code /staff note} and a note added from Discord both come here, so the two cannot come to
+	 * disagree about where a note goes.
+	 */
+	public Written write(UUID target, String targetName, String author, String text) {
+		var cases = io.github.alphain24.staffcore.module.Mods.cases().store();
+		String caseId = cases.openCaseFor(target)
+				.map(io.github.alphain24.staffcore.modules.cases.Case::id).orElse(null);
+
+		if (!add(target, author, text, caseId)) return new Written(false, null, count(target));
+		if (caseId != null) cases.note(caseId, author, "note on " + targetName + ": " + text);
+		return new Written(true, caseId, count(target));
+	}
+
 	/** Newest first. */
 	public List<Note> list(UUID target) {
 		List<Note> out = new ArrayList<>();

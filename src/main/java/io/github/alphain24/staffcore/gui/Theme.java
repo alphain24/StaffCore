@@ -39,6 +39,8 @@ public final class Theme {
 	public static final int WARN   = 0xFFC93C;
 	/** Punishment ladder accents. */
 	public static final int PUNISH = 0xE0563C;
+	/** Anything that came in from Discord, in Discord's own colour so it is recognised at a glance. */
+	public static final int DISCORD = 0x5865F2;
 
 	// --------------------------------------------------------------------- chrome
 
