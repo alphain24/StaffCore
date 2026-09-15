@@ -45,8 +45,7 @@ Stop the server. In `config/staffcore.json`:
 
 ```jsonc
 "canaryForceWithBulkAntiXray": true,   // normally false — NOT a supported mode
-"canaryDensity": 20,                   // normally 6
-"canaryMaxY": 60,                      // normally 16
+"canaryDensity": 20,                   // normally 12
 "canaryRadius": 24                     // normally 48
 ```
 

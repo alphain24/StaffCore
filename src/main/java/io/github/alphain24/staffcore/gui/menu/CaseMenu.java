@@ -10,7 +10,6 @@ import io.github.alphain24.staffcore.module.Mods;
 import io.github.alphain24.staffcore.modules.cases.Case;
 import io.github.alphain24.staffcore.modules.cases.CaseCategory;
 import io.github.alphain24.staffcore.modules.cases.CaseEvidence;
-import io.github.alphain24.staffcore.modules.cases.EvidenceViewer;
 import io.github.alphain24.staffcore.modules.cases.Signal;
 import io.github.alphain24.staffcore.permission.Nodes;
 import io.github.alphain24.staffcore.permission.Permissions;
@@ -21,6 +20,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.NameAndId;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -30,9 +30,18 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * One case: what kind it is, who it is about, what the detectors said, the evidence to open —
- * and the things staff do about a case without leaving it: go to where it happened, roll back
- * the damage, punish the player, hand the case to somebody.
+ * One case: what kind it is, who it is about, and three rows of things to do with it.
+ * <pre>
+ *   .  .  .  .  CASE .  .  .  .
+ *   C  .  ■  ■  ■    ■  ■  .  C     Case — claim, investigating, close, assign, kind
+ *   L  .  ■  ■  ■    ■  ■  .  L     Look into it — evidence, dig info, signals, history, file
+ *   A  .  ■  ■  ■    ■  ■  .  A     Act on it — scene, roll back, punish, file, inventory
+ *   ←  .  .  .  .    .  .  .  ✕
+ * </pre>
+ * Evidence, the x-ray dig, what the detectors said and the case history each open a screen of
+ * their own. They used to be laid straight onto this one, fourteen items across the middle, so
+ * the case grew a different shape with every piece of evidence filed and anything past the
+ * fourteenth was not on screen at all. Now this screen is the same grid for every case.
  * <p>
  * Every action re-reads the case when it is clicked rather than trusting what was drawn, and
  * every one of them goes through the same permission check, rate limit and confirmation as its
@@ -41,24 +50,11 @@ import java.util.Optional;
 public final class CaseMenu extends Gui {
 
 	private static final int HEADER = 4;
-	private static final int CLAIM = 10;
-	private static final int INVESTIGATING = 11;
-	private static final int CLOSE_CASE = 12;
-	private static final int ASSIGN = 13;
-	private static final int CATEGORY = 14;
-	private static final int SIGNALS = 15;
-	private static final int READ_IN_CHAT = 16;
-	private static final int[] EVIDENCE = {
-			19, 20, 21, 22, 23, 24, 25,
-			28, 29, 30, 31, 32, 33, 34};
-	private static final int SCENE = 38;
-	private static final int ROLLBACK = 39;
-	private static final int PUNISH = 40;
-	private static final int PLAYER_FILE = 41;
-	private static final int INVENTORY = 42;
-	private static final int BACK = 45;
-	private static final int FILE_EVIDENCE = 47;
-	private static final int CLOSE = 49;
+	private static final int CASE_ROW = 9;
+	private static final int LOOK_ROW = 18;
+	private static final int ACT_ROW = 27;
+	private static final int BACK = 36;
+	private static final int CLOSE = 44;
 
 	private final String caseId;
 
@@ -79,39 +75,36 @@ public final class CaseMenu extends Gui {
 	}
 
 	private CaseMenu(int containerId, Inventory playerInventory, ServerPlayer viewer, String caseId) {
-		super(containerId, playerInventory, viewer, 6);
+		super(containerId, playerInventory, viewer, 5);
 		this.caseId = caseId;
 		render();
 	}
 
 	@Override
 	protected void build() {
+		backButton(BACK, "Cases", () -> CasesMenu.open(viewer));
+		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
+
 		Case found = Mods.cases().store().byId(caseId).orElse(null);
 		if (found == null) {
 			set(22, Icon.of(Items.BARRIER)
 					.name("Case " + caseId + " could not be read", Theme.BAD)
 					.lore("Cases are never deleted, so storage is unavailable.")
 					.build());
-			backButton(BACK, "Cases", () -> CasesMenu.open(viewer));
-			button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
 			fillEmpty(Theme.filler());
 			return;
 		}
 
 		List<CaseEvidence.Item> items = Mods.cases().evidence().forCase(found.id());
 
-		set(HEADER, header(found));
-		actions(found);
-		evidence(found, items);
-		doSomething(found, items);
-
-		backButton(BACK, "Cases", () -> CasesMenu.open(viewer));
-		button(FILE_EVIDENCE, Icon.of(Items.WRITABLE_BOOK)
-				.name("File evidence", Theme.ACCENT)
-				.lore("A replay of " + name(found) + ", the block damage")
-				.lore("around you, where you stand, or their inventory.")
-				.build(), click -> CaseEvidenceMenu.open(viewer, found.id()));
-		button(CLOSE, Theme.closeButton(), click -> viewer.closeContainer());
+		button(HEADER, header(found), click -> {
+			viewer.closeContainer();
+			io.github.alphain24.staffcore.modules.cases.CaseView.print(
+					viewer.createCommandSourceStack(), found);
+		});
+		caseRow(found);
+		lookRow(found, items);
+		actRow(found, items);
 		fillEmpty(Theme.filler());
 	}
 
@@ -126,50 +119,61 @@ public final class CaseMenu extends Gui {
 		if (found.summary() != null && !found.summary().isBlank()) {
 			icon.gap().paragraph(found.summary(), Theme.TEXT);
 		}
+		icon.gap().action("Click", "read the whole case in chat");
 		if (found.status().isLive() && found.severity() >= 70) icon.glow();
 		return icon.build();
 	}
 
-	private void actions(Case found) {
+	// ------------------------------------------------------------------- the case
+
+	private void caseRow(Case found) {
+		label(CASE_ROW, DyeColor.LIGHT_BLUE, "Case", "Claim · Investigating · Close · Assign · Kind");
 		String me = Mc.name(viewer);
 
-		button(CLAIM, Icon.of(Items.NAME_TAG)
-				.name(me.equals(found.assignedTo()) ? "Assigned to you" : "Claim", Theme.ACCENT)
-				.lore(me.equals(found.assignedTo()) ? "Click to unassign yourself."
-						: "Assign this case to yourself.")
+		boolean mine = me.equals(found.assignedTo());
+		button(CASE_ROW + 2, Icon.of(Items.NAME_TAG)
+				.name(mine ? "Assigned to you" : "Claim", Theme.ACCENT)
+				.lore(mine ? "It is yours." : "Assign this case to yourself.")
+				.gap()
+				.action("Click", mine ? "unassign yourself" : "claim it")
 				.build(), click -> {
-			Mods.cases().store().assign(found.id(), me.equals(found.assignedTo()) ? null : me, me);
+			Mods.cases().store().assign(found.id(), mine ? null : me, me);
 			Sfx.click(viewer);
 			render();
 		});
 
-		button(INVESTIGATING, Icon.of(Items.SPYGLASS)
-				.name("Mark investigating", found.status() == Case.Status.INVESTIGATING
-						? Theme.MUTED : Theme.ACCENT)
-				.lore("Somebody is working on it.")
+		boolean investigating = found.status() == Case.Status.INVESTIGATING;
+		button(CASE_ROW + 3, Icon.of(Items.SPYGLASS)
+				.name("Mark investigating", investigating ? Theme.MUTED : Theme.ACCENT)
+				.lore(investigating ? "Already marked." : "Somebody is working on it.")
+				.gap()
+				.action("Click", investigating ? "nothing to change" : "mark it")
 				.build(), click -> {
-			if (found.status() != Case.Status.INVESTIGATING) {
+			if (!investigating) {
 				Mods.cases().store().setStatus(found.id(), Case.Status.INVESTIGATING, me, null);
 				Sfx.click(viewer);
 			}
 			render();
 		});
 
-		button(CLOSE_CASE, Icon.of(Items.IRON_DOOR)
+		button(CASE_ROW + 4, Icon.of(Items.IRON_DOOR)
 				.name("Close the case", Theme.ACCENT)
-				.lore("Cleared, with the reason why — or actioned.")
+				.lore("Actioned, with the punishment they got —")
+				.lore("or cleared, with why.")
+				.gap()
+				.action("Click", "choose how")
 				.build(), click -> CaseCloseMenu.open(viewer, found.id()));
 
-		button(ASSIGN, Icon.of(Items.PLAYER_HEAD)
+		button(CASE_ROW + 5, Icon.of(Items.PLAYER_HEAD)
 				.name("Assign to…", Theme.ACCENT)
 				.field("Now", found.assignedTo() == null ? "nobody" : found.assignedTo())
+				.lore("Staff online, fewest open cases first.", Theme.MUTED)
 				.gap()
-				.lore("Pick from the staff online, fewest open cases", Theme.MUTED)
-				.lore("first — or unassign it.", Theme.MUTED)
+				.action("Click", "pick somebody")
 				.build(), click -> CaseAssignMenu.open(viewer, found.id()));
 
 		CaseCategory[] all = CaseCategory.values();
-		button(CATEGORY, Icon.of(CasesMenu.iconFor(found.category()))
+		button(CASE_ROW + 6, Icon.of(CasesMenu.iconFor(found.category()))
 				.name("Kind: " + found.category().label(), Theme.ACCENT)
 				.lore("Reports are sorted by their words, which can be wrong.")
 				.gap()
@@ -187,28 +191,62 @@ public final class CaseMenu extends Gui {
 			}
 			render();
 		});
-
-		List<Signal> signals = Mods.cases().store().signalsFor(found.id());
-		Icon signalIcon = Icon.of(Items.PAPER)
-				.name("What the detectors said (" + signals.size() + ")", Theme.ACCENT);
-		signals.stream().limit(6).forEach(signal -> signalIcon.lore(TimeFormat.ago(signal.occurredAt())
-				+ "  " + signal.type().label() + "  " + signal.confidence() + "%", Theme.TEXT));
-		if (signals.size() > 6) signalIcon.lore("… and " + (signals.size() - 6) + " more", Theme.MUTED);
-		set(SIGNALS, signalIcon.build());
-
-		button(READ_IN_CHAT, Icon.of(Items.BOOK)
-				.name("Read the whole case in chat", Theme.ACCENT)
-				.lore("Every signal, note and event, oldest first.")
-				.build(), click -> {
-			viewer.closeContainer();
-			io.github.alphain24.staffcore.modules.cases.CaseView.print(
-					viewer.createCommandSourceStack(), found);
-		});
 	}
 
-	// ------------------------------------------------------------ doing something
+	// ------------------------------------------------------------ looking into it
 
-	private void doSomething(Case found, List<CaseEvidence.Item> items) {
+	private void lookRow(Case found, List<CaseEvidence.Item> items) {
+		label(LOOK_ROW, DyeColor.YELLOW, "Look into it", "Evidence · Dig info · Signals · History · File");
+
+		long digs = items.stream().filter(item -> item.kind() == CaseEvidence.Kind.XRAY_DIG).count();
+		long evidence = items.size() - digs;
+
+		button(LOOK_ROW + 2, Icon.of(Items.CHEST)
+				.name("Evidence (" + evidence + ")", evidence > 0 ? Theme.ACCENT : Theme.MUTED)
+				.lore("Replays, block damage, places and inventories", Theme.MUTED)
+				.lore("filed on this case.", Theme.MUTED)
+				.gap()
+				.action("Click", "open the list")
+				.build(), click -> CaseEvidenceListMenu.open(viewer, found.id(), false));
+
+		button(LOOK_ROW + 3, Icon.of(Items.DIAMOND_PICKAXE)
+				.name("Dig info (" + digs + ")", digs > 0 ? Theme.ACCENT : Theme.MUTED)
+				.lore("The x-ray digs recorded for this case, to watch", Theme.MUTED)
+				.lore("back from inside the tunnel.", Theme.MUTED)
+				.gap()
+				.action("Click", "open the list")
+				.build(), click -> CaseEvidenceListMenu.open(viewer, found.id(), true));
+
+		List<Signal> signals = Mods.cases().store().signalsFor(found.id());
+		button(LOOK_ROW + 4, Icon.of(Items.PAPER)
+				.name("Detector signals (" + signals.size() + ")", signals.isEmpty() ? Theme.MUTED : Theme.ACCENT)
+				.lore("What the detectors said, and how sure they were.", Theme.MUTED)
+				.gap()
+				.action("Click", "open the list")
+				.build(), click -> CaseSignalsMenu.open(viewer, found.id()));
+
+		int events = Mods.cases().store().eventsFor(found.id()).size();
+		button(LOOK_ROW + 5, Icon.of(Items.BOOK)
+				.name("History (" + events + ")", Theme.ACCENT)
+				.lore("Everything done on the case, with the reason", Theme.MUTED)
+				.lore("for every punishment and every close.", Theme.MUTED)
+				.gap()
+				.action("Click", "open it")
+				.build(), click -> CaseHistoryMenu.open(viewer, found.id()));
+
+		button(LOOK_ROW + 6, Icon.of(Items.WRITABLE_BOOK)
+				.name("File evidence", Theme.ACCENT)
+				.lore("A replay of " + name(found) + ", the block damage")
+				.lore("around you, where you stand, or their inventory.")
+				.gap()
+				.action("Click", "choose what")
+				.build(), click -> CaseEvidenceMenu.open(viewer, found.id()));
+	}
+
+	// ------------------------------------------------------------------ acting on it
+
+	private void actRow(Case found, List<CaseEvidence.Item> items) {
+		label(ACT_ROW, DyeColor.RED, "Act on it", "Scene · Roll back · Punish · Their file · Inventory");
 		scene(found, items);
 		rollback(found, items);
 		punish(found);
@@ -238,22 +276,25 @@ public final class CaseMenu extends Gui {
 	}
 
 	private void scene(Case found, List<CaseEvidence.Item> items) {
+		int slot = ACT_ROW + 2;
 		Optional<CaseEvidence.Item> scene = sceneOf(items);
 		if (scene.isEmpty()) {
-			set(SCENE, Icon.of(Items.ENDER_EYE)
+			set(slot, Icon.of(Items.ENDER_EYE)
 					.name("Go to the scene", Theme.MUTED)
-					.lore("No evidence on this case says where it happened.")
-					.lore("Stand there and file a location with the book.", Theme.MUTED)
+					.lore("No evidence on this case says where it happened.", Theme.MUTED)
+					.gap()
+					.warn("File a location, standing there.")
 					.build());
 			return;
 		}
 		CaseEvidence.Item where = scene.get();
-		button(SCENE, Icon.of(Items.ENDER_PEARL)
+		button(slot, Icon.of(Items.ENDER_PEARL)
 				.name("Go to the scene", Theme.ACCENT)
 				.field("Where", where.where())
 				.field("From", "#" + where.id() + " " + where.kind().label())
-				.gap()
 				.lore("/staff back returns you afterwards.", Theme.MUTED)
+				.gap()
+				.action("Click", "go there")
 				.build(), click -> goTo(viewer, where));
 	}
 
@@ -290,32 +331,29 @@ public final class CaseMenu extends Gui {
 	 * made since, which the confirm screen says in so many words.
 	 */
 	private void rollback(Case found, List<CaseEvidence.Item> items) {
+		int slot = ACT_ROW + 3;
 		Optional<CaseEvidence.Item> damage = items.stream()
 				.filter(item -> item.kind() == CaseEvidence.Kind.BLOCKS && item.pos() != null)
 				.max(Comparator.comparingLong(CaseEvidence.Item::addedAt));
 
-		if (damage.isEmpty()) {
-			if (found.category() == CaseCategory.GRIEFING) {
-				set(ROLLBACK, Icon.of(Items.TNT)
-						.name("Roll back the damage", Theme.MUTED)
-						.lore("No block damage is filed on this case, so there is")
-						.lore("nothing to say where or since when.")
-						.lore("File it with the book, standing at the damage.", Theme.MUTED)
-						.build());
-			}
+		if (!Permissions.check(viewer, Nodes.ROLLBACK)) {
+			set(slot, locked(Items.TNT, "Roll back the damage", Nodes.ROLLBACK));
 			return;
 		}
-		if (!Permissions.check(viewer, Nodes.ROLLBACK)) {
-			set(ROLLBACK, Icon.of(Items.TNT)
+		if (damage.isEmpty()) {
+			set(slot, Icon.of(Items.TNT)
 					.name("Roll back the damage", Theme.MUTED)
-					.lore("Needs " + Nodes.ROLLBACK + ".")
+					.lore("No block damage is filed on this case, so there is", Theme.MUTED)
+					.lore("nothing to say where or since when.", Theme.MUTED)
+					.gap()
+					.warn("File it with File evidence, standing at the damage.")
 					.build());
 			return;
 		}
 
 		CaseEvidence.Item area = damage.get();
 		String subject = found.subjectName();
-		button(ROLLBACK, Icon.of(Items.TNT)
+		button(slot, Icon.of(Items.TNT)
 				.name("Roll back the damage", Theme.BAD)
 				.field("Where", area.where())
 				.field("Radius", area.radius() + " blocks")
@@ -324,7 +362,6 @@ public final class CaseMenu extends Gui {
 				.action("Click", subject == null ? "roll back everything there"
 						: "roll back what " + subject + " did there")
 				.action("Right-click", "roll back everybody's changes there")
-				.gap()
 				.warn("You see a preview before anything is written.")
 				.build(), click -> previewRollback(found, area,
 						click.isRight() || subject == null ? null : subject));
@@ -377,12 +414,18 @@ public final class CaseMenu extends Gui {
 	}
 
 	private void punish(Case found) {
-		if (!Permissions.check(viewer, Nodes.PUNISH)) return;
+		int slot = ACT_ROW + 4;
 		NameAndId subject = subjectOf(found);
-		button(PUNISH, Icon.of(Items.IRON_SWORD)
+		if (!Permissions.check(viewer, Nodes.PUNISH)) {
+			set(slot, locked(Items.IRON_SWORD, "Punish " + subject.name(), Nodes.PUNISH));
+			return;
+		}
+		button(slot, Icon.of(Items.IRON_SWORD)
 				.name("Punish " + subject.name(), Theme.BAD)
-				.lore("Opens the punishment screen. Whatever you issue")
-				.lore("from there is linked to this case and noted in it.")
+				.lore("Whatever you issue from here is linked to this")
+				.lore("case, with its reason in the case history.")
+				.gap()
+				.action("Click", "open the punishment screen")
 				.build(), click -> {
 			io.github.alphain24.staffcore.gui.PunishFromCase.remember(viewer.getUUID(), found.id(), found.subjectId());
 			PunishMenu.open(viewer, subject);
@@ -391,70 +434,46 @@ public final class CaseMenu extends Gui {
 
 	private void playerFile(Case found) {
 		NameAndId subject = subjectOf(found);
-		button(PLAYER_FILE, Icon.head(subject)
+		button(ACT_ROW + 5, Icon.head(subject)
 				.name(subject.name() + "'s file", Theme.ACCENT)
 				.lore("History, notes, alts and everything else.")
+				.gap()
+				.action("Click", "open it")
 				.build(), click -> PlayerActionsMenu.open(viewer, subject));
 	}
 
 	private void inventory(Case found) {
-		if (!Permissions.check(viewer, Nodes.INVSEE)) return;
+		int slot = ACT_ROW + 6;
 		NameAndId subject = subjectOf(found);
-		button(INVENTORY, Icon.of(Items.CHEST)
+		if (!Permissions.check(viewer, Nodes.INVSEE)) {
+			set(slot, locked(Items.CHEST, "Their inventory", Nodes.INVSEE));
+			return;
+		}
+		button(slot, Icon.of(Items.CHEST)
 				.name("Look in " + subject.name() + "'s inventory", Theme.ACCENT)
 				.lore(found.category() == CaseCategory.ILLEGAL_ITEMS
 						? "Where the item this case is about should be."
 						: "Live if they are online, their saved one if not.")
+				.gap()
+				.action("Click", "open it")
 				.build(), click -> InvseeMenu.open(viewer, subject));
+	}
+
+	// ----------------------------------------------------------------------- helpers
+
+	private static ItemStack locked(Item item, String name, String node) {
+		return Icon.of(item).name(name, Theme.MUTED).lore("Locked — needs " + node + ".", Theme.MUTED).build();
+	}
+
+	private void label(int row, DyeColor colour, String name, String contents) {
+		ItemStack label = Icon.of(Mc.pane(colour)).name(name, Theme.ACCENT).lore(contents, Theme.MUTED).build();
+		set(row, label);
+		set(row + 8, label.copy());
 	}
 
 	private static NameAndId subjectOf(Case found) {
 		return new NameAndId(found.subjectId(),
 				found.subjectName() == null ? found.subjectId().toString() : found.subjectName());
-	}
-
-	// ------------------------------------------------------------------ evidence
-
-	private void evidence(Case found, List<CaseEvidence.Item> items) {
-		if (items.isEmpty()) {
-			set(EVIDENCE[3], Icon.of(Items.GLASS_PANE)
-					.name("No evidence filed yet", Theme.MUTED)
-					.lore("Detectors file a replay and the damage when they")
-					.lore("open a case. File your own with the book below.")
-					.build());
-			return;
-		}
-
-		for (int i = 0; i < items.size() && i < EVIDENCE.length; i++) {
-			CaseEvidence.Item item = items.get(i);
-			Icon icon = Icon.of(iconFor(item.kind()))
-					.name("#" + item.id() + " " + item.kind().label(), Theme.ACCENT)
-					.lore(item.describe(), Theme.TEXT);
-			if (item.label() != null && !item.label().isBlank()) icon.lore(item.label(), Theme.MUTED);
-			icon.field("Filed", TimeFormat.ago(item.addedAt()) + " by " + item.addedBy())
-					.gap()
-					.action("Click", "open it")
-					.action("Shift-click", "retract it");
-
-			button(EVIDENCE[i], icon.build(), click -> {
-				if (click.isShift()) {
-					ConfirmMenu.open(viewer, "Retract #" + item.id(),
-							new ItemStack(iconFor(item.kind())),
-							() -> {
-								Mods.cases().evidence().retract(item.id(), Mc.name(viewer));
-								reopen(viewer, found.id());
-							},
-							() -> reopen(viewer, found.id()));
-					return;
-				}
-				EvidenceViewer.open(viewer, item);
-			});
-		}
-		if (items.size() > EVIDENCE.length) {
-			viewer.sendSystemMessage(Theme.info("Case " + found.id() + " has " + items.size()
-					+ " pieces of evidence; the screen shows the first " + EVIDENCE.length
-					+ ". /staff case " + found.id() + " evidence lists them all."));
-		}
 	}
 
 	static Item iconFor(CaseEvidence.Kind kind) {
@@ -467,7 +486,7 @@ public final class CaseMenu extends Gui {
 		};
 	}
 
-	private static String name(Case found) {
+	static String name(Case found) {
 		return found.subjectName() == null ? found.subjectId().toString() : found.subjectName();
 	}
 }

@@ -377,6 +377,37 @@ public final class CaseStore {
 
 	// --------------------------------------------------------------------- reading
 
+	/**
+	 * Cases whose id starts with this, for completing {@code /staff case <id>}: the live ones
+	 * first, then the rest, newest first within each.
+	 * <p>
+	 * An eight-character id is not something anybody types from memory, and a mistyped one is
+	 * "no such case" at best and somebody else's case at worst.
+	 */
+	public List<Case> startingWith(String prefix, int limit) {
+		List<Case> out = new ArrayList<>();
+		if (!ready()) return out;
+
+		String typed = prefix == null ? "" : prefix.trim().toUpperCase(java.util.Locale.ROOT)
+				.replace("!", "!!").replace("%", "!%").replace("_", "!_");
+		try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement("""
+				SELECT * FROM cases WHERE UPPER(id) LIKE ? ESCAPE '!'
+				ORDER BY CASE WHEN status IN ('open','investigating') THEN 0 ELSE 1 END,
+				         opened_at DESC
+				LIMIT ?
+				""")) {
+			ps.setString(1, typed + "%");
+			ps.setInt(2, limit);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) out.add(read(rs));
+			}
+		} catch (SQLException e) {
+			// Completion is a convenience; losing it must not cost the command being typed.
+			StaffCore.LOGGER.debug("[Cases] case id completion failed: {}", e.getMessage());
+		}
+		return out;
+	}
+
 	public Optional<Case> byId(String id) {
 		String normalised = CaseId.normalise(id);
 		if (!ready() || normalised == null) return Optional.empty();

@@ -1893,7 +1893,7 @@ public class GriefModule implements Module {
 		static final RollbackResult NOTHING = new RollbackResult(0, 0, 0, 0, 0, 0, 0, List.of(),
 				Map.of(), List.of(), 0L, Map.of(), 0);
 
-		/** Whether this rollback left something {@code /staff rollback undo} could take back. */
+		/** Whether this rollback left something {@code /staff undo} could take back. */
 		public boolean isUndoable() {
 			return pointId > 0;
 		}

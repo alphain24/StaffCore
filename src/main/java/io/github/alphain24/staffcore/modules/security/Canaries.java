@@ -53,8 +53,35 @@ import java.util.concurrent.atomic.AtomicLong;
  * at a screen full of real veins learns to skip anything that does not look like one. So decoys
  * look like what that rock really holds. In deepslate, where diamonds are common, a decoy is a
  * cluster of one to nine blocks touching by faces and edges. In stone above it, where diamonds
- * are rare and come one or two at a time, a decoy is one or two blocks, and only one seed in
- * {@value #STONE_VEIN_ODDS} that lands in stone is used at all.
+ * are rare and come one or two at a time, a decoy is one or two blocks.
+ *
+ * <h2>At the heights real diamonds are at</h2>
+ * Read from the game's own world generation ({@code worldgen/placed_feature/ore_diamond*} in
+ * 26.2), not guessed. Diamonds generate from the bottom of the world to Y 16:
+ * <ul>
+ *   <li>small (size 4, seven a chunk), buried (size 8, four a chunk) and large (size 12, one
+ *       chunk in nine) on a trapezoid from 80 below the bottom to 80 above it — inside the world,
+ *       most common at the very bottom and thinning out to nothing at Y 16;</li>
+ *   <li>medium (size 8, two a chunk) evenly from the bottom to Y -4.</li>
+ * </ul>
+ * Deepslate replaces stone below Y 0, blending in between 0 and 8, and the same features place
+ * deepslate diamond ore in deepslate and tuff and diamond ore in stone. So about nineteen
+ * diamonds in twenty are deepslate diamonds, nearly all of them well below 0. A decoy height is
+ * drawn from that same curve ({@link #diamondDensity}), which is why a stone decoy is rare
+ * without any separate rule making it so: they only come from the top of the range, where
+ * diamonds hardly generate.
+ * <p>
+ * Near the player as well: from {@value #BELOW_PLAYER} below them to {@value #ABOVE_PLAYER}
+ * above. A decoy the height of the world away is one nobody, cheating or not, digs towards.
+ * Nobody above Y {@code canaryMaxY + ABOVE_PLAYER} has any.
+ *
+ * <h2>They follow the player</h2>
+ * Each player has up to {@code canaryDensity} veins, topped up every five seconds whether or
+ * not they are digging. A vein goes when it is uncovered, when the rock around it changes, and
+ * when the player has moved on and left it out of reach — so somebody who mines past every
+ * decoy, or goes deeper, gets fresh ones around where they are now. Before that last rule a
+ * player's whole allowance could be spent on veins up at Y 10, and going down to deepslate
+ * brought no decoys at all.
  *
  * <h2>Why there is no chunk mixin</h2>
  * The obvious implementation rewrites the block palette as a chunk is serialised, which is what
@@ -110,17 +137,19 @@ public final class Canaries {
 	static final int MAX_VEIN = 9;
 
 	/**
-	 * How much rarer a decoy in stone is than one in deepslate: one seed in this many that lands
-	 * in stone is kept. Diamonds above the deepslate line are a fraction of those below it.
+	 * How far below the player decoys may go. An x-ray pack shows ore in every direction, but
+	 * people strip-mine at one level and dig down to veins far more readily than up.
 	 */
-	static final int STONE_VEIN_ODDS = 4;
+	static final int BELOW_PLAYER = 32;
+
+	/** How far above the player decoys may go. */
+	static final int ABOVE_PLAYER = 12;
 
 	/**
-	 * How far below the player decoys may go. Above them it is eight blocks, as before: an x-ray
-	 * pack shows ore in every direction, but people strip-mine at one level and dig down to veins
-	 * far more readily than up.
+	 * How far past the placement box a vein may be before it is left behind and replaced. The
+	 * margin stops a vein at the edge being retired and re-placed as the player shuffles about.
 	 */
-	static final int BELOW_PLAYER = 24;
+	static final int LEFT_BEHIND_MARGIN = 16;
 
 	/** Blocks between separate decoy veins, so uncovering one never uncovers its neighbour. */
 	private static final int VEIN_SPACING = 3;
@@ -174,9 +203,25 @@ public final class Canaries {
 			BlockPos seed = pick(level, player);
 			if (seed == null || tooCloseToAnother(mine, seed)) continue;
 			boolean deep = isDeep(level.getBlockState(seed));
-			if (!deep && random.nextInt(STONE_VEIN_ODDS) != 0) continue;
 			growVein(player, level, seed, veinSize(random, deep), random);
 		}
+	}
+
+	/**
+	 * How many diamond veins the game generates at this height, per chunk per block of height.
+	 * <p>
+	 * From {@code worldgen/placed_feature/ore_diamond*}: seven small, four buried and a ninth of
+	 * a large vein a chunk on a trapezoid from 80 below the bottom to 80 above it, and two medium
+	 * evenly from the bottom to 60 above it. Only the part of the trapezoid inside the world
+	 * counts, so it is at its thickest at the bottom and gone by 80 above it — Y 16 in the
+	 * overworld.
+	 */
+	static double diamondDensity(int minY, int y) {
+		int fromBottom = y - minY;
+		if (fromBottom < 0 || fromBottom > 80) return 0;
+		double trapezoid = (7 + 4 + 1.0 / 9) * (80 - fromBottom) / 6400.0;
+		double medium = fromBottom <= 60 ? 2.0 / 61 : 0;
+		return trapezoid + medium;
 	}
 
 	/**
@@ -228,11 +273,25 @@ public final class Canaries {
 
 		String here = Mc.dimensionId(level);
 		for (Canary canary : List.copyOf(mine.values())) {
-			// A decoy in a world the player is not in. Their client does not hold that chunk
-			// at all, so there is nothing to check against.
-			if (!canary.world().equals(here)) continue;
-			if (!level.isLoaded(canary.pos())) continue;
 			if (!mine.containsKey(canary.pos())) continue;   // retired with its vein already
+
+			// A decoy in a world the player has left. Their client does not hold that chunk,
+			// so it is forgotten without a word to the client, and its slot goes to a vein
+			// where they are now.
+			if (!canary.world().equals(here)) {
+				forgetVein(player.getUUID(), mine, canary.vein());
+				continue;
+			}
+
+			// Left behind. The player mined past it, went deeper, or walked off; either way it
+			// is taking up one of their veins somewhere they are not digging, and without this
+			// no new decoys were ever placed near them again.
+			if (leftBehind(level, player, canary.pos())) {
+				retireVein(level, player.getUUID(), mine, canary.vein(), player);
+				continue;
+			}
+
+			if (!level.isLoaded(canary.pos())) continue;
 
 			// Sealed as well as still stone. A neighbour can open without a break event — a
 			// piston, a rollback, water — and a decoy with a face open to air is one the player
@@ -331,8 +390,8 @@ public final class Canaries {
 	 * <p>
 	 * Random within the radius rather than swept, because a sweep produces decoys in a
 	 * pattern, and a pattern is something somebody eventually notices and avoids. The height is
-	 * around the player's own rather than anywhere down to bedrock: a decoy sixty blocks below
-	 * somebody strip-mining at y 10 is one they will never dig towards, cheating or not.
+	 * near the player's own, and within that drawn from the real diamond curve: a height is kept
+	 * as often, relative to the deepest diamond layer, as the game puts diamonds there.
 	 */
 	private static BlockPos pick(ServerLevel level, ServerPlayer player) {
 		StaffConfig cfg = StaffConfig.get();
@@ -342,9 +401,12 @@ public final class Canaries {
 		int[] band = heightBand(level, from.getY(), cfg);
 		if (band == null) return null;
 
+		int y = random.nextInt(band[0], band[1] + 1);
+		int minY = level.getMinY();
+		if (random.nextDouble() * diamondDensity(minY, minY) > diamondDensity(minY, y)) return null;
+
 		int x = from.getX() + random.nextInt(-cfg.canaryRadius, cfg.canaryRadius + 1);
 		int z = from.getZ() + random.nextInt(-cfg.canaryRadius, cfg.canaryRadius + 1);
-		int y = random.nextInt(band[0], band[1] + 1);
 		BlockPos pos = new BlockPos(x, y, z);
 
 		// Never touch a chunk that is not already loaded. Loading one to place a decoy would
@@ -357,12 +419,17 @@ public final class Canaries {
 	 * The lowest and highest Y decoys go at for a player standing at this height, or null when
 	 * there is nowhere.
 	 * <p>
-	 * Five above the bottom of the world, not eight: people strip-mine at the diamond layer,
-	 * which is a few blocks above bedrock, and a floor of eight put every decoy above them.
+	 * Where diamonds generate — the bottom of the world up to Y 16, or {@code canaryMaxY} if that
+	 * is lower — and near the player. Bedrock at the very bottom is skipped by the plain-stone
+	 * check, not by the band, because the lowest real deepslate diamonds are among the commonest.
 	 */
 	static int[] heightBand(ServerLevel level, int playerY, StaffConfig cfg) {
-		int low = Math.max(level.getMinY() + 5, playerY - BELOW_PLAYER);
-		int high = Math.min(cfg.canaryMaxY, playerY + 8);
+		return heightBand(level.getMinY(), playerY, cfg.canaryMaxY);
+	}
+
+	static int[] heightBand(int minY, int playerY, int maxY) {
+		int low = Math.max(minY, playerY - BELOW_PLAYER);
+		int high = Math.min(Math.min(maxY, minY + 80), playerY + ABOVE_PLAYER);
 		return high < low ? null : new int[] {low, high};
 	}
 
@@ -487,6 +554,28 @@ public final class Canaries {
 	public static void onExplosion(ServerLevel level, Collection<BlockPos> destroyed) {
 		if (LIVE.isEmpty() || level == null || destroyed == null) return;
 		for (BlockPos pos : destroyed) onBreak(level, null, pos);
+	}
+
+	/** Whether a decoy is now too far from where this player is to be worth keeping. */
+	static boolean leftBehind(ServerLevel level, ServerPlayer player, BlockPos decoy) {
+		StaffConfig cfg = StaffConfig.get();
+		BlockPos at = player.blockPosition();
+		int reach = cfg.canaryRadius + LEFT_BEHIND_MARGIN;
+		if (Math.abs(decoy.getX() - at.getX()) > reach || Math.abs(decoy.getZ() - at.getZ()) > reach) {
+			return true;
+		}
+		return decoy.getY() < at.getY() - BELOW_PLAYER - LEFT_BEHIND_MARGIN
+				|| decoy.getY() > at.getY() + ABOVE_PLAYER + LEFT_BEHIND_MARGIN;
+	}
+
+	/** Drops a vein in another world from the books, without sending anything. */
+	private static void forgetVein(UUID owner, Map<BlockPos, Canary> mine, long vein) {
+		for (Canary canary : List.copyOf(mine.values())) {
+			if (canary.vein() != vein) continue;
+			mine.remove(canary.pos());
+			io.github.alphain24.staffcore.illusion.BlockIllusions.forgetOne(owner, canary.world(),
+					io.github.alphain24.staffcore.illusion.BlockIllusions.Source.CANARY, canary.pos());
+		}
 	}
 
 	/** Takes every block of one vein back, on the owner's screen and in the bookkeeping. */

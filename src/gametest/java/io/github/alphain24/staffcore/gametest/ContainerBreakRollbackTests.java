@@ -466,6 +466,44 @@ public class ContainerBreakRollbackTests {
 		helper.succeed();
 	}
 
+	@GameTest(maxTicks = 100)
+	public void aShulkerBoxTakenBackWholeIsNotAlsoOwed(GameTestHelper helper) {
+		// Exactly what was reported: break a shulker box, pick it up, roll back. The box goes back
+		// down and is taken off the player — and was then booked as still owed as well, because
+		// taking a whole stack left it reading as air before the debt was reduced.
+		ServerPlayer griefer = Harness.namedPlayer(helper);
+		ServerLevel level = helper.getLevel();
+		BlockPos rel = new BlockPos(2, 2, 2);
+		BlockPos pos = helper.absolutePos(rel);
+		helper.setBlock(rel, Blocks.DYED_SHULKER_BOX.pick(net.minecraft.world.item.DyeColor.GRAY));
+		Mc.containerAt(level, pos).setItem(0, new ItemStack(Items.DIAMOND, 5));
+
+		griefer.snapTo(Vec3.atBottomCenterOf(pos.north()));
+		Harness.check(helper, griefer.gameMode.destroyBlock(pos), "the game refused the break");
+		Mods.grief().awaitWrites();
+		for (ItemEntity drop : level.getEntitiesOfClass(ItemEntity.class, new AABB(pos).inflate(6))) {
+			ItemStack picked = drop.getItem().copy();
+			griefer.getInventory().add(picked.copy());
+			Mods.grief().pickups().onPickup(griefer, picked, picked.getCount(), pos);
+			drop.discard();
+		}
+		Mods.grief().awaitWrites();
+		Harness.check(helper, count(griefer.getInventory(), Items.DYED_SHULKER_BOX.pick(net.minecraft.world.item.DyeColor.GRAY)) == 1,
+				"the griefer is not holding the shulker box to begin with");
+
+		Mods.grief().rollback(level, Harness.name(griefer), pos, 6, 60_000L, false, Actor.console());
+		Mods.grief().awaitWrites();
+
+		Harness.check(helper, level.getBlockState(pos).is(Blocks.DYED_SHULKER_BOX.pick(net.minecraft.world.item.DyeColor.GRAY)),
+				"the shulker box did not go back down: " + level.getBlockState(pos));
+		Harness.checkEquals(helper, 0, count(griefer.getInventory(), Items.DYED_SHULKER_BOX.pick(net.minecraft.world.item.DyeColor.GRAY)),
+				"the shulker box was not taken off the griefer");
+		var debts = io.github.alphain24.staffcore.StaffCore.pending().debtsOf(griefer.getUUID());
+		Harness.check(helper, debts.isEmpty(), "the griefer paid and is still booked as owing: "
+				+ debts.stream().map(d -> d.count() + "× " + d.item()).toList());
+		helper.succeed();
+	}
+
 	private static void sleepAMillisecond() {
 		long start = System.currentTimeMillis();
 		while (System.currentTimeMillis() == start) Thread.onSpinWait();

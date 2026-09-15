@@ -135,7 +135,7 @@ public final class Link {
 
 	/** A punishment id, opening its record. */
 	public static MutableComponent punishment(long id, String summary) {
-		return run("#" + id, "/staff history id " + id, Theme.MUTED,
+		return run("#" + id, "/staff op P-" + id, Theme.MUTED,
 				summary == null ? "Punishment #" + id : summary);
 	}
 

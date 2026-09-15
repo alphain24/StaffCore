@@ -172,22 +172,22 @@ has already logged off.
 | `/staff ipbans` | `staff.history` | IP bans in force, with who issued, who approved and refused logins |
 | `/staff history <player> [clear]` | `staff.history`, `staff.history.clear` | Their record |
 | `/staff risk <player>` | `staff.history` | Everything on record about them — bans, open and actioned cases, detector signals, reports, banned linked accounts, account age — weighed, with every point shown. Lifted punishments and cleared cases count for nothing. Nothing acts on it |
-| `/staff notes <player> [add \| list \| remove <n>]` | `staff.notes[.view\|.remove]` | Sticky records |
-| `/staff chat` · `/staff say <msg>` | `staff.chat` | Toggle channel, one-off line |
+| `/staff notes <player> [remove <n>]` | `staff.notes[.remove]` | Read their notes; write one with `/staff note` |
+| `/staff chat` | `staff.chat` | Toggle the staff channel; `/sc <msg>` for one line |
 | `/staff alerts` | `staff.alerts` | Toggle your alerts |
 | `/staff reports` | `report.view` | Open the queue |
 | `/staff goto <player>` · `/staff back` | `staff.tp` | Teleport, return |
 | `/staff bring <player>` | `staff.tphere` | Pull them to you |
 | `/staff tppos <x> <y> <z>` | `staff.tppos` | Teleport to coordinates |
 | `/staff invsee <player>` | `security.invsee` | Inventory — **works offline**; shift-click a slot to vault it |
-| `/staff lookup <player>` | `staff.gui` | Same as `/staff <player>` |
 | `/staff seccheck <player>` · `/staff scan` | `security.check`, `security.itemscanner` | Checks, sweep |
 | `/staff xray <player> [hours]` | `security.check` | Score one player on demand, offline included |
 | `/staff replay <player> [timespan]` | `staff.replay` | Watch their session back — needs `positionTracking` on |
-| `/staff replay pause · resume · speed · restart · exit` | `staff.replay` | Playback controls |
+| `/staff replay pause · resume · speed · restart · exit` | `staff.replay` | Playback controls; `exit` leaves an x-ray dig replay too |
 | `/staff preview [area] …` | `grief.rollback` | What a rollback would change, writing nothing |
 | `/staff rollback <player> <radius> [minutes]` | `grief.rollback` | Undo block changes back to how the area was before them. A chest broken with items in it always comes back with them |
-| `/staff rollback undo [id \| list]` | `grief.rollback` | Undo a rollback — restore points kept 7 days |
+| `/staff rollback list` | `grief.rollback` | Recent rollbacks and their references — restore points kept 7 days |
+| `/staff undo [ref]` | `staff.gui` | Undo your last undoable action, or the one named: `R-<n>` a rollback (`grief.rollback`), `I-<n>` a debit (`grief.rollback`), `P-<n>` a punishment (`staff.punish.revoke`) |
 | `/staff search <query…>` | `grief.search` | `key:value` query over both logs |
 | `/staff purge <age> [player] [confirm]` | `grief.purge` | Delete history early — previews first |
 | `/staff inspect` | `grief.inspect.mode` | Hold inspect mode; any block click shows its history |
@@ -212,9 +212,8 @@ has already logged off.
 | `/staff selftest` | `staff.reload` | Prove the mod works, not just that it started |
 | `/staff grief test [blocks]` | `staff.reload` | Destroy a few blocks yourself (10 by default, by hand or with TNT, crystals, beds or anchors) and watch the mass-grief alert arrive, marked TEST; no case, nothing to Discord |
 | `/staff nbt` | `security.invsee` | Read the held item's component data |
-| `/staff panel` | `staff.gui` | Open the panel |
 | `/staff cases [status \| mine]` | `staff.gui` | Open cases, strongest first |
-| `/staff case <id>` | `staff.gui` | Read one case; add `note`, `assign`, `claim`, `investigating`, `cleared`, `actioned` |
+| `/staff case <id>` | `staff.gui` | Read one case — the id completes as you type; add `note`, `assign`, `investigating`, `cleared`, or `actioned` (on its own, closes with the punishment they got since the case opened, its reason going into the case history) |
 | `/staff cases type <kind>` | `staff.gui` | Cases of one kind: `griefing`, `cheating`, `illegal_items`, `ban_evasion`, `chat`, `other` |
 | `/staff case open <player> <kind> [summary]` | `staff.gui` | Open a case by hand; a player has at most one open case of each kind |
 | `/staff case <id> category <kind>` | `staff.gui` | Move a case to another kind, for a report sorted wrongly |
@@ -226,12 +225,11 @@ has already logged off.
 | `/staff anticheat test <player> [n]` | `staff.reload` | Push a synthetic finding through the pipeline |
 | `/staff owed [player]` | `grief.rollback` | Who still owes items from a rollback — only what they picked up and no longer have; also under World → Owed items |
 | `/staff owed forgive <player> [confirm]` | `grief.rollback` | Write a debt off |
-| `/staff owed undo <id> [confirm]` | `grief.rollback` | Give back what a debit took |
 | `/staff reload` | `staff.reload` | Re-read config and permission groups |
 | `/staff status` | `staff.reload` | Modules, TPS, storage, and which hooks are broken |
 | **`/report <player> <reason…>`** | `report.use` | **Open to everyone** — stays at root |
 | **`/appeal <text…>`** | `appeal.use` | **Open to everyone** — works while muted |
-| **`/sc <message>`** | `staff.chat` | Shortcut for `/staff say` |
+| **`/sc <message>`** | `staff.chat` | One line in staff chat |
 
 Durations are `30m`, `6h`, `7d`, `1h30m`, or `perm`. Anything unparseable is **refused**,
 not silently treated as zero.
@@ -299,7 +297,7 @@ Changing a default in the code alone would never reach a server that has already
   "canaryBlocks": true,               // decoy ores; forced off by a bulk anti-xray mod
   "canaryDensity": 12,                // decoy veins per player: 1-9 blocks in deepslate, rarer 1-2 in stone; 0 disables
   "canaryNotifyEachFind": true,       // tell staff each time a decoy vein is uncovered, with the score
-  "canaryMaxY": 16,                   // below the depth where people build
+  "canaryMaxY": 16,                   // where diamonds stop generating; lower keeps decoys deeper, higher changes nothing
   "canaryRadius": 48,                 // must be inside their render distance
   "canaryForceWithBulkAntiXray": false, // NOT a supported mode - see the handbook before using
   "rootAliases": false,               // /ban, /vanish etc. at the root, if free

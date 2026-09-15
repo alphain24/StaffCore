@@ -54,7 +54,6 @@ Stop the server. In `config/staffcore.json`:
 |---|---|---|---|
 | `canaryBlocks` | `true` | `true` | Decoys on |
 | `canaryDensity` | `20` | `6` | Several appear quickly instead of one every few minutes |
-| `canaryMaxY` | `60` | `16` | You can dig a test chamber near the surface |
 | `canaryRadius` | `24` | `48` | They land near you rather than scattered |
 | `positionTracking` | `true` | `false` | Nothing to replay otherwise, and it only records from this restart on |
 
@@ -92,7 +91,7 @@ Each step leaves the world in the state the next one needs.
 | 1 | `vanish.md` | 3 — pressure plates | Surface, flat ground, both accounts together |
 | 2 | `vanish.md` | 1 — mobs stop targeting | Somewhere dark, or `/summon zombie` |
 | 3 | `vanish.md` | 2 — spawning resumes | Same dark area — carries straight on from step 2 |
-| 4 | `decoy-visibility.md` | 1 — decoy visible through rock | Underground, below y 60, in solid stone |
+| 4 | `decoy-visibility.md` | 1 — decoy visible through rock | Diamond depth, y -40 or lower, in solid deepslate |
 | 5 | `decoy-visibility.md` | 2 — resync arrives | Same chamber, immediately after step 4 |
 | 6 | `replay.md` | 1 — the camera moves like a player | Anywhere; the subject makes the material first |
 | 7 | `replay.md` | 2 — the block overlay is drawn and survives a reload | Same place, straight on from step 6 |
@@ -133,8 +132,8 @@ this whole exercise exists because of.
 
 ### 1. Put the config back
 
-Restore `canaryDensity`, `canaryMaxY` and `canaryRadius` to the values you wrote down (`6`, `16`
-and `48` if they were untouched), and set `positionTracking` back to `false` unless you want to
+Restore `canaryDensity` and `canaryRadius` to the values you wrote down (`12` and `48` if they
+were untouched), and set `positionTracking` back to `false` unless you want to
 keep it, then restart. Leaving the test values in makes decoys common
 enough that an honest miner meeting one stops being negligible.
 

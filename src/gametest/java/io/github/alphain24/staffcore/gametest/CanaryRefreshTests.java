@@ -84,6 +84,9 @@ public class CanaryRefreshTests {
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
 		BlockPos pos = encased(helper, 1, 2, 1);
+		// Beside their own decoy. A mock player starts at the world origin, and a decoy that far
+		// from its owner is rightly retired as left behind.
+		player.snapTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(pos.above(2)));
 
 		Canaries.placeAt(player, level, pos);
 		for (int i = 0; i < 5; i++) Canaries.maintain(player);
@@ -93,6 +96,32 @@ public class CanaryRefreshTests {
 		Harness.checkEquals(helper, 1, Canaries.liveFor(player.getUUID()),
 				"repeated maintenance changed how many decoys exist");
 
+		helper.succeed();
+	}
+
+	@GameTest
+	public void aDecoyThePlayerHasMovedFarFromIsRetired(GameTestHelper helper) {
+		// Twelve veins each, and they only went when uncovered. Somebody who strip-mined past
+		// every one, or went down to deepslate from Y 10, had their whole allowance spent on
+		// decoys somewhere they were no longer digging, and never got another near them.
+		ServerLevel level = helper.getLevel();
+		ServerPlayer player = Harness.mockPlayer(helper);
+		BlockPos pos = encased(helper, 1, 2, 1);
+		player.snapTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(pos.above(2)));
+
+		Canaries.placeAt(player, level, pos);
+		Canaries.maintain(player);
+		Harness.check(helper, Canaries.all().stream().anyMatch(c -> c.pos().equals(pos)),
+				"a decoy right next to the player was retired");
+
+		player.snapTo(player.position().add(400, 0, 0));
+		Canaries.maintain(player);
+
+		Harness.check(helper, Canaries.all().stream().noneMatch(c -> c.pos().equals(pos)),
+				"a decoy four hundred blocks behind the player is still taking one of their veins");
+		Harness.check(helper, !BlockIllusions.mine(player.getUUID(), BlockIllusions.Source.CANARY)
+						.containsKey(pos),
+				"the decoy was dropped but its illusion is still registered");
 		helper.succeed();
 	}
 

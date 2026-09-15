@@ -83,7 +83,7 @@ public final class XrayReplayView {
 
 		if (server == null || staff == null) return Entry.no("No server.");
 		if (ReplaySession.isReplaying(staff.getUUID())) {
-			return Entry.no("You are already in a replay. /staff xray exit first.");
+			return Entry.no("You are already in a replay. /staff replay exit first.");
 		}
 
 		Map<String, List<Excavation.Dig>> digs = XraySweep.loadDigs(windowMs, subject);
@@ -193,7 +193,7 @@ public final class XrayReplayView {
 				+ "the world is untouched.", Theme.MUTED));
 		staff.sendSystemMessage(Icon.text("  ", Theme.MUTED)
 				.append(io.github.alphain24.staffcore.gui.Link.run("[exit the replay]",
-						"/staff xray exit", Theme.ACCENT, "Puts you back where you were")));
+						"/staff replay exit", Theme.ACCENT, "Puts you back where you were")));
 	}
 
 	// --------------------------------------------------------------------- exit

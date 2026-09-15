@@ -319,18 +319,55 @@ class BypassAttemptTest {
 	}
 
 	@Test
-	@DisplayName("undo runs the real reversal command rather than a copy of it")
+	@DisplayName("undo runs the one reversal each kind has, behind that kind's own node")
 	void undoDoesNotReimplementAnything() throws IOException {
 		// A second implementation of "put the blocks back" is a second thing that can
 		// disagree with the first, and the one that disagrees is the one nobody tested. It is
-		// also how a reversal ends up without the permission check and audit row the real
-		// command has — this test exists because the bypass test itself once had that bug.
+		// also how a reversal ends up without the permission check and audit row it needs —
+		// this test exists because the bypass test itself once had that bug.
+		//
+		// It used to require undo to dispatch through /staff rollback undo and /staff owed undo.
+		// Those were duplicates of /staff undo and are gone, so the property is asserted
+		// directly: one implementation of each reversal, which writes its own audit row, and
+		// undo reaching it only after checking the node the removed commands required.
 		String commands = Files.readString(Path.of(
 				"src/main/java/io/github/alphain24/staffcore/command/StaffCommands.java"));
 
-		assertTrue(commands.contains("performPrefixedCommand"),
-				"/staff undo should dispatch to the command that already knows how to reverse "
-						+ "each kind, so the reversal gets that command's checks and audit.");
+		assertEquals(1, occurrences(commands, "private static int undoRollback("),
+				"there should be exactly one way rollbacks are undone");
+		assertEquals(1, occurrences(commands, "private static int owedUndo("),
+				"there should be exactly one way a debit is given back");
+		assertTrue(body(commands, "private static int undoRollback(").contains("audit(ctx"),
+				"undoing a rollback writes no audit row");
+		assertTrue(body(commands, "private static int owedUndo(").contains("audit(ctx"),
+				"giving back a debit writes no audit row");
+
+		String undo = body(commands, "private static int undoRef(");
+		int rollback = undo.indexOf("undoRollback(ctx");
+		int debit = undo.indexOf("owedUndo(ctx");
+		assertTrue(rollback > 0 && debit > 0,
+				"/staff undo should reach the one reversal each kind has, not a copy of it");
+		assertTrue(undo.substring(0, rollback).contains("Nodes.ROLLBACK"),
+				"/staff undo R-<n> reverses a rollback without checking grief.rollback first");
+		assertTrue(undo.substring(rollback, debit).contains("Nodes.ROLLBACK"),
+				"/staff undo I-<n> gives back a debit without checking grief.rollback first");
+	}
+
+	private static int occurrences(String text, String needle) {
+		int count = 0;
+		for (int at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + 1)) count++;
+		return count;
+	}
+
+	/** From a method's signature to the next method's, which is enough to read what it calls. */
+	private static String body(String text, String signature) {
+		int start = text.indexOf(signature);
+		assertTrue(start >= 0, "missing: " + signature);
+		int next = text.indexOf("\n\tprivate static ", start + signature.length());
+		int nextPublic = text.indexOf("\n\tpublic static ", start + signature.length());
+		int end = next < 0 ? text.length() : next;
+		if (nextPublic >= 0 && nextPublic < end) end = nextPublic;
+		return text.substring(start, end);
 	}
 
 	/** The argument list of a call, given the index of its opening bracket. */

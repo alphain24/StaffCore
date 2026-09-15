@@ -1018,7 +1018,7 @@
         </p>
         <p>
           Writing a note needs free text, so it is a command:
-          <code>/notes &lt;player&gt; add &lt;text&gt;</code>. The notes screen tells you so
+          <code>/staff note &lt;player&gt; &lt;text&gt;</code>. The notes screen tells you so
           rather than leaving you hunting.
         </p>
       </section>
@@ -1955,9 +1955,9 @@
 
         <h4>Doing it from chat</h4>
         <div class="scroller">
-<pre><code>/staff rollback undo          # reverse the most recent rollback
-/staff rollback undo list     # see what is available, with ids
-/staff rollback undo 14       # reverse a specific one</code></pre>
+<pre><code>/staff undo                   # reverse the last thing you did, a rollback included
+/staff rollback list          # see what is available, with references
+/staff undo R-14              # reverse a specific one</code></pre>
         </div>
         <p>
           The bare form is the one that matters in practice. When somebody watches a repair
@@ -2025,7 +2025,7 @@
             just how many changes: "412 changes" tells you the size of the operation and
             nothing about whether it is the right one, where "38 oak planks, 2 chests,
             64 diamonds" tells you at a glance whether you have the radius you meant. And if
-            it turns out you did not, <code>/staff rollback undo</code> puts it back.
+            it turns out you did not, <code>/staff undo</code> puts it back.
           </p>
           <p>
             <strong>The preview is also drawn in the world.</strong> While the confirm screen
@@ -2511,10 +2511,8 @@
               <tr><td class="mono">/staff history &lt;player&gt;</td><td class="mono">staff.history</td><td class="wrap">Print their record</td></tr>
               <tr><td class="mono">/staff history &lt;player&gt; clear</td><td class="mono">staff.history.clear</td><td class="wrap">Wipe their record</td></tr>
               <tr><td class="mono">/staff notes &lt;player&gt; [list]</td><td class="mono">staff.notes.view</td><td class="wrap">Read notes</td></tr>
-              <tr><td class="mono">/staff notes &lt;player&gt; add &lt;text…&gt;</td><td class="mono">staff.notes</td><td class="wrap">Write a note</td></tr>
               <tr><td class="mono">/staff notes &lt;player&gt; remove &lt;n&gt;</td><td class="mono">staff.notes.remove</td><td class="wrap">Delete note n</td></tr>
               <tr><td class="mono">/staff chat</td><td class="mono">staff.chat</td><td class="wrap">Toggle the staff channel</td></tr>
-              <tr><td class="mono">/staff say &lt;message…&gt;</td><td class="mono">staff.chat</td><td class="wrap">One-off staff message</td></tr>
               <tr><td class="mono">/staff alerts</td><td class="mono">staff.alerts</td><td class="wrap">Toggle your alerts</td></tr>
               <tr><td class="mono">/staff reports</td><td class="mono">report.view</td><td class="wrap">Open the queue</td></tr>
               <tr><td class="mono">/staff goto &lt;player&gt;</td><td class="mono">staff.tp</td><td class="wrap">Teleport to them</td></tr>
@@ -2522,7 +2520,6 @@
               <tr><td class="mono">/staff tppos &lt;x&gt; &lt;y&gt; &lt;z&gt;</td><td class="mono">staff.tppos</td><td class="wrap">Teleport to coordinates</td></tr>
               <tr><td class="mono">/staff back</td><td class="mono">staff.tp</td><td class="wrap">Return to your last position</td></tr>
               <tr><td class="mono">/staff invsee &lt;player&gt;</td><td class="mono">security.invsee</td><td class="wrap">Inventory view — <strong>works offline</strong></td></tr>
-              <tr><td class="mono">/staff lookup &lt;player&gt;</td><td class="mono">staff.gui</td><td class="wrap">Open their file</td></tr>
               <tr><td class="mono">/staff seccheck &lt;player&gt;</td><td class="mono">security.check</td><td class="wrap">Run the checks</td></tr>
               <tr><td class="mono">/staff scan</td><td class="mono">security.itemscanner</td><td class="wrap">Sweep everyone online</td></tr>
               <tr><td class="mono">/staff xray &lt;player&gt; [hours]</td><td class="mono">security.check</td><td class="wrap">Score one player on demand, offline included</td></tr>
@@ -2540,7 +2537,7 @@
               <tr><td class="mono">/staff alts &lt;player&gt;</td><td class="mono">staff.alts</td><td class="wrap">Accounts sharing an address</td></tr>
               <tr><td class="mono">/staff appeals</td><td class="mono">staff.appeals</td><td class="wrap">Appeal queue</td></tr>
               <tr><td class="mono">/staff rollback area &lt;radius&gt; [minutes]</td><td class="mono">grief.rollback</td><td class="wrap">Undo <strong>everyone's</strong> changes here</td></tr>
-              <tr><td class="mono">/staff rollback undo [id | list]</td><td class="mono">grief.rollback</td><td class="wrap">Undo a rollback — restore points kept seven days</td></tr>
+              <tr><td class="mono">/staff rollback list</td><td class="mono">grief.rollback</td><td class="wrap">Recent rollbacks with their references — restore points kept seven days; undo one with <code>/staff undo R-&lt;n&gt;</code></td></tr>
               <tr><td class="mono">/staff search &lt;query…&gt;</td><td class="mono">grief.search</td><td class="wrap">Query both logs — <code>player:</code> <code>action:</code> <code>block:</code> <code>time:</code> <code>radius:</code></td></tr>
               <tr><td class="mono">/staff purge &lt;age&gt; [player] [confirm]</td><td class="mono">grief.purge</td><td class="wrap">Delete log history early — previews unless you confirm</td></tr>
               <tr><td class="mono">/staff inspect</td><td class="mono">grief.inspect.mode</td><td class="wrap">Hold inspect mode; any block click shows its history</td></tr>
@@ -2551,7 +2548,6 @@
               <tr><td class="mono">/staff backup</td><td class="mono">staff.reload</td><td class="wrap">Take a coherent copy of the database now</td></tr>
               <tr><td class="mono">/staff export</td><td class="mono">staff.reload</td><td class="wrap">Dump every table to CSV, one file each</td></tr>
               <tr><td class="mono">/staff selftest</td><td class="mono">staff.reload</td><td class="wrap">Prove the mod works, not just that it started &mdash; see <a href="#health">Health checks</a></td></tr>
-              <tr><td class="mono">/staff panel</td><td class="mono">staff.gui</td><td class="wrap">Open the panel, same as bare <code>/staff</code></td></tr>
               <tr><td class="mono">/staff vault</td><td class="mono">security.vault</td><td class="wrap">The contraband vault &mdash; what was taken, and what became of it; <span class="mono">security.vault.destroy</span> to destroy an item for good; <span class="mono">security.vault.clear</span> to destroy everything held at once, or delete the returned-and-destroyed history</td></tr>
               <tr><td class="mono">/staff contraband</td><td class="mono">security.vault</td><td class="wrap">The contraband rules; <span class="mono">security.contraband.edit</span> to change them</td></tr>
               <tr><td class="mono">/staff nbt</td><td class="mono">security.invsee</td><td class="wrap">Read the held item&rsquo;s real component data</td></tr>
@@ -2563,7 +2559,7 @@
               <tr><td class="mono">/staff owed forgive &lt;player&gt; [confirm]</td><td class="mono">grief.rollback</td><td class="wrap">Write a debt off &mdash; previews unless you confirm</td></tr>
               <tr><td class="mono">/report &lt;player&gt; &lt;reason…&gt;</td><td class="mono">report.use</td><td class="wrap"><span class="pill everyone">Everyone</span> File a report — stays at the root</td></tr>
               <tr><td class="mono">/appeal &lt;text…&gt;</td><td class="mono">appeal.use</td><td class="wrap"><span class="pill everyone">Everyone</span> File an appeal — works while muted</td></tr>
-              <tr><td class="mono">/sc &lt;message…&gt;</td><td class="mono">staff.chat</td><td class="wrap">Shortcut for <code>/staff say</code></td></tr>
+              <tr><td class="mono">/sc &lt;message…&gt;</td><td class="mono">staff.chat</td><td class="wrap">One line in staff chat</td></tr>
             </tbody>
           </table>
         </div>
@@ -3260,7 +3256,7 @@
                   <td class="wrap">The second is refused <em>by name</em>, so there is somebody to go and talk to.</td></tr>
                 <tr><td class="wrap">Decoy blocks: are they visible to a cheating client, and does the resync arrive</td>
                   <td class="wrap">Follow <code>docs/manual-checks/decoy-visibility.md</code> &mdash; a numbered five-minute script with the config to set, what to look at, and pass/fail for each claim. <strong>Not yet run.</strong> Until it is, the decoy layer is packet-verified rather than client-verified, and the measured false-positive rate says the retirement rule holds rather than that decoys work.</td></tr>
-                <tr><td class="wrap">Run <code>/staff xray &lt;player&gt; replay</code>, fly the tunnel, then <code>/staff xray exit</code></td>
+                <tr><td class="wrap">Run <code>/staff xray &lt;player&gt; replay</code>, fly the tunnel, then <code>/staff replay exit</code></td>
                   <td class="wrap">You arrive at the entrance in spectator and vanished, the dig is drawn in tinted glass with ore lit, the sidebar shows the odds and both fractions, and exiting puts you back exactly where you were in the gamemode you left in. Nobody else sees any of it.</td></tr>
                 <tr><td class="wrap">Start a replay, disconnect without exiting, rejoin</td>
                   <td class="wrap">You come back at your own position in your own gamemode. The drawn blocks are gone &mdash; a fresh client was sent the honest chunks &mdash; and the sidebar is gone with them.</td></tr>

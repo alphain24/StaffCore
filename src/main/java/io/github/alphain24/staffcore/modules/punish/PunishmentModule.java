@@ -144,7 +144,21 @@ public class PunishmentModule implements Module {
 			var cases = Mods.cases().store();
 			cases.link(caseId, "punishment", String.valueOf(record.id()), staffName);
 			cases.note(caseId, staffName,
-					type.name().toLowerCase(java.util.Locale.ROOT) + " issued: " + cleanReason);
+					io.github.alphain24.staffcore.modules.cases.CaseClosing.label(record)
+							+ " issued — reason: " + cleanReason);
+		} else {
+			// Issued from somewhere other than a case — /staff ban, the player's file — while
+			// they have cases open. Noted in each, not linked: the case history should always
+			// say what was done to the player and why, but a mute for chat is not the answer to
+			// an x-ray case, so which case it settles is for whoever closes it to say.
+			StaffCore.modules().get("cases", io.github.alphain24.staffcore.modules.cases.CaseModule.class)
+					.ifPresent(cases -> {
+						for (var open : cases.store().openCasesFor(target.id())) {
+							cases.store().note(open.id(), staffName,
+									io.github.alphain24.staffcore.modules.cases.CaseClosing.label(record)
+											+ " issued outside this case — reason: " + cleanReason);
+						}
+					});
 		}
 
 		// Who else was connected, recorded here so no path can issue a punishment without

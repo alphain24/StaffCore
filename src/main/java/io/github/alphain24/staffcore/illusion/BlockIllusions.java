@@ -296,6 +296,27 @@ public final class BlockIllusions {
 	 * chunks from scratch — so the illusions are genuinely gone rather than merely forgotten,
 	 * and the features that own them re-establish whatever they still want.
 	 */
+	/**
+	 * Forgets one illusion without telling the client anything.
+	 * <p>
+	 * For a position in a world the viewer has left: their client no longer holds that chunk,
+	 * so there is nothing to correct, and a block update would land on the wrong world's
+	 * terrain.
+	 */
+	public static void forgetOne(UUID viewer, String world, Source source, BlockPos pos) {
+		if (viewer == null || world == null || pos == null) return;
+		Map<Where, Map<BlockPos, Held>> chunks = SHOWN.get(viewer);
+		if (chunks == null) return;
+
+		Where where = new Where(world, ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4));
+		Map<BlockPos, Held> here = chunks.get(where);
+		if (here == null) return;
+		Held held = here.get(pos);
+		if (held == null || held.source() != source) return;
+		here.remove(pos);
+		if (here.isEmpty()) chunks.remove(where);
+	}
+
 	public static void forget(UUID viewer) {
 		if (viewer != null) SHOWN.remove(viewer);
 	}

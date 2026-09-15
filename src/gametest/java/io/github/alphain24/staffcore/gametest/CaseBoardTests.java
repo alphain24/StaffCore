@@ -125,4 +125,47 @@ public class CaseBoardTests {
 		long start = System.currentTimeMillis();
 		while (System.currentTimeMillis() == start) Thread.onSpinWait();
 	}
+
+	@GameTest(maxTicks = 100)
+	public void aCaseScreenIsTheSameGridWithSubsectionsForEvidence(GameTestHelper helper) {
+		ServerPlayer staff = Harness.namedPlayer(helper);
+		var groups = io.github.alphain24.staffcore.permission.PermissionGroups.get();
+		Harness.check(helper, groups != null, "no permission groups in the test server");
+		groups.players.put(staff.getUUID().toString(), "admin");
+
+		UUID subject = UUID.randomUUID();
+		String id = Mods.cases().store().openManually(subject, "gridsubject", "gametest", "grid",
+				10, CaseCategory.OTHER);
+		io.github.alphain24.staffcore.gui.menu.CaseMenu.open(staff, id);
+		groups.players.remove(staff.getUUID().toString());
+
+		String[] expected = new String[45];
+		expected[4] = id;
+		String[][] rows = {
+				{"Case", "Claim", "Mark investigating", "Close the case", "Assign to", "Kind"},
+				{"Look into it", "Evidence", "Dig info", "Detector signals", "History", "File evidence"},
+				{"Act on it", "Go to the scene", "Roll back the damage", "Punish", "file", "inventory"},
+		};
+		for (int row = 0; row < rows.length; row++) {
+			int start = (row + 1) * 9;
+			expected[start] = rows[row][0];
+			expected[start + 8] = rows[row][0];
+			for (int column = 0; column < 5; column++) expected[start + 2 + column] = rows[row][column + 1];
+		}
+		expected[36] = "Back";
+		expected[44] = "Close";
+
+		for (int slot = 0; slot < 45; slot++) {
+			var stack = staff.containerMenu.getSlot(slot).getItem();
+			String name = stack.getHoverName().getString();
+			if (expected[slot] == null) {
+				Harness.check(helper, name.isBlank(), "slot " + slot + " should be frame, holds " + name);
+			} else {
+				Harness.check(helper, name.contains(expected[slot]),
+						"slot " + slot + " should be " + expected[slot] + " but is " + name);
+			}
+		}
+		helper.succeed();
+	}
+
 }

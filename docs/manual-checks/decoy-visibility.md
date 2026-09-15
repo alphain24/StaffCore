@@ -62,7 +62,6 @@ Stop the server. In `config/staffcore.json`, set:
 ```jsonc
 "canaryBlocks": true,
 "canaryDensity": 20,      // normally 12 veins — raised so several appear quickly
-"canaryMaxY": 60,         // normally 16 — raised so you can dig a test chamber near the surface
 "canaryRadius": 24        // normally 48 — tightened so they land near you
 ```
 
@@ -75,8 +74,10 @@ Start the server and join.
 
 ## Step 2 — Get some decoys placed
 
-1. Dig down to about **y 40** in an area of ordinary stone. Avoid caves: decoys are only placed
-   in rock with solid blocks on all six sides, so a cave wall has none.
+1. Dig down to diamond depth — **y -40 or lower**, in deepslate. Decoys only go where real
+   diamonds generate (the bottom of the world up to y 16, most of them deep down), and within
+   32 blocks below and 12 above you. Avoid caves: decoys are only placed in rock with solid
+   blocks on all six sides, so a cave wall has none.
 2. Hollow out a small chamber, two or three blocks across, and **stand in it for ten seconds**.
    Decoys are placed on a five-second timer.
 3. Run **`/staff canary`**.
@@ -84,8 +85,8 @@ Start the server and join.
 **You should see** a count and a list of coordinates, each clickable to fill in a teleport.
 
 - If it says **"Decoys are off"** and names an anti-xray mod — remove that mod and start again.
-- If it says **"Nothing placed yet"** — you are probably in a cave or above `canaryMaxY`. Dig a
-  little deeper into solid rock and wait again.
+- If it says **"Nothing placed yet"** — you are probably in a cave or too high. Dig deeper into
+  solid deepslate and wait again.
 
 Write down one of the coordinates. Call it **D**.
 

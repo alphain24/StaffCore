@@ -184,6 +184,15 @@ public final class RollbackPreview {
 		if (result.reverted() > 0 || result.itemsReturned() == 0) {
 			viewer.sendSystemMessage(Theme.good("Reverted " + result.reverted() + " change(s)."));
 		}
+		if (result.isUndoable()) {
+			// The same as a rollback typed as a command: the next /staff undo takes it back.
+			var ref = io.github.alphain24.staffcore.modules.accountability.OperationId.of(
+					io.github.alphain24.staffcore.modules.accountability.OperationId.Kind.ROLLBACK,
+					result.pointId());
+			io.github.alphain24.staffcore.command.StaffSession.didSomethingUndoable(
+					Actor.of(viewer), ref);
+			viewer.sendSystemMessage(Theme.info("Undo it with /staff undo " + ref + "."));
+		}
 		if (result.dropsRemoved() > 0) {
 			viewer.sendSystemMessage(Theme.info(
 					"Reclaimed " + result.dropsRemoved() + " dropped item(s) so nothing was duplicated."));

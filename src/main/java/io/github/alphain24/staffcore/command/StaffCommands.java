@@ -67,10 +67,17 @@ import java.util.List;
  * <ul>
  *   <li>{@code /report} — it belongs to players, not staff, and burying a player-facing
  *       command under {@code /staff} would be actively confusing.</li>
- *   <li>{@code /sc} — typed dozens of times a shift; a shortcut for {@code /staff say}.</li>
+ *   <li>{@code /sc} — typed dozens of times a shift, so it is the one way to say something in
+ *       staff chat.</li>
  * </ul>
  * The panel is still the primary interface; these are the escape hatch for free text,
  * for speed, and for people who would rather type.
+ * <p>
+ * <b>One command per job.</b> There used to be several ways to type most things —
+ * {@code /staff panel} beside {@code /staff}, {@code /staff lookup} beside {@code /staff <player>},
+ * {@code /staff notes <player> add} beside {@code /staff note}, three different undo commands —
+ * and every extra spelling is one more thing to document, to keep behaving the same, and to
+ * explain when it doesn't. Each job now has one.
  */
 public final class StaffCommands {
 	private StaffCommands() {}
@@ -108,10 +115,6 @@ public final class StaffCommands {
 		LiteralArgumentBuilder<CommandSourceStack> staff = Commands.literal("staff")
 				.requires(src -> Permissions.checkAny(src, ANY_STAFF_NODE))
 				.executes(StaffCommands::openPanel);
-
-		staff.then(Commands.literal("panel")
-				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
-				.executes(StaffCommands::openPanel));
 
 		duty(staff);
 		punishments(staff);
@@ -598,24 +601,6 @@ public final class StaffCommands {
 				.then(Commands.argument("target", GameProfileArgument.gameProfile())
 						.suggests(KNOWN_PLAYERS)
 						.executes(StaffCommands::listNotes)
-						.then(Commands.literal("add")
-								.then(Commands.argument("text", StringArgumentType.greedyString())
-										.executes(ctx -> {
-											NameAndId target = singleProfile(ctx, "target");
-											if (target == null) return 0;   // singleProfile already said why
-											String text = StringArgumentType.getString(ctx, "text");
-											audit(ctx, "/staff notes " + target.name() + " add");
-
-											if (!Mods.notes().add(target.id(),
-													ctx.getSource().getTextName(), text)) {
-												return fail(ctx, "The note could not be saved.");
-											}
-											playerSound(ctx, true);
-											return ok(ctx, "Note added to " + target.name() + ".");
-										})))
-						.then(Commands.literal("list")
-								.requires(src -> Permissions.check(src, Nodes.NOTES_VIEW))
-								.executes(StaffCommands::listNotes))
 						.then(Commands.literal("remove")
 								.requires(src -> Permissions.check(src, Nodes.NOTES_REMOVE))
 								.then(Commands.argument("index", IntegerArgumentType.integer(1))
@@ -626,7 +611,7 @@ public final class StaffCommands {
 											audit(ctx, "/staff notes " + target.name() + " retract " + index);
 
 											return Mods.notes().retractByIndex(target.id(), index,
-															Mc.name(ctx.getSource().getPlayer()))
+															ctx.getSource().getTextName())
 													? ok(ctx, "Note " + index + " retracted. It stays "
 															+ "on the record marked as withdrawn.")
 													: fail(ctx, "There is no note " + index
@@ -694,11 +679,6 @@ public final class StaffCommands {
 					Mods.staffChat().toggle(ctx.getSource().getPlayerOrException());
 					return 1;
 				}));
-
-		staff.then(Commands.literal("say")
-				.requires(src -> Permissions.check(src, Nodes.CHAT))
-				.then(Commands.argument("message", StringArgumentType.greedyString())
-						.executes(StaffCommands::staffSay)));
 
 		staff.then(Commands.literal("alerts")
 				.requires(src -> Permissions.check(src, Nodes.ALERTS))
@@ -861,13 +841,6 @@ public final class StaffCommands {
 							return 1;
 						})));
 
-		staff.then(Commands.literal("lookup")
-				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
-				.executes(ctx -> needTarget(ctx, "lookup"))
-				.then(Commands.argument("target", GameProfileArgument.gameProfile())
-						.suggests(KNOWN_PLAYERS)
-						.executes(ctx -> openFile(ctx, "target"))));
-
 		staff.then(Commands.literal("enderchest")
 				.requires(src -> Permissions.check(src, Nodes.ENDERCHEST))
 				.executes(ctx -> needTarget(ctx, "enderchest"))
@@ -979,10 +952,6 @@ public final class StaffCommands {
 
 		staff.then(Commands.literal("xray")
 				.requires(src -> Permissions.check(src, Nodes.SECURITY_CHECK))
-				// Before the player argument, so "exit" is never read as somebody's name.
-				// A staff member trying to get out of a replay and instead being told there
-				// is no player called exit is the worst moment for a parsing surprise.
-				.then(Commands.literal("exit").executes(StaffCommands::xrayExit))
 				.then(Commands.argument("player", StringArgumentType.word())
 						.executes(ctx -> xray(ctx, 6))
 						.then(Commands.literal("replay")
@@ -1033,16 +1002,11 @@ public final class StaffCommands {
 										.executes(ctx -> rollback(ctx,
 												IntegerArgumentType.getInteger(ctx, "minutes")))))));
 
-		// Undo lives under `rollback` rather than at the top level so it tab-completes right
-		// next to the thing it reverses.
+		// The restore points, to find the one to undo. Undoing is /staff undo R-<id>, the same
+		// command that undoes everything else.
 		staff.then(Commands.literal("rollback")
 				.requires(src -> Permissions.check(src, Nodes.ROLLBACK))
-				.then(Commands.literal("undo")
-						.executes(ctx -> undoRollback(ctx, 0L))
-						.then(Commands.literal("list").executes(StaffCommands::listRestorePoints))
-						.then(Commands.argument("id", IntegerArgumentType.integer(1))
-								.executes(ctx -> undoRollback(ctx,
-										IntegerArgumentType.getInteger(ctx, "id"))))));
+				.then(Commands.literal("list").executes(StaffCommands::listRestorePoints)));
 
 		// Free-text search over both logs. greedyString so a whole query can be typed as one
 		// argument — Brigadier would otherwise stop at the first space.
@@ -1123,7 +1087,7 @@ public final class StaffCommands {
 			return fail(ctx, "Nothing was restored — the record may have been purged.");
 		}
 
-		audit(ctx, "/staff rollback undo " + point.id());
+		audit(ctx, "/staff undo " + OperationId.of(OperationId.Kind.ROLLBACK, point.id()));
 		Mods.alerts().onStaffAction(ctx.getSource().getServer(),
 				"%s undid rollback #%d (%s)".formatted(
 						Mc.name(self), point.id(), point.describe()));
@@ -1149,13 +1113,14 @@ public final class StaffCommands {
 
 		for (var point : points) {
 			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  #%d  %s — %s%s".formatted(point.id(), TimeFormat.ago(point.createdAt()),
+					"  R-%d  %s — %s%s".formatted(point.id(), TimeFormat.ago(point.createdAt()),
 							point.describe(),
 							point.isUndone() ? " (undone by " + point.undoneBy() + ")" : ""),
 					point.isUndone() ? Theme.MUTED : Theme.TEXT), false);
 		}
 		ctx.getSource().sendSuccess(() -> Icon.text(
-				"  Undo one with /staff rollback undo <id>", Theme.MUTED), false);
+				"  Undo one with /staff undo R-<number>, for example /staff undo R-"
+						+ points.get(0).id(), Theme.MUTED), false);
 		return points.size();
 	}
 
@@ -1722,13 +1687,6 @@ public final class StaffCommands {
 		staff.then(Commands.literal("owed")
 				.requires(src -> Permissions.check(src, Nodes.ROLLBACK))
 				.executes(StaffCommands::owedList)
-				// Symmetrical with /staff rollback undo. A debit is the half of a rollback
-				// that removes items from somebody, and it was the half with no way back.
-				.then(Commands.literal("undo")
-						.then(Commands.argument("id", com.mojang.brigadier.arguments.LongArgumentType.longArg(1))
-								.executes(ctx -> owedUndo(ctx, false))
-								.then(Commands.literal("confirm")
-										.executes(ctx -> owedUndo(ctx, true)))))
 				.then(Commands.literal("forgive")
 						.then(Commands.argument("player", StringArgumentType.word())
 								.executes(ctx -> owedForgive(ctx, false))
@@ -1907,10 +1865,10 @@ public final class StaffCommands {
 	/**
 	 * Watching a player's session back.
 	 * <p>
-	 * The controls are literals and come before the player argument, for the same reason
-	 * {@code /staff xray exit} does: a staff member trying to get out of a replay and instead
-	 * being told there is no player called "exit" is the worst possible moment for a parsing
-	 * surprise. Nobody is called pause, resume, restart, speed or exit either, and if they
+	 * The controls are literals and come before the player argument: a staff member trying to
+	 * get out of a replay and instead being told there is no player called "exit" is the worst
+	 * possible moment for a parsing surprise. {@code exit} leaves either kind of replay — a
+	 * session replay or an x-ray dig replay — so there is one way out of both. Nobody is called pause, resume, restart, speed or exit either, and if they
 	 * were, the control is the thing they meant.
 	 */
 	private static void registerReplay(LiteralArgumentBuilder<CommandSourceStack> staff) {
@@ -1995,7 +1953,9 @@ public final class StaffCommands {
 
 		ServerPlayer self = ctx.getSource().getPlayerOrException();
 		boolean left = io.github.alphain24.staffcore.modules.replay.ReplayStage.exit(
-				ctx.getSource().getServer(), self, null);
+				ctx.getSource().getServer(), self, null)
+				|| io.github.alphain24.staffcore.modules.security.XrayReplayView.exit(
+						ctx.getSource().getServer(), self, null);
 
 		return left ? 1 : fail(ctx, "You are not in a replay.");
 	}
@@ -2379,31 +2339,21 @@ public final class StaffCommands {
 	/**
 	 * Gives back what a debit took.
 	 * <p>
-	 * The counterpart to {@code /staff rollback undo}, and the reason it had to exist: a
+	 * The counterpart to undoing a rollback, and the reason it had to exist: a
 	 * rollback is two operations, and only one of them could be taken back. Putting blocks
 	 * back is visible and reversible by running the undo; removing items from somebody's
 	 * inventory on the strength of a log query was neither, and the person it goes wrong for
 	 * is most often the one who was offline when it happened.
 	 * <p>
-	 * Shows what it would do before doing it, for the same reason forgiveness does: the
-	 * argument is an opaque number, and mistyping one should not cost items.
+	 * Reached through {@code /staff undo I-<id>}; {@code /staff op I-<id>} shows what it would
+	 * give back first.
 	 */
-	private static int owedUndo(CommandContext<CommandSourceStack> ctx, boolean confirmed) {
-		long id = com.mojang.brigadier.arguments.LongArgumentType.getLong(ctx, "id");
+	private static int owedUndo(CommandContext<CommandSourceStack> ctx, long id) {
 		var gateway = io.github.alphain24.staffcore.inventory.InventoryGateway.describeReversal(id);
 
 		if (!gateway.possible()) {
 			ctx.getSource().sendFailure(Theme.bad(gateway.problem()));
 			return 0;
-		}
-
-		if (!confirmed) {
-			ctx.getSource().sendSuccess(() -> Theme.warn(
-					"Debit #" + id + " took " + gateway.items() + " from "
-							+ gateway.targetName() + "."), false);
-			ctx.getSource().sendSuccess(() -> Icon.text(
-					"  /staff owed undo " + id + " confirm  gives it back.", Theme.MUTED), false);
-			return 1;
 		}
 
 		MinecraftServer server = ctx.getSource().getServer();
@@ -2415,7 +2365,7 @@ public final class StaffCommands {
 			return 0;
 		}
 
-		audit(ctx, "/staff owed undo " + id);
+		audit(ctx, "/staff undo " + OperationId.of(OperationId.Kind.INVENTORY, id));
 		var outcome = io.github.alphain24.staffcore.inventory.InventoryGateway.reverse(
 				id, target, Actor.of(ctx.getSource()));
 
@@ -2546,7 +2496,7 @@ public final class StaffCommands {
 				.requires(src -> Permissions.check(src, Nodes.STAFF_GUI))
 				.executes(ctx -> caseList(ctx, null, null))
 				.then(Commands.literal("mine")
-						.executes(ctx -> caseList(ctx, null, Mc.name(ctx.getSource().getPlayer()))))
+						.executes(ctx -> caseList(ctx, null, ctx.getSource().getTextName())))
 				.then(Commands.argument("status", StringArgumentType.word())
 						.suggests((c, b) -> {
 							for (Case.Status status : Case.Status.values()) b.suggest(status.stored());
@@ -2573,6 +2523,7 @@ public final class StaffCommands {
 												.executes(ctx -> caseOpen(ctx,
 														StringArgumentType.getString(ctx, "summary")))))))
 				.then(Commands.argument("id", StringArgumentType.word())
+						.suggests(CASE_IDS)
 						.executes(StaffCommands::caseShow)
 						.then(Commands.literal("category")
 								.then(Commands.argument("category", StringArgumentType.word())
@@ -2612,9 +2563,6 @@ public final class StaffCommands {
 								.then(Commands.argument("staff", StringArgumentType.word())
 										.executes(ctx -> caseAssign(ctx,
 												StringArgumentType.getString(ctx, "staff")))))
-						.then(Commands.literal("claim")
-								.executes(ctx -> caseAssign(ctx,
-										Mc.name(ctx.getSource().getPlayer()))))
 						// Where it happened: the newest evidence that says where.
 						.then(Commands.literal("tp")
 								.requires(src -> Permissions.check(src, Nodes.TP))
@@ -2639,7 +2587,11 @@ public final class StaffCommands {
 												StringArgumentType.greedyString())
 												.executes(ctx -> caseCleared(ctx,
 														StringArgumentType.getString(ctx, "note"))))))
+						// On its own, closes with the punishment they were given since the case
+						// opened, so its type and reason are what the case history says. With
+						// words, for something other than a punishment.
 						.then(Commands.literal("actioned")
+								.executes(StaffCommands::caseActionedWithPunishment)
 								.then(Commands.argument("why", StringArgumentType.greedyString())
 										.executes(ctx -> caseStatus(ctx, Case.Status.ACTIONED,
 												StringArgumentType.getString(ctx, "why")))))));
@@ -2699,6 +2651,17 @@ public final class StaffCommands {
 			CASE_CATEGORIES = (c, b) -> {
 				for (io.github.alphain24.staffcore.modules.cases.CaseCategory category : io.github.alphain24.staffcore.modules.cases.CaseCategory.values()) {
 					b.suggest(category.stored(), () -> category.label());
+				}
+				return b.buildFuture();
+			};
+
+	/** Case ids as you type them, with who and what each one is about. */
+	private static final com.mojang.brigadier.suggestion.SuggestionProvider<CommandSourceStack>
+			CASE_IDS = (c, b) -> {
+				for (Case each : Mods.cases().store().startingWith(b.getRemaining(), 20)) {
+					String who = each.subjectName() == null ? "unknown" : each.subjectName();
+					b.suggest(each.id(), () -> who + " · " + each.category().label() + " · "
+							+ each.status().stored());
 				}
 				return b.buildFuture();
 			};
@@ -2917,7 +2880,7 @@ public final class StaffCommands {
 		if (found == null) return 0;
 
 		String text = StringArgumentType.getString(ctx, "text");
-		String actor = Mc.name(ctx.getSource().getPlayer());
+		String actor = ctx.getSource().getTextName();
 		Mods.cases().store().note(found.id(), actor, text);
 
 		audit(ctx, "/staff case " + found.id() + " note", found.id());
@@ -2943,7 +2906,7 @@ public final class StaffCommands {
 		Case found = requireCase(ctx);
 		if (found == null) return 0;
 
-		Mods.cases().store().assign(found.id(), assignee, Mc.name(ctx.getSource().getPlayer()));
+		Mods.cases().store().assign(found.id(), assignee, ctx.getSource().getTextName());
 		audit(ctx, "/staff case " + found.id() + " assign " + assignee, found.id());
 		return ok(ctx, "Case " + found.id() + " assigned to " + assignee + ".");
 	}
@@ -2967,7 +2930,7 @@ public final class StaffCommands {
 					+ io.github.alphain24.staffcore.modules.cases.Resolution.names());
 		}
 
-		String actor = Mc.name(ctx.getSource().getPlayer());
+		String actor = ctx.getSource().getTextName();
 		Mods.cases().store().setStatus(found.id(), Case.Status.CLEARED, actor, note, reason);
 		audit(ctx, "/staff case " + found.id() + " cleared " + reason.stored(), found.id());
 
@@ -2985,13 +2948,34 @@ public final class StaffCommands {
 		return 1;
 	}
 
+	private static int caseActionedWithPunishment(CommandContext<CommandSourceStack> ctx) {
+		Case found = requireCase(ctx);
+		if (found == null) return 0;
+
+		var issued = io.github.alphain24.staffcore.modules.cases.CaseClosing.issuedSinceOpened(found);
+		if (issued.isEmpty()) {
+			return fail(ctx, (found.subjectName() == null ? "They" : found.subjectName())
+					+ " have not been punished since this case opened. Say what was done: "
+					+ "/staff case " + found.id() + " actioned <what was done>");
+		}
+
+		var punishment = issued.get(0);
+		String actor = ctx.getSource().getTextName();
+		if (!io.github.alphain24.staffcore.modules.cases.CaseClosing.actionedWith(found, punishment, actor)) {
+			return fail(ctx, "The case could not be closed. The server log says why.");
+		}
+		audit(ctx, "/staff case " + found.id() + " actioned", found.id());
+		return ok(ctx, "Case " + found.id() + " actioned: "
+				+ io.github.alphain24.staffcore.modules.cases.CaseClosing.describe(punishment) + ".");
+	}
+
 	private static int caseStatus(CommandContext<CommandSourceStack> ctx, Case.Status status,
 			String reason) {
 
 		Case found = requireCase(ctx);
 		if (found == null) return 0;
 
-		String actor = Mc.name(ctx.getSource().getPlayer());
+		String actor = ctx.getSource().getTextName();
 		Mods.cases().store().setStatus(found.id(), status, actor, reason);
 
 		audit(ctx, "/staff case " + found.id() + " " + status.stored(), found.id());
@@ -3016,7 +3000,7 @@ public final class StaffCommands {
 		if (target == null) return 0;   // singleProfile already said why
 
 		String text = StringArgumentType.getString(ctx, "text");
-		String author = Mc.name(ctx.getSource().getPlayer());
+		String author = ctx.getSource().getTextName();
 
 		String caseId = Mods.cases().store().openCaseFor(target.id())
 				.map(io.github.alphain24.staffcore.modules.cases.Case::id).orElse(null);
@@ -3413,7 +3397,7 @@ public final class StaffCommands {
 								StringArgumentType.getString(ctx, "ref"))))));
 	}
 
-	private static int undoLast(CommandContext<CommandSourceStack> ctx) {
+	private static int undoLast(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
 		Actor actor = Actor.of(ctx.getSource());
 		OperationId.Ref ref = StaffSession.lastReversible(actor);
 
@@ -3428,11 +3412,12 @@ public final class StaffCommands {
 	/**
 	 * Undoes one reference.
 	 * <p>
-	 * Each kind is routed to the command that already knows how to reverse it rather than
-	 * reversing it here. A second implementation of "put the blocks back" is a second thing
-	 * that can disagree with the first, and the one that disagrees is the one nobody tested.
+	 * Each kind is routed to the code that already knows how to reverse it rather than
+	 * reversing it here, with the node that kind needs checked first. A second implementation of
+	 * "put the blocks back" is a second thing that can disagree with the first.
 	 */
-	private static int undoRef(CommandContext<CommandSourceStack> ctx, OperationId.Ref ref) {
+	private static int undoRef(CommandContext<CommandSourceStack> ctx, OperationId.Ref ref)
+			throws CommandSyntaxException {
 		if (ref == null) {
 			return fail(ctx, "That is not an operation reference. They look like P-1234, R-88 "
 					+ "or I-12, and every destructive command prints one.");
@@ -3441,23 +3426,23 @@ public final class StaffCommands {
 		Actor actor = Actor.of(ctx.getSource());
 		return switch (ref.kind()) {
 			case ROLLBACK -> {
+				if (!Permissions.check(ctx.getSource(), Nodes.ROLLBACK)) {
+					yield fail(ctx, "Undoing a rollback needs " + Nodes.ROLLBACK + ".");
+				}
 				StaffSession.forgetReversible(actor);
-				yield runUndo(ctx, "/staff rollback undo " + ref.id());
+				yield undoRollback(ctx, Long.parseLong(ref.id()));
 			}
 			case INVENTORY -> {
+				if (!Permissions.check(ctx.getSource(), Nodes.ROLLBACK)) {
+					yield fail(ctx, "Giving back what a debit took needs " + Nodes.ROLLBACK + ".");
+				}
 				StaffSession.forgetReversible(actor);
-				yield runUndo(ctx, "/staff owed undo " + ref.id() + " confirm");
+				yield owedUndo(ctx, Long.parseLong(ref.id()));
 			}
 			case PUNISHMENT -> undoPunishment(ctx, ref);
 			case CASE -> fail(ctx, "A case is not undone — it is closed. /staff case " + ref.id()
 					+ " cleared, with a reason.");
 		};
-	}
-
-	/** Runs a reversal through its own command, so it gets that command's checks and audit. */
-	private static int runUndo(CommandContext<CommandSourceStack> ctx, String command) {
-		ctx.getSource().getServer().getCommands().performPrefixedCommand(ctx.getSource(), command);
-		return 1;
 	}
 
 	private static int undoPunishment(CommandContext<CommandSourceStack> ctx,
@@ -3603,16 +3588,6 @@ public final class StaffCommands {
 				ctx.getSource().getServer(), self, name, null, hours * 3_600_000L);
 
 		return entry.started() ? 1 : fail(ctx, entry.refusal());
-	}
-
-	private static int xrayExit(CommandContext<CommandSourceStack> ctx)
-			throws CommandSyntaxException {
-
-		ServerPlayer self = ctx.getSource().getPlayerOrException();
-		boolean left = io.github.alphain24.staffcore.modules.security.XrayReplayView.exit(
-				ctx.getSource().getServer(), self, null);
-
-		return left ? 1 : fail(ctx, "You are not in a replay.");
 	}
 
 	/**
@@ -3831,7 +3806,7 @@ public final class StaffCommands {
 				.append(Link.position(point.world(), point.centre())), false);
 		src.sendSuccess(() -> point.isUndone()
 				? Icon.text("  already undone by " + point.undoneBy(), Theme.MUTED)
-				: Link.suggest("  [undo this rollback]", "/staff rollback undo " + point.id(),
+				: Link.suggest("  [undo this rollback]", "/staff undo " + ref,
 						Theme.WARN, "Fills the command in without running it"), false);
 		return 1;
 	}
@@ -3858,7 +3833,7 @@ public final class StaffCommands {
 					.append(Link.subject(reversal.targetName(), reversal.targetId())), false);
 		}
 		src.sendSuccess(() -> reversal.possible()
-				? Link.suggest("  [give it back]", "/staff owed undo " + id, Theme.WARN,
+				? Link.suggest("  [give it back]", "/staff undo " + ref, Theme.WARN,
 						"Fills the command in without running it")
 				: Icon.text("  cannot be reversed: " + reversal.problem(), Theme.MUTED), false);
 		return 1;

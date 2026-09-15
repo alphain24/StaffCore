@@ -187,7 +187,7 @@ public class RestorePointsMenu extends PagedGui<RollbackPoints.Point> {
 				.lore("was recorded — it does not try to merge with", Theme.MUTED)
 				.lore("anything built there since.", Theme.MUTED)
 				.gap()
-				.lore("Also available as /staff rollback undo.", Theme.MUTED)
+				.lore("Also available as /staff undo R-<number>.", Theme.MUTED)
 				.build());
 	}
 

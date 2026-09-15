@@ -179,8 +179,8 @@ public final class CaseView {
 					.append(Link.time(event.at()))
 					.append(Icon.text("  " + event.actor(), Theme.ACCENT))
 					.append(Icon.text("  " + event.kind(), Theme.TEXT))
-					.append(Icon.text(event.body() == null ? "" : "  " + event.body(),
-							Theme.MUTED)), false);
+					.append(Icon.text(CaseClosing.eventBody(event) == null ? ""
+							: "  " + CaseClosing.eventBody(event), Theme.MUTED)), false);
 		}
 	}
 

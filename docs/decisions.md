@@ -1979,6 +1979,13 @@ Things that used to be on this list, and what replaced them:
 | Rollback debts never expired and survived an undo | `debtExpiryDays`, and undo cancels its own debts |
 | Log output was mojibake on non-UTF-8 consoles | Console strings are ASCII, checked in the source and in the boot log |
 | Item recovery missed anything in an unloaded chunk or already pocketed | Pickups are logged, so recovery is a query rather than a search |
+| A player who handed back a whole stack was still booked as owing it | The item is read before the stack is shrunk; an emptied stack reads as air |
+| Debts were booked for spilled items that despawned or burnt and nobody had | Only what the pickup log shows the player picking up is owed |
+| Decoys sat wherever the player first dug, so going deeper brought none | Veins left out of reach are retired and replaced near the player |
+| Decoy heights followed the player rather than where diamonds generate | Heights are drawn from the game's own `ore_diamond*` placement: bottom of the world to Y 16, thickest at the bottom |
+| Several commands did the same job (`panel`, `lookup`, `say`, `notes add`, three undos) | One command per job; `/staff undo <ref>` undoes everything |
+| A case closed as actioned did not say what the player got or why | Closing picks the punishment, and its type and reason go into the case history |
+| Case commands crashed when run from the console | They read the source's name, not the player's |
 
 ---
 

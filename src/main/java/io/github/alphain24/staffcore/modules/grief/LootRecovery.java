@@ -589,8 +589,12 @@ public final class LootRecovery {
 			if (due == null || due <= 0) continue;
 
 			int take = Math.min(due, stack.getCount());
+			// Read before shrinking: a stack taken whole is empty afterwards and reports its
+			// item as air, so the debt was never reduced and the player was billed again for
+			// exactly what had just been taken off them.
+			Item item = stack.getItem();
 			stack.shrink(take);
-			owed.put(stack.getItem(), due - take);
+			owed.put(item, due - take);
 			taken += take;
 		}
 		if (taken > 0) container.setChanged();

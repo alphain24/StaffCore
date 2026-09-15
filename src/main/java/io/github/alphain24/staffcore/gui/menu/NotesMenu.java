@@ -132,7 +132,7 @@ public class NotesMenu extends PagedGui<NotesModule.Note> {
 				.paragraph("Notes are free text, so they need a command — a chest menu has "
 						+ "nowhere to type.", Theme.MUTED)
 				.gap()
-				.field("Command", "/staff notes " + target.name() + " add <text>")
+				.field("Command", "/staff note " + target.name() + " <text>")
 				.build());
 	}
 }

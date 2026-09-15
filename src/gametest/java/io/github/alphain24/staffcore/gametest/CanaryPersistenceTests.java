@@ -66,6 +66,9 @@ public class CanaryPersistenceTests {
 		ServerLevel level = helper.getLevel();
 		ServerPlayer player = Harness.mockPlayer(helper);
 		BlockPos pos = encased(helper, 1, 2, 1);
+		// Beside their own decoy. A mock player starts at the world origin, and a decoy that far
+		// from its owner is rightly retired as left behind.
+		player.snapTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(pos.above(2)));
 
 		Canaries.placeAt(player, level, pos);
 		Harness.check(helper, find(pos) != null, "the decoy was not placed");

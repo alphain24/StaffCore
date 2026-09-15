@@ -450,9 +450,9 @@ public final class StaffConfig {
 	/**
 	 * The highest Y a canary is placed at.
 	 * <p>
-	 * Below the depth where people build and above nothing in particular. Placing them near
-	 * the surface would put decoys inside the ground under somebody's house, which is both
-	 * useless — nobody x-rays for stone at Y 60 — and the likeliest way to annoy a builder.
+	 * 16 is where diamonds stop generating, so decoys never go anywhere real diamonds could not
+	 * be. Lowering it keeps decoys deeper still. Raising it does nothing: above 16 a decoy would
+	 * be a diamond where the game never puts one, and the band stops there regardless.
 	 */
 	public int canaryMaxY = 16;
 

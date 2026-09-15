@@ -86,6 +86,27 @@ public class RollbackDebitTests {
 	}
 
 	@GameTest
+	public void takingAWholeStackClearsThatMuchOfTheDebt(GameTestHelper helper) {
+		// Holding exactly what is owed. The stack is emptied by the take, and an empty stack
+		// reports its item as air — the debt used to be reduced against air, left untouched, and
+		// booked again for the same items.
+		ServerPlayer offender = Harness.mockPlayer(helper);
+		offender.getInventory().clearContent();
+		offender.getInventory().add(new ItemStack(Items.DIAMOND, 5));
+
+		Map<Item, Integer> due = owed(Items.DIAMOND, 5);
+		var outcome = InventoryGateway.take(offender, InventoryGateway.Origin.ROLLBACK_DEBIT,
+				Harness.staff(), "gametest debit", due);
+
+		Harness.checkEquals(helper, 5, outcome.items(), "the take did not take the stack");
+		Harness.checkEquals(helper, 0, count(offender, Items.DIAMOND), "diamonds were left behind");
+		Harness.checkEquals(helper, 0, due.getOrDefault(Items.DIAMOND, 0),
+				"the debt was not reduced by what was taken, so it would be charged twice");
+		Harness.check(helper, !due.containsKey(Items.AIR), "the debt was reduced against air");
+		helper.succeed();
+	}
+
+	@GameTest
 	public void aDebitCanBeGivenBack(GameTestHelper helper) {
 		ServerPlayer offender = Harness.mockPlayer(helper);
 		offender.getInventory().clearContent();
