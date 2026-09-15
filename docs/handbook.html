@@ -2491,9 +2491,14 @@
         <h3>Setting it up</h3>
         <ol>
           <li>Create a bot in the Discord developer portal and invite it to your server. It needs no privileged intents unless you bridge staff chat, which needs Message Content Intent. In each channel it needs to view, send messages, embed links, create public threads and send messages in threads.</li>
-          <li>Put the token, and nothing else, in <code>config/staffcore-discord.token</code>. On Linux, <code>chmod 600</code> it.</li>
-          <li>Start the server once so <code>config/staffcore-discord.json</code> is written, fill it in, and restart. <code>/staff status</code> shows whether the bot is off, connecting, connected, or what stopped it.</li>
+          <li>Put both jars in <code>mods/</code> and start the server once. It writes <code>config/staffcore-discord.json</code> and an empty <code>config/staffcore-discord.token</code> (readable only by the server's account, on Linux).</li>
+          <li>Paste the token, and nothing else, into the token file, fill in the settings, and restart. <code>/staff status</code> shows whether the bot is off, connecting, connected, or what stopped it.</li>
         </ol>
+        <p>
+          <a href="https://github.com/alphain24/StaffCore/blob/main/docs/discord-setup.md">The step-by-step installation guide</a>
+          covers where every file goes, the invite link and permissions, the settings, linking, appeals and every
+          <code>/staff status</code> message.
+        </p>
         <div class="scroller">
           <table>
             <thead><tr><th>Key</th><th>Default</th><th class="wrap">What changing it does</th></tr></thead>

@@ -10,6 +10,7 @@ import java.nio.file.attribute.AclEntryType;
 import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -85,6 +86,31 @@ public final class BotToken {
 					+ "application id or client secret will not work.", exposed);
 		}
 		return new Loaded(new BotToken(token), null, exposed);
+	}
+
+	/**
+	 * Creates the token file empty, if it is not there, so an owner has a file to paste into rather than
+	 * one to create and name correctly.
+	 * <p>
+	 * Never overwrites: a file that exists is somebody's token, or somebody's attempt at one. On a system
+	 * with Unix permissions the file is created readable by its owner only, so a token pasted into it is
+	 * never world-readable, not even for the minutes before somebody remembers to change it.
+	 *
+	 * @return true when the file was created by this call
+	 */
+	public static boolean createIfMissing(Path file) {
+		if (Files.exists(file)) return false;
+		try {
+			Files.createDirectories(file.getParent());
+			if (file.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+				Files.createFile(file, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+			} else {
+				Files.createFile(file);
+			}
+			return true;
+		} catch (IOException | RuntimeException e) {
+			return false;
+		}
 	}
 
 	/** Strips a byte-order mark, surrounding whitespace and a pasted "Bot " prefix. */

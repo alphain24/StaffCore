@@ -76,6 +76,13 @@ final class DiscordBot {
 		}
 		DiscordSettings settings = loaded.settings();
 
+		// Created empty beside the settings on first start, whether or not the bot is on, so both files
+		// are there to fill in. Creating it is not reading it: a bot that is off still never reads the token.
+		if (BotToken.createIfMissing(configDir.resolve(BotToken.FILE_NAME))) {
+			StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Created config/{}, empty. Paste the bot token into "
+					+ "it, on its own, from the Bot page of the Discord developer portal.", BotToken.FILE_NAME);
+		}
+
 		if (!settings.enabled) {
 			state = "off (enabled is false in config/" + DiscordSettings.FILE_NAME + ")";
 			StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Installed and switched off. Set enabled, "
@@ -125,9 +132,9 @@ final class DiscordBot {
 			} catch (Exception | LinkageError e) {
 				// The type, and never the message: a login failure is exactly where a library
 				// might repeat what it was given.
-				state = "could not start (" + e.getClass().getSimpleName() + ")";
 				StaffCoreDiscord.LOGGER.error("[StaffCore Discord] Could not connect to Discord ({}).",
 						e.getClass().getSimpleName());
+				state = "could not start (" + e.getClass().getSimpleName() + ")";
 			}
 		});
 	}

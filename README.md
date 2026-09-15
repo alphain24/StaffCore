@@ -451,13 +451,16 @@ ways. Punishing and looking players up with slash commands is not built yet.
 
 ### Setting it up
 
+**[The step-by-step installation guide](docs/discord-setup.md)** covers where every file goes, making
+and inviting the bot, filling in the settings, linking accounts, appeals and troubleshooting. In short:
+
 1. Create an application and a bot in the Discord developer portal, and invite the bot to your
    server. It needs no privileged intents unless you bridge staff chat, which needs **Message
    Content Intent** switched on for the bot. In each channel you give it, it needs to view the
    channel, send messages, embed links, create public threads and send messages in threads.
-2. Put the bot token, and nothing else, in `config/staffcore-discord.token`. On Linux, run
-   `chmod 600 config/staffcore-discord.token`.
-3. Start the server once so `config/staffcore-discord.json` is written, fill it in, and restart.
+2. Put both jars in `mods/` and start the server once. It writes `config/staffcore-discord.json`
+   and an empty `config/staffcore-discord.token` (readable only by the server's account, on Linux).
+3. Paste the bot token, and nothing else, into the token file; fill in the settings; restart.
 
 `/staff status` shows whether the bot is off, connecting, connected, or what stopped it.
 

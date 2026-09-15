@@ -105,8 +105,9 @@ class DiscordBotTest {
 			bot.start();
 			assertNotNull(made.get(), "the bot did not get as far as connecting");
 			assertTrue(made.get().tried.await(5, TimeUnit.SECONDS));
-			// Let the worker record the failure.
-			for (int i = 0; i < 50 && !String.join("", bot.status()).contains("could not start"); i++) {
+			// Let the worker record the failure: logged first, then the status, so waiting on the status
+			// is waiting on both.
+			for (int i = 0; i < 250 && !String.join("", bot.status()).contains("could not start"); i++) {
 				Thread.sleep(20);
 			}
 			status = bot.status();
@@ -150,6 +151,26 @@ class DiscordBotTest {
 		});
 		bot.start();
 		assertTrue(bot.status().get(0).startsWith("off"), bot.status().toString());
+	}
+
+	@Test
+	@DisplayName("first start leaves an empty token file to paste into, and never touches one that exists")
+	void tokenFileIsCreatedEmpty() throws Exception {
+		Files.writeString(config.resolve(DiscordSettings.FILE_NAME), "{\"enabled\": false}", StandardCharsets.UTF_8);
+		new DiscordBot(config, null, Set.of(), (t, s, r, w, b) -> {
+			throw new AssertionError("a disabled bot connected");
+		}).start();
+
+		Path token = config.resolve(BotToken.FILE_NAME);
+		assertTrue(Files.isRegularFile(token), "no token file was created");
+		assertEquals("", Files.readString(token));
+		if (Files.getFileAttributeView(token, java.nio.file.attribute.PosixFileAttributeView.class) != null) {
+			assertFalse(BotToken.worldReadable(token), "the created token file is readable by everybody");
+		}
+
+		Files.writeString(token, FAKE, StandardCharsets.UTF_8);
+		assertFalse(BotToken.createIfMissing(token));
+		assertEquals(FAKE, Files.readString(token), "an existing token file was overwritten");
 	}
 
 	@Test
