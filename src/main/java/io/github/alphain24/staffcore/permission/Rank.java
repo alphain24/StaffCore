@@ -102,6 +102,57 @@ public final class Rank {
 		return new Held(Collections.unmodifiableSet(held), operator, !Permissions.hasProvider());
 	}
 
+	/**
+	 * Exactly what an account could run if it typed a command in game right now, online or not.
+	 * <p>
+	 * Not the same question as {@link #of(MinecraftServer, UUID, String)}, and the difference is
+	 * which way each is allowed to be wrong. That one decides whether a <em>target</em> is staff,
+	 * so it counts anybody on the operator list as an operator — calling a player staff who is not
+	 * only refuses a ban. This one decides what somebody may <em>do</em>, so it asks the same
+	 * question the command tree asks, down to vanilla's moderator level, and an answer it cannot
+	 * give comes back {@link Held#complete incomplete} rather than guessed.
+	 * <p>
+	 * The node set is the whole answer: {@code operator} is carried for display and is never a
+	 * grant of its own here.
+	 */
+	public static Held inGame(MinecraftServer server, UUID id, String name) {
+		if (server == null || id == null) return new Held(Set.of(), false, false);
+
+		ServerPlayer online = server.getPlayerList().getPlayer(id);
+		if (online != null) {
+			Actor actor = Actor.of(online);
+			return new Held(actor.nodes(), actor.operator(), true);
+		}
+
+		// A permissions plugin is the authority where one exists, and it answers only about
+		// somebody who is connected.
+		if (Permissions.hasProvider()) return new Held(Set.of(), false, false);
+
+		boolean moderator = isListedModerator(server, id, name);
+		PermissionGroups groups = PermissionGroups.get();
+		Set<String> held = new LinkedHashSet<>();
+		for (String node : Actor.all()) {
+			if (Permissions.withoutProvider(groups, id, name, moderator, node)) held.add(node);
+		}
+		return new Held(Collections.unmodifiableSet(held), moderator, true);
+	}
+
+	/**
+	 * Whether an offline account holds vanilla's moderator level — the level the command tree
+	 * falls back to — rather than merely appearing on the operator list at any level.
+	 */
+	private static boolean isListedModerator(MinecraftServer server, UUID id, String name) {
+		try {
+			var entry = server.getPlayerList().getOps().get(new NameAndId(id, name));
+			return entry != null && entry.permissions().hasPermission(
+					net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR);
+		} catch (RuntimeException e) {
+			// Here "cannot tell" has to mean no: this decides what somebody may do, and the
+			// unsafe direction is granting.
+			return false;
+		}
+	}
+
 	/** Convenience for the punishment path, which deals in profiles. */
 	public static Held of(MinecraftServer server, NameAndId target) {
 		return target == null ? new Held(Set.of(), false, false)

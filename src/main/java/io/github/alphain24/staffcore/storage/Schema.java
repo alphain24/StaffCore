@@ -1177,6 +1177,18 @@ final class Schema {
 			conn -> {
 				addColumn(conn, "cases", "category", "TEXT");
 				backfillCaseCategories(conn);
+			},
+
+			// 28 - which Discord account belongs to which Minecraft account.
+			//
+			//      Actions from Discord are attributed to both, so a link is ended rather than
+			//      deleted when somebody unlinks or relinks. See DiscordLinks.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate(io.github.alphain24.staffcore.modules.discord.DiscordLinks.TABLE);
+					st.executeUpdate(io.github.alphain24.staffcore.modules.discord.DiscordLinks.DISCORD_INDEX);
+					st.executeUpdate(io.github.alphain24.staffcore.modules.discord.DiscordLinks.PLAYER_INDEX);
+				}
 			}
 	);
 
@@ -1300,6 +1312,11 @@ final class Schema {
 			// Bans on the address a player joins from. See AddressBans.
 			io.github.alphain24.staffcore.modules.punish.AddressBans.TABLE,
 			io.github.alphain24.staffcore.modules.punish.AddressBans.INDEX,
+
+			// Which Discord account belongs to which Minecraft account. See DiscordLinks.
+			io.github.alphain24.staffcore.modules.discord.DiscordLinks.TABLE,
+			io.github.alphain24.staffcore.modules.discord.DiscordLinks.DISCORD_INDEX,
+			io.github.alphain24.staffcore.modules.discord.DiscordLinks.PLAYER_INDEX,
 
 			// What a case can point at and open. See CaseEvidence.
 			io.github.alphain24.staffcore.modules.cases.CaseEvidence.TABLE,

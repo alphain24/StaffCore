@@ -81,7 +81,12 @@ public final class StaffAudit {
 			ps.setString(1, staffName);
 			ps.setString(2, command.length() > 256 ? command.substring(0, 256) : command);
 			ps.setLong(3, System.currentTimeMillis());
-			ps.setString(4, staff == null ? null : staff.getUUID().toString());
+			// The account from the actor when there is no player: an action from Discord belongs
+			// to the linked account, and its row must say so. The address still comes only from a
+			// player's own connection — a linked account that happens to be online did not send
+			// the Discord request, so its address says nothing about who did.
+			ps.setString(4, staff != null ? staff.getUUID().toString()
+					: actor != null && actor.id() != null ? actor.id().toString() : null);
 			ps.setString(5, addressOf(staff));
 			ps.setString(6, caseId);
 			ps.setString(7, Versions.minecraft());

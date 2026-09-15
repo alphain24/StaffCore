@@ -152,7 +152,7 @@ public final class InventoryGateway {
 		}
 		if (real.isEmpty()) return new Outcome(true, 0, 0, null);
 
-		String refusal = whyRefused(origin);
+		String refusal = whyRefused(origin, actor);
 		if (refusal != null) return refuse(origin, actor, target, reason, refusal);
 
 		int count = real.stream().mapToInt(ItemStack::getCount).sum();
@@ -192,7 +192,7 @@ public final class InventoryGateway {
 
 		if (owed.isEmpty()) return new Outcome(true, 0, 0, null);
 
-		String refusal = whyRefused(origin);
+		String refusal = whyRefused(origin, actor);
 		if (refusal != null) return refuse(origin, actor, target, reason, refusal);
 
 		// Worked out before anything is written so the audit row names what actually moved
@@ -257,7 +257,7 @@ public final class InventoryGateway {
 	public static Outcome replaceAll(ServerPlayer target, Origin origin, Actor actor,
 			String reason, ItemStack[] contents) {
 
-		String refusal = whyRefused(origin);
+		String refusal = whyRefused(origin, actor);
 		if (refusal != null) return refuse(origin, actor, target, reason, refusal);
 
 		List<ItemStack> real = new ArrayList<>();
@@ -319,7 +319,7 @@ public final class InventoryGateway {
 	public static Removal removeMatching(ServerPlayer target, Origin origin, Actor actor,
 			String reason, java.util.function.Predicate<ItemStack> doomed) {
 
-		String refusal = whyRefused(origin);
+		String refusal = whyRefused(origin, actor);
 		if (refusal != null) {
 			refuse(origin, actor, target, reason, refusal);
 			return new Removal(List.of(), List.of(), 0, 0, 0, refusal);
@@ -486,7 +486,14 @@ public final class InventoryGateway {
 	 * Whether this subsystem is allowed to write right now, and if not, why not in words
 	 * somebody can act on.
 	 */
-	private static String whyRefused(Origin origin) {
+	private static String whyRefused(Origin origin, Actor actor) {
+		// Before anything else. An inventory edit from Discord changes what somebody is holding
+		// with nobody able to see what they are holding, and it is one of the three actions a
+		// stolen Discord account would reach for first.
+		String fromDiscord = io.github.alphain24.staffcore.permission.DiscordReach.refusal(actor,
+				"Inventory edits");
+		if (fromDiscord != null) return fromDiscord;
+
 		if (origin.requiredFeatures().isEmpty()) return null;
 
 		List<String> broken = new ArrayList<>();

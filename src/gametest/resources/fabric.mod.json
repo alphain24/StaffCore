@@ -42,7 +42,8 @@
 			"io.github.alphain24.staffcore.gametest.ContainerBreakRollbackTests",
 			"io.github.alphain24.staffcore.gametest.XrayAlertTests",
 			"io.github.alphain24.staffcore.gametest.RollbackGuiTests",
-			"io.github.alphain24.staffcore.gametest.CommandTreeTests"
+			"io.github.alphain24.staffcore.gametest.CommandTreeTests",
+			"io.github.alphain24.staffcore.gametest.DiscordAccessTests"
 		]
 	},
 	"depends": {

@@ -37,12 +37,20 @@ public class DiscordModule implements Module {
 			.connectTimeout(Duration.ofSeconds(5))
 			.build();
 
+	private final DiscordLinks links = new DiscordLinks();
+
+	/** Which Discord account belongs to which Minecraft account, for the Discord companion. */
+	public DiscordLinks links() {
+		return links;
+	}
+
 	/**
-	 * Whether this webhook should post. Not when the Discord companion is installed: it posts the
-	 * same things with more in them, and a channel that gets everything twice is read by nobody.
+	 * Whether this webhook should post. Not once the Discord companion posts to Discord itself: it
+	 * posts the same things with more in them, and a channel that gets everything twice is read by
+	 * nobody. A companion that is only linking accounts leaves the webhook as it was.
 	 */
 	public boolean isConfigured() {
-		if (io.github.alphain24.staffcore.api.StaffCoreApi.discordCompanionPresent()) return false;
+		if (io.github.alphain24.staffcore.api.StaffCoreApi.discordPostingHandled()) return false;
 		String url = StaffConfig.get().discordWebhookUrl;
 		return url != null && !url.isBlank();
 	}

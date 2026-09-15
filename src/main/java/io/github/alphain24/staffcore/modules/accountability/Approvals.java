@@ -157,6 +157,13 @@ public final class Approvals {
 		var accountable = Accountable.require(approver, "approve a staged action");
 		if (accountable.refused()) return Outcome.refused(accountable.refusal());
 
+		// Approving is what runs it, and every action staged here is one Discord may not run: a
+		// linked admin confirming an IP ban from a phone is the IP ban being issued from Discord.
+		// Staging from Discord for somebody in game to confirm stays possible.
+		String fromDiscord = io.github.alphain24.staffcore.permission.DiscordReach.refusal(approver,
+				"Staged actions");
+		if (fromDiscord != null) return Outcome.refused(fromDiscord);
+
 		expireOld();
 
 		Staged staged = pending.get(id);

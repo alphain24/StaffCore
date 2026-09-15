@@ -135,10 +135,9 @@ public final class AddressBans {
 		// Never from Discord, linked or not. The rule is about the channel, not the person:
 		// an address ban is aimed at somebody the sender cannot see, from a place where
 		// nobody can see them either.
-		if (staff != null && (staff.source() == Actor.Source.DISCORD_LINKED
-				|| staff.source() == Actor.Source.DISCORD_UNLINKED)) {
-			return Outcome.refused("IP bans cannot be issued from Discord.");
-		}
+		String fromDiscord = io.github.alphain24.staffcore.permission.DiscordReach.refusal(staff,
+				"IP bans");
+		if (fromDiscord != null) return Outcome.refused(fromDiscord);
 		if (staff != null && staff.source() == Actor.Source.PLAYER && !staff.has(Nodes.IP_BAN)) {
 			return Outcome.refused("An IP ban needs " + Nodes.IP_BAN + ".");
 		}

@@ -2,6 +2,8 @@ package io.github.alphain24.staffcore.discord;
 
 import io.github.alphain24.staffcore.api.StaffCoreApi;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,7 +34,20 @@ public final class StaffCoreDiscord implements ModInitializer {
 					+ "StaffCore API version"));
 			return;
 		}
-		StaffCoreApi.addStatus("Discord", () -> List.of("installed, API v" + API_VERSION));
+
+		// One bot per server start. Created when the server has started, so StaffCore's storage is
+		// open before the first Discord request can arrive.
+		DiscordBot[] bot = new DiscordBot[1];
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			bot[0] = new DiscordBot(FabricLoader.getInstance().getConfigDir());
+			StaffCoreApi.addStatus("Discord", bot[0]::status);
+			bot[0].start();
+		});
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+			if (bot[0] != null) bot[0].stop();
+		});
+
+		StaffCoreApi.addStatus("Discord", () -> List.of("waiting for the server to start"));
 		LOGGER.info("[StaffCore Discord] loaded against StaffCore API v{}", API_VERSION);
 	}
 }

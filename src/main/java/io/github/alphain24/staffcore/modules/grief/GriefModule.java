@@ -1974,6 +1974,15 @@ public class GriefModule implements Module {
 
 		String world = Mc.dimensionId(level);
 
+		// Not from Discord, a preview included: there is nobody there to read one, and nothing
+		// from Discord should be able to find out which ground is about to be locked.
+		String fromDiscord = io.github.alphain24.staffcore.permission.DiscordReach.refusal(staff,
+				"Rollbacks");
+		if (fromDiscord != null) {
+			StaffCore.LOGGER.warn("[Grief] refused a rollback by {}: {}", staff.name(), fromDiscord);
+			return RollbackResult.NOTHING;
+		}
+
 		// Rate limited here rather than in the command, for the same reason punishments are:
 		// this is the funnel every path already goes through, so the GUI and anything added
 		// later are covered without anybody having to remember them.

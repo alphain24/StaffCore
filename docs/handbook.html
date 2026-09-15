@@ -2458,7 +2458,7 @@
 
       <!-- ========================================================= DISCORD -->
       <section id="discord">
-        <p class="kicker">Outbound</p>
+        <p class="kicker">Webhook and companion</p>
         <h2>Discord</h2>
         <p>
           Set <code>discordWebhookUrl</code> in the config and punishments, reports and alerts
@@ -2470,6 +2470,72 @@
           failures are logged once rather than retried. Payloads are built as real JSON, so a
           player name containing a quote cannot break the message, and
           <code>@everyone</code> is stripped whatever a staff message contains.
+        </p>
+
+        <h3>The Discord companion</h3>
+        <p>
+          <code>staffcore-discord-1.0.0.jar</code> is a second jar, installed beside StaffCore, that
+          runs a Discord bot inside the server process. It is separate because the Discord library
+          and what it needs come to about 11&nbsp;MB, and a server that does not want Discord should
+          not carry them.
+        </p>
+        <p>
+          <strong>What it does today:</strong> connects the bot, lets staff link their Discord and
+          Minecraft accounts, and answers <code>/link</code>, <code>/unlink</code> and
+          <code>/whoami</code> in your Discord server. Posting to channels, acting from Discord, the
+          staff chat bridge and appeals are not built yet, so the webhook above keeps posting.
+        </p>
+        <h3>Setting it up</h3>
+        <ol>
+          <li>Create a bot in the Discord developer portal and invite it to your server. It needs no privileged intents.</li>
+          <li>Put the token, and nothing else, in <code>config/staffcore-discord.token</code>. On Linux, <code>chmod 600</code> it.</li>
+          <li>Start the server once so <code>config/staffcore-discord.json</code> is written, fill it in, and restart. <code>/staff status</code> shows whether the bot is off, connecting, connected, or what stopped it.</li>
+        </ol>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Key</th><th>Default</th><th class="wrap">What changing it does</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">enabled</td><td class="mono">false</td><td class="wrap">Starts the bot at the next server start. Off, the token file is not even read; existing links are kept and cannot be used.</td></tr>
+              <tr><td class="mono">guildId</td><td class="mono">empty</td><td class="wrap">The Discord server the bot works in. It answers only there and reads roles only from there. The bot stays off until this is a real server id.</td></tr>
+              <tr><td class="mono">roleNodes</td><td class="mono">empty</td><td class="wrap">Role id &rarr; the StaffCore permissions that role may use from Discord, each named. Wildcards and unknown permissions are refused and logged. An unmapped role allows nothing.</td></tr>
+              <tr><td class="mono">requestTimeoutSeconds</td><td class="mono">10</td><td class="wrap">How long a Discord user waits for the server before being told it timed out (2&ndash;60). The request still completes if the server gets to it later.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>The token</h3>
+        <p>
+          It lives in its own file, never in <code>staffcore.json</code> or the settings file, because
+          those get pasted into support channels. It is never logged, never in <code>/staff status</code>,
+          never in an error, and not in <code>/staff export</code> &mdash; nothing writes it to the
+          database. A token file every user on the machine can read is warned about at startup and in
+          <code>/staff status</code>. The companion never logs the token itself, and as a backstop for
+          everything else on the server a filter drops any log line containing it and counts how many.
+        </p>
+        <h3>Linking and permissions</h3>
+        <p>
+          <code>/staff discord link</code> in game gives a one-time code; <code>/link &lt;code&gt;</code>
+          in Discord completes it. Codes last 10 minutes, work once, and wrong guesses are capped per
+          Discord account. Being signed in to the Minecraft account is the proof, so a link cannot be
+          claimed from Discord alone. The player is told in game if they are online;
+          <code>/staff discord unlink</code> ends it, and <code>/staff discord unlink &lt;player&gt;</code>
+          (<code>staff.perms</code>) cuts off somebody else's. A link is ended, never deleted.
+        </p>
+        <p>
+          What somebody may do from Discord is <strong>the smaller of</strong> what their roles map to
+          and what their linked Minecraft account holds in game, read again on every request:
+        </p>
+        <ul>
+          <li>A role can only narrow. A compromised Discord role grants nothing the Minecraft account does not already hold.</li>
+          <li>An unlinked Discord account holds nothing, whatever its roles. A banned Minecraft account can do nothing from Discord.</li>
+          <li>Being opped is not a wildcard here; only permissions the account actually resolves count.</li>
+          <li>With a permissions plugin such as LuckPerms, permissions can only be read while the player is online, so an offline account can do nothing from Discord until they join. Without one, the groups file and the op list answer exactly as the command tree would.</li>
+          <li><strong>IP bans, rollbacks and inventory edits never run from Discord</strong>, for anybody, and approving a staged action counts as running it. The services that do those things refuse it themselves.</li>
+        </ul>
+        <p>
+          Actions from Discord are recorded against the linked Minecraft account and name the Discord
+          user; no address is recorded for them. Bundled libraries are listed with their licences in
+          the README: JDA and its dependencies are Apache&nbsp;2.0, except Trove4j, which is LGPL&nbsp;2.1
+          and shipped as its own unmodified jar.
         </p>
       </section>
 
@@ -2546,6 +2612,8 @@
               <tr><td class="mono">/staff inspect</td><td class="mono">grief.inspect.mode</td><td class="wrap">Hold inspect mode; any block click shows its history</td></tr>
               <tr><td class="mono">/staff perms [list | set | unset]</td><td class="mono">staff.perms</td><td class="wrap">Built-in groups, when no permissions mod is installed</td></tr>
               <tr><td class="mono">/staff stats &lt;player&gt;</td><td class="mono">analytics.stats</td><td class="wrap">One staff member's totals</td></tr>
+              <tr><td class="mono">/staff discord &middot; link</td><td class="mono">any staff node</td><td class="wrap">Show your Discord link, or get a one-time code to link &mdash; only while the Discord companion is running</td></tr>
+              <tr><td class="mono">/staff discord unlink [player]</td><td class="mono">any staff node; staff.perms for somebody else's</td><td class="wrap">End a Discord link, so nothing can be done as that account from Discord</td></tr>
               <tr><td class="mono">/staff reload</td><td class="mono">staff.reload</td><td class="wrap">Re-read the config and permission groups from disk</td></tr>
               <tr><td class="mono">/staff status</td><td class="mono">staff.reload</td><td class="wrap">Modules, TPS, storage state</td></tr>
               <tr><td class="mono">/staff backup</td><td class="mono">staff.reload</td><td class="wrap">Take a coherent copy of the database now</td></tr>
@@ -3213,7 +3281,7 @@
           </ul>
           <h3>Not built</h3>
           <ul>
-            <li><strong>Discord is outbound only.</strong> Punishments, reports and alerts go out through a webhook; nothing comes back. Two-way needs a gateway connection, a bot token and roughly 10&nbsp;MB of JDA, which belongs in a separate jar.</li>
+            <li><strong>The Discord companion is partly built.</strong> It connects a bot, links staff accounts and enforces the permission rules in <a href="#discord">Discord</a>, and that is all so far: it does not yet post to channels, take actions, bridge staff chat or handle appeals. Punishments, reports and alerts still reach Discord through the webhook, which is outbound only.</li>
             <li><strong>No map integrations.</strong> BlueMap, Dynmap and Squaremap would each need that mod present as a compile dependency.</li>
           </ul>
           <h3>Structural</h3>

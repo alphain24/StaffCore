@@ -37,6 +37,7 @@ public final class StaffCoreApi {
 	private static final List<StaffCoreListener> LISTENERS = new CopyOnWriteArrayList<>();
 	private static final Map<String, Supplier<List<String>>> STATUS = new ConcurrentHashMap<>();
 	private static volatile boolean discordCompanion;
+	private static volatile boolean discordPosting;
 
 	/** Starts telling this listener about events. */
 	public static void addListener(StaffCoreListener listener) {
@@ -53,10 +54,8 @@ public final class StaffCoreApi {
 	}
 
 	/**
-	 * Says that a Discord companion is installed and handling Discord.
-	 * <p>
-	 * StaffCore's own webhook goes quiet from that moment, so a server with both configured does
-	 * not post everything twice.
+	 * Says that a Discord companion is configured and its bot is starting, so staff can link their
+	 * accounts: {@code /staff discord link} refuses to hand out a code while nothing could redeem it.
 	 */
 	public static void declareDiscordCompanion() {
 		discordCompanion = true;
@@ -64,6 +63,21 @@ public final class StaffCoreApi {
 
 	public static boolean discordCompanionPresent() {
 		return discordCompanion;
+	}
+
+	/**
+	 * Says that the companion posts punishments, reports and alerts to Discord itself.
+	 * <p>
+	 * StaffCore's own webhook goes quiet from that moment, so a server with both configured does not
+	 * post everything twice. Separate from {@link #declareDiscordCompanion}, because a bot that links
+	 * accounts and posts nothing must not silence the webhook that does.
+	 */
+	public static void declareDiscordPosting() {
+		discordPosting = true;
+	}
+
+	public static boolean discordPostingHandled() {
+		return discordPosting;
 	}
 
 	/**

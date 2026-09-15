@@ -60,13 +60,30 @@ public final class Permissions {
 			}
 		}
 
-		PermissionGroups groups = PermissionGroups.get();
+		return withoutProvider(PermissionGroups.get(), player.getUUID(), Mc.name(player),
+				Mc.isModerator(player), node);
+	}
+
+	/**
+	 * The answer {@link #check(ServerPlayer, String)} gives when no permissions API is answering,
+	 * worked out from identity alone.
+	 * <p>
+	 * Separate so an account that is not online — a staff member acting from Discord — is asked
+	 * the identical question rather than a copy of it. A copy is how "cannot do anything from
+	 * Discord that you could not do in game" quietly stops being true: the in-game rule changes
+	 * and the copy does not.
+	 *
+	 * @param moderator whether the account holds vanilla's moderator level
+	 */
+	static boolean withoutProvider(PermissionGroups groups, java.util.UUID id, String name,
+			boolean moderator, String node) {
+
 		if (groups != null) {
 			// Operators bypassing is on by default so writing this file cannot lock an
 			// admin out before they have added themselves to it.
-			if (groups.operatorsBypass && Mc.isModerator(player)) return true;
+			if (groups.operatorsBypass && moderator) return true;
 
-			Boolean answer = groups.check(player.getUUID(), Mc.name(player), node);
+			Boolean answer = groups.check(id, name, node);
 			if (answer != null) return answer;
 
 			// The file is in charge and has nothing to say about this player. With the
@@ -80,7 +97,7 @@ public final class Permissions {
 			// written for is worse than not having it.
 			if (!groups.operatorsBypass) return false;
 		}
-		return Mc.isModerator(player);
+		return moderator;
 	}
 
 	public static boolean check(CommandSourceStack src, String node) {

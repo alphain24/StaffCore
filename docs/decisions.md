@@ -1848,6 +1848,72 @@ stricter bar, or by decoys.
 
 ---
 
+## Who a Discord user is allowed to be
+
+**Date:** 2026-09-15
+
+Phase 5.2 of the build brief: the security model for the Discord companion, built before the
+companion does anything, so that everything added afterwards arrives behind it.
+
+**Permissions are the intersection, read per request.** What a Discord user may do is the set of
+nodes their roles map to (the companion's config) intersected with what their linked Minecraft
+account resolves in game right now. Neither side alone was acceptable: roles alone make whoever
+can hand out a Discord role a Minecraft admin, and the game alone gives the owner no way to say
+"bans stay in game". The intersection means each side can only take away. Nothing is cached — a
+demotion, a ban or an unlink takes effect on the next click, and `DiscordAccessTests` checks
+promotion and demotion both reach Discord without a restart.
+
+**"In game" means what the command tree would answer, not what `Rank.of` answers.** `Rank.of`
+decides whether a *target* is staff and deliberately counts anybody on the op list as an
+operator. Used to decide what somebody may *do*, that is the permissive direction. So there is a
+separate `Rank.inGame`, which asks `Permissions`' own resolution (`withoutProvider`, now shared
+with the in-game check rather than copied) including vanilla's moderator level from the op
+entry. The operator flag is never a grant on the Discord path.
+
+**Offline with a permissions plugin is refused.** fabric-permissions-api answers only about
+connected players. Rather than guess, an offline account on a LuckPerms server holds nothing on
+Discord until they join. This will be the commonest complaint about the companion, and it is the
+correct side to be wrong on.
+
+**"An unlinked Discord user can read, never write" — how it was read.** The brief also says reads
+are "for linked staff with the node" (5.5). Both hold if "read" for an unlinked user means seeing
+what the companion posts to channels, which Discord's own channel permissions govern, and not
+running lookups. So an unlinked account holds no nodes at all, reads included. If the intent was
+that unlinked role holders may run lookups, this is the place to change, and it is one line in
+`DiscordGate.decide`.
+
+**In-game-only actions are refused in the services, by channel.** `DiscordReach.refusal` is
+called by `AddressBans.request`, `Approvals.approve`, `GriefModule.rollback` and every
+`InventoryGateway` entry point. Leaving those actions out of the bot's command list would have
+been enough for today and not for the next way in. Approving is refused because it is what runs
+a staged action; staging from Discord stays possible. Rollback previews are refused too: there is
+nobody on Discord to read one, and a preview takes the region lock.
+
+**Links are proved from the Minecraft side.** The code comes from `/staff discord link`, issued
+only to a signed-in player, so possession of the Minecraft account is the proof and a link cannot
+be claimed from Discord. Codes are 40 bits, ten minutes, single use, in memory only, and wrong
+guesses are capped at five per Discord account per ten minutes. Links are ended rather than
+deleted (`discord_links`, migration 28), one per account in each direction.
+
+**The token.** Its own file. Never logged, never in status, never in an error — every message
+about the file describes it without quoting it, because a token with one stray character fails
+the shape check while still being almost all secret. The companion never logs it, and a Log4j
+filter on every logger configuration drops any event whose message or exception chain contains
+it. The filter sits on the loggers rather than the context because a context-wide filter is
+consulted before a message is formatted, with the pattern and its arguments apart, and a logger's
+own filter sees the finished event.
+`DiscordBotTest` makes a fake gateway log the token as an argument, in an exception and in a
+cause, then reads back everything that was logged; with the filter disabled it fails.
+World-readable is the POSIX "others" bit, or on Windows an allow entry for Everyone, Users or
+Authenticated Users — Java reports Everyone as `\Everyone`, which the first version missed.
+
+**Two flags, not one.** 5.1 silenced StaffCore's webhook as soon as a companion declared itself.
+A companion that only links accounts would then have left the server posting nothing to Discord
+at all. `declareDiscordCompanion` now only enables linking; `declareDiscordPosting`, which 5.3
+will call, is what silences the webhook.
+
+---
+
 ---
 
 <a id="testing-layers"></a>

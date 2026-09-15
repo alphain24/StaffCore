@@ -224,6 +224,29 @@ class BypassAttemptTest {
 	}
 
 	@Test
+	@DisplayName("a linked Discord account cannot approve, because approving is running it")
+	void discordCannotRunAStagedAction() {
+		UUID alice = UUID.randomUUID();
+		Approvals.Staged staged = stage(alice, "Alice");
+
+		// Accountable, holding the node, and somebody other than the stager: every condition an
+		// in-game approval needs. Still refused, because the approval is what executes the IP ban
+		// or the rollback, and those do not run from Discord.
+		Actor bob = Actor.of(UUID.randomUUID(), "Bob", Actor.Source.DISCORD_LINKED,
+				java.util.Set.of(Nodes.APPROVE));
+		assertTrue(bob.isAccountable());
+
+		Approvals.Outcome outcome = approvals.approve(bob, staged.id());
+		assertFalse(outcome.approved(), "a staged action was approved from Discord");
+		assertTrue(outcome.refusal().contains("Discord"), outcome.refusal());
+		assertTrue(approvals.find(staged.id()).isPresent(),
+				"the refused approval consumed the staged action, so a Discord click cancelled it");
+
+		// And the same person in game can.
+		assertTrue(approve(bob.id(), "Bob", staged.id()).approved());
+	}
+
+	@Test
 	@DisplayName("the three guarded actions are the irreversible ones")
 	void theRightActionsAreGuarded() {
 		var actions = List.of(Approvals.Action.values());

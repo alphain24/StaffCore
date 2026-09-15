@@ -3,7 +3,7 @@
 	"id": "staffcore-discord",
 	"version": "${version}",
 	"name": "StaffCore Discord",
-	"description": "Discord companion for StaffCore: punishments, reports, alerts, appeals and staff chat in Discord, through StaffCore's own permission checks.",
+	"description": "Discord companion for StaffCore. Staff link their Discord and Minecraft accounts, and anything done from Discord goes through StaffCore's own permission checks.",
 	"authors": [
 		"lebron"
 	],

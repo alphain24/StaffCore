@@ -673,6 +673,23 @@ public final class StaffCommands {
 	// ------------------------------------------------------------ communication
 
 	private static void communication(LiteralArgumentBuilder<CommandSourceStack> staff) {
+		// Linking a Discord account. Any staff member may link their own; ending somebody else's
+		// link is for whoever administers permissions, because it is the fast way to cut off a
+		// Discord account that has been taken over.
+		staff.then(Commands.literal("discord")
+				.executes(StaffCommands::discordStatus)
+				.then(Commands.literal("link")
+						.executes(StaffCommands::discordLink))
+				.then(Commands.literal("unlink")
+						.executes(ctx -> discordUnlink(ctx, null))
+						.then(Commands.argument("target", GameProfileArgument.gameProfile())
+								.requires(src -> Permissions.check(src, Nodes.PERMS_ADMIN))
+								.suggests(KNOWN_PLAYERS)
+								.executes(ctx -> {
+									NameAndId target = singleProfile(ctx, "target");
+									return target == null ? 0 : discordUnlink(ctx, target);
+								}))));
+
 		staff.then(Commands.literal("chat")
 				.requires(src -> Permissions.check(src, Nodes.CHAT))
 				.executes(ctx -> {
@@ -3905,6 +3922,71 @@ public final class StaffCommands {
 		if (p == null) return;
 		if (good) Sfx.success(p);
 		else Sfx.deny(p);
+	}
+
+	// ------------------------------------------------------------------ discord links
+
+	private static int discordStatus(CommandContext<CommandSourceStack> ctx) {
+		ServerPlayer player = ctx.getSource().getPlayer();
+		if (player == null) return fail(ctx, "Run this in game; the console has no account to link.");
+
+		var link = Mods.discord().links().forPlayer(player.getUUID());
+		if (link == null) {
+			return ok(ctx, "Not linked to Discord. /staff discord link gives you a code to link with.");
+		}
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text("Linked to Discord user " + link.discordName() + " since ", Theme.TEXT))
+				.append(Link.time(link.linkedAt())), false);
+		ctx.getSource().sendSuccess(() -> Icon.text("  Anything done from there is recorded as you. "
+				+ "/staff discord unlink ends it.", Theme.MUTED), false);
+		return 1;
+	}
+
+	/**
+	 * A code for linking, shown only to the player who asked.
+	 * <p>
+	 * In game on purpose: being signed in to this account is what proves the Discord user who
+	 * types the code back is its owner.
+	 */
+	private static int discordLink(CommandContext<CommandSourceStack> ctx) {
+		ServerPlayer player = ctx.getSource().getPlayer();
+		if (player == null) {
+			return fail(ctx, "Run this in game. The code proves the Minecraft account is yours, and "
+					+ "the console has no account.");
+		}
+		if (!io.github.alphain24.staffcore.api.StaffCoreApi.discordCompanionPresent()) {
+			return fail(ctx, "No Discord bot is running on this server, so there is nothing to link "
+					+ "to. The staffcore-discord companion has to be installed and configured first.");
+		}
+
+		String code = io.github.alphain24.staffcore.modules.discord.DiscordLinks.display(
+				Mods.discord().links().issueCode(player.getUUID(), Mc.name(player)));
+		audit(ctx, "/staff discord link");
+
+		ctx.getSource().sendSuccess(() -> Theme.prefix()
+				.append(Icon.text("Your link code: ", Theme.TEXT))
+				.append(Link.copy(code, code, Theme.ACCENT, "Click to copy")), false);
+		ctx.getSource().sendSuccess(() -> Icon.text("  In the Discord server, run /link " + code
+				+ " within " + io.github.alphain24.staffcore.modules.discord.DiscordLinks.CODE_MINUTES
+				+ " minutes. It works once. Nobody should ever ask you for it — whoever types it is "
+				+ "linked to your account.", Theme.MUTED), false);
+		return 1;
+	}
+
+	/** @param target somebody else's link, or null for the sender's own */
+	private static int discordUnlink(CommandContext<CommandSourceStack> ctx, NameAndId target) {
+		ServerPlayer player = ctx.getSource().getPlayer();
+		java.util.UUID whose = target != null ? target.id() : player == null ? null : player.getUUID();
+		if (whose == null) return fail(ctx, "Name a player: /staff discord unlink <player>.");
+
+		String who = target != null ? target.name() : Mc.name(player);
+		boolean ended = Mods.discord().links().endForPlayer(whose, ctx.getSource().getTextName(),
+				target == null ? "unlinked in game" : "unlinked in game by " + ctx.getSource().getTextName());
+		if (!ended) return fail(ctx, who + " is not linked to Discord.");
+
+		audit(ctx, "/staff discord unlink" + (target == null ? "" : " " + target.name()));
+		return ok(ctx, target == null ? "Unlinked. Nothing can be done as you from Discord now."
+				: who + " is unlinked. Nothing can be done as them from Discord now.");
 	}
 
 	private static int ok(CommandContext<CommandSourceStack> ctx, String message) {
