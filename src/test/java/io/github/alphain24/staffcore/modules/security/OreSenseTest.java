@@ -4,7 +4,9 @@ import net.minecraft.core.BlockPos;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
@@ -95,6 +97,116 @@ class OreSenseTest {
 		Grid grid = new Grid().set(broken, OreSense.Cell.OPEN)
 				.set(broken.north().north(), OreSense.Cell.OPEN);   // behind the north neighbour
 		assertEquals(5, OreSense.uncover(grid, broken, new HashSet<>(), true).faces());
+	}
+
+	@Test
+	@DisplayName("a vein showing on a cave wall is not hidden, from the front or from behind")
+	void aVeinOnACaveWallIsNotHidden() {
+		// The report: mining the ore in a cave was scored as x-ray. The wall block faced the cave,
+		// but the block of the same vein behind it looked sealed on its own.
+		BlockPos wall = new BlockPos(0, 0, 0);
+		BlockPos behind = wall.east();
+		Grid grid = new Grid().set(wall.west(), OreSense.Cell.OPEN)   // the cave
+				.set(wall, OreSense.Cell.DIAMOND).set(behind, OreSense.Cell.DIAMOND);
+
+		// Mining the visible block: what is behind it is the same vein, already in view.
+		grid.set(wall, OreSense.Cell.OPEN);
+		assertEquals(0, OreSense.uncover(grid, wall, new HashSet<>(), true, true).hiddenVeins(),
+				"breaking a visible diamond made the rest of its vein a hidden find");
+
+		// Reaching the block behind from a tunnel beside it, the wall block still showing.
+		Grid side = new Grid().set(wall.west(), OreSense.Cell.OPEN)
+				.set(wall, OreSense.Cell.DIAMOND).set(behind, OreSense.Cell.DIAMOND)
+				.set(behind.north(), OreSense.Cell.OPEN);
+		assertEquals(0, OreSense.uncover(side, behind.north(), new HashSet<>(), true).hiddenVeins(),
+				"a vein with a block open to a cave counted as hidden when reached from the side");
+
+		// And the same vein with no cave is still a find.
+		Grid sealed = new Grid().set(wall, OreSense.Cell.DIAMOND).set(behind, OreSense.Cell.DIAMOND)
+				.set(behind.north(), OreSense.Cell.OPEN);
+		assertEquals(1, OreSense.uncover(sealed, behind.north(), new HashSet<>(), true).hiddenVeins());
+	}
+
+	@Test
+	@DisplayName("a tunnel is read as legs: a turn ends one, walking away ends one, vein mining does not")
+	void tunnelsAreReadAsLegs() {
+		DigPath path = new DigPath();
+		List<DigPath.Leg> legs = new ArrayList<>();
+		// Ten blocks east, two high.
+		for (int x = 0; x < 10; x++) {
+			add(legs, path.rock(new BlockPos(x, 0, 0)));
+			path.opened(3, 0);
+			add(legs, path.rock(new BlockPos(x, 1, 0)));
+			path.opened(3, 0);
+		}
+		// Then north for eight.
+		for (int z = -1; z > -9; z--) {
+			add(legs, path.rock(new BlockPos(9, 0, z)));
+			path.opened(3, 0);
+			add(legs, path.rock(new BlockPos(9, 1, z)));
+			path.opened(3, 0);
+		}
+		assertEquals(1, legs.size(), "the turn north should have closed the eastward leg: " + legs);
+		assertEquals(net.minecraft.core.Direction.EAST, legs.get(0).heading());
+		assertTrue(legs.get(0).length() >= 6, "the eastward leg was " + legs.get(0).length() + " long");
+
+		// Walking off and digging somewhere else closes the northward leg too.
+		add(legs, path.rock(new BlockPos(40, 0, 40)));
+		assertEquals(2, legs.size(), "walking away did not close the leg in progress");
+		assertEquals(net.minecraft.core.Direction.NORTH, legs.get(1).heading());
+		assertEquals(net.minecraft.core.Direction.EAST, legs.get(1).previous());
+
+		// Breaking about in one spot is not a choice of direction.
+		DigPath jitter = new DigPath();
+		List<DigPath.Leg> none = new ArrayList<>();
+		int[][] around = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {-1, 0, 0}, {0, -1, 0},
+				{1, 1, 0}, {0, 0, -1}, {1, 0, 1}, {-1, 1, 0}};
+		for (int[] at : around) add(none, jitter.rock(new BlockPos(at[0], at[1], at[2])));
+		assertTrue(none.isEmpty(), "mining around one spot read as legs: " + none);
+	}
+
+	private static void add(List<DigPath.Leg> legs, DigPath.Leg leg) {
+		if (leg != null) legs.add(leg);
+	}
+
+	@Test
+	@DisplayName("the directions not taken set what a leg should uncover")
+	void directionsNotTakenSetTheExpectation() {
+		// Four corridors looked into 500 blocks of rock and found nothing: an honest leg that
+		// opened 80 faces expects hardly anything.
+		OreSense.LegScan empty = new OreSense.LegScan(16, 80, 0, 4, 0, 500);
+		double quiet = OreSense.expectedFinds(empty, 0.002);
+		assertTrue(quiet > 0 && quiet < 0.2, "a leg beside empty rock expected " + quiet);
+
+		// Every corridor reached something within twenty blocks: finding one is ordinary.
+		OreSense.LegScan rich = new OreSense.LegScan(16, 80, 1, 4, 4, 80);
+		assertTrue(OreSense.expectedFinds(rich, 0.002) > 1.0,
+				"a leg in rock full of ore was expected to find only " + OreSense.expectedFinds(rich, 0.002));
+
+		// Twice the rock looked into expects twice as much, whatever the leg stopped for.
+		OreSense.LegScan half = new OreSense.LegScan(8, 40, 0, 4, 1, 300);
+		OreSense.LegScan whole = new OreSense.LegScan(16, 80, 0, 4, 1, 300);
+		assertEquals(2 * OreSense.expectedFinds(half, 0.002), OreSense.expectedFinds(whole, 0.002), 1e-9);
+	}
+
+	@Test
+	@DisplayName("a hidden-vein rate the tunnel does not back up needs far stronger odds")
+	void veinsAloneNeedMore() {
+		// Twenty veins where ten were expected: a rate estimated a little low, over a long honest
+		// session. With no tunnel evidence it is not reported.
+		OreSense.Session luck = new OreSense.Session(0, 0, "minecraft:overworld", 5000,
+				10.0, 0, 20, 0, null, 0, 800, 6, 6.0);
+		assertTrue(luck.confidence() < 55, "honest luck against a low estimate scored " + luck.confidence());
+
+		// The same count, with the tunnels uncovering far more than the directions beside them.
+		OreSense.Session aimed = new OreSense.Session(0, 0, "minecraft:overworld", 5000,
+				10.0, 0, 30, 0, null, 0, 300, 20, 2.0);
+		assertTrue(aimed.confidence() >= 65, "veins and aimed tunnels agreeing scored " + aimed.confidence());
+
+		// And an impossible rate stands on its own, for a cheater who never turns.
+		OreSense.Session blatant = new OreSense.Session(0, 0, "minecraft:overworld", 200,
+				0.2, 0, 8, 0, null, 0, 0, 0, 0);
+		assertTrue(blatant.confidence() >= 65, "eight veins against 0.2 expected scored " + blatant.confidence());
 	}
 
 	@Test

@@ -584,7 +584,15 @@ public class SecurityModule implements Module {
 				if (confidence <= previous + 5) continue;
 				lastReported.put(id, confidence);
 
-				if (confidence >= cfg.xrayAlertConfidence) {
+				// An alert needs the way they dig to agree, as the live score does. The sweep reads
+				// the log after the fact and cannot see a tunnel's choices; the live session can.
+				// Without that — somebody offline, or mining nothing but visible ore — it stays a
+				// quiet line for a person to look at.
+				OreSense.Session live = online == null ? null : oreSense.sessionFor(online.getUUID());
+				boolean backedUp = live != null && (live.decoyVeins() > 0
+						|| live.movementLooksAimed(cfg.xrayNoticeConfidence));
+
+				if (confidence >= cfg.xrayAlertConfidence && backedUp) {
 					long to = System.currentTimeMillis();
 					long from = to - Math.max(1, cfg.xraySweepMinutes) * 60_000L * 6;
 					Mods.cases().emit(server,
@@ -613,8 +621,12 @@ public class SecurityModule implements Module {
 	 * happening" and "this has stopped working", and only one of those needs acting on.
 	 */
 	private void notifyNearMiss(MinecraftServer server, XraySweep.Finding finding) {
+		int confidence = Hypergeometric.confidence(finding.pValue());
 		Mods.alerts().onStaffAction(server, finding.player() + " — " + finding.headline()
-				+ ", below the alert line. Not a verdict; recorded so you can see it happening.");
+				+ (confidence >= StaffConfig.get().xrayAlertConfidence
+						? ", but the way they dig does not back it up, so no alert."
+						: ", below the alert line.")
+				+ " Not a verdict; recorded so you can see it happening.");
 	}
 
 	public void forget(java.util.UUID player) {

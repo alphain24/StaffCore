@@ -664,6 +664,12 @@ public final class Canaries {
 		HITS.remove(player);
 	}
 
+	/** Whether this position is one of this player's decoys. */
+	public static boolean isDecoyFor(UUID player, BlockPos pos) {
+		Map<BlockPos, Canary> mine = LIVE.get(player);
+		return mine != null && mine.containsKey(pos);
+	}
+
 	/** How many decoy blocks this player currently has out. For the diagnostic. */
 	public static int liveFor(UUID player) {
 		Map<BlockPos, Canary> mine = LIVE.get(player);

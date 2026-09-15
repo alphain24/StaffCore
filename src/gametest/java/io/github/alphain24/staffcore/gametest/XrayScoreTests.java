@@ -5,6 +5,7 @@ import io.github.alphain24.staffcore.modules.cases.CaseCategory;
 import io.github.alphain24.staffcore.modules.cases.CaseEvidence;
 import io.github.alphain24.staffcore.modules.security.Canaries;
 import io.github.alphain24.staffcore.modules.security.OreSense;
+import io.github.alphain24.staffcore.modules.security.XraySweep;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -210,4 +211,121 @@ public class XrayScoreTests {
 			clear(helper, placed);
 		});
 	}
+
+	/** Breaks a block as the break event leaves it, telling the score what it was. */
+	private static OreSense.Report mineScored(ServerLevel level, ServerPlayer player, BlockPos pos) {
+		var state = level.getBlockState(pos);
+		level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
+		Canaries.Contact contact = Canaries.onBreak(level, player, pos);
+		OreSense.Observation observation = Mods.security().oreSense().observe(level, player, pos,
+				contact, state);
+		return observation == null ? null : Mods.security().oreSense().score(observation);
+	}
+
+	@GameTest
+	public void miningTheOreOnACaveWallIsNotAHiddenFind(GameTestHelper helper) {
+		// The report: mining the diamonds you can see in a cave was scored as x-ray.
+		ServerLevel level = helper.getLevel();
+		ServerPlayer miner = Harness.namedPlayer(helper);
+		List<BlockPos> placed = slab(helper, 9, 7, 9);
+		BlockPos o = origin(helper);
+
+		for (int x = 1; x <= 7; x++) level.setBlock(o.offset(x, 3, 3), Blocks.AIR.defaultBlockState(), 2);
+		// A vein showing on the cave wall, with more of it behind.
+		BlockPos wall = o.offset(4, 3, 4);
+		BlockPos behind = o.offset(4, 3, 5);
+		level.setBlock(wall, Blocks.DEEPSLATE_DIAMOND_ORE.defaultBlockState(), 2);
+		level.setBlock(behind, Blocks.DEEPSLATE_DIAMOND_ORE.defaultBlockState(), 2);
+		// A second one, reached from a tunnel beside the block behind while the wall still shows.
+		BlockPos wall2 = o.offset(2, 3, 4);
+		BlockPos behind2 = o.offset(2, 3, 5);
+		level.setBlock(wall2, Blocks.DEEPSLATE_DIAMOND_ORE.defaultBlockState(), 2);
+		level.setBlock(behind2, Blocks.DEEPSLATE_DIAMOND_ORE.defaultBlockState(), 2);
+
+		mineScored(level, miner, wall);
+		mineScored(level, miner, behind);
+		mineScored(level, miner, o.offset(1, 3, 5));
+
+		OreSense.Session session = Mods.security().oreSense().sessionFor(miner.getUUID());
+		Harness.checkEquals(helper, 0, session == null ? 0 : session.hiddenVeins(),
+				"diamonds on a cave wall were scored as hidden finds: " + session);
+		clear(helper, placed);
+		helper.succeed();
+	}
+
+	@GameTest
+	public void theSweepLeavesOreOnCaveWallsOutOfTheOdds(GameTestHelper helper) {
+		ServerLevel level = helper.getLevel();
+		String world = io.github.alphain24.staffcore.compat.Mc.dimensionId(level);
+		BlockPos o = origin(helper);
+
+		// The same eight gold ores and the same few blocks of rock, mined twice: once along a cave
+		// where the ore showed on the walls, once sealed in solid rock.
+		java.util.function.BiFunction<Boolean, Integer, XraySweep.Finding> run = (cave, zOffset) -> {
+			List<BlockPos> placed = new ArrayList<>();
+			for (int x = 0; x < 20; x++) {
+				for (int y = 0; y < 5; y++) {
+					for (int z = 0; z < 5; z++) {
+						BlockPos pos = o.offset(x, y, z + zOffset);
+						level.setBlock(pos, Blocks.DEEPSLATE.defaultBlockState(), 2);
+						placed.add(pos);
+					}
+				}
+			}
+			List<io.github.alphain24.staffcore.modules.security.Excavation.Dig> digs = new ArrayList<>();
+			if (cave) {
+				for (int x = 1; x < 19; x++) level.setBlock(o.offset(x, 2, 2 + zOffset), Blocks.AIR.defaultBlockState(), 2);
+			}
+			for (int i = 0; i < 8; i++) {
+				BlockPos ore = o.offset(2 + i * 2, 2, (i % 2 == 0 ? 1 : 3) + zOffset);
+				digs.add(new io.github.alphain24.staffcore.modules.security.Excavation.Dig(
+						"minecraft:deepslate_gold_ore", world, ore.getX(), ore.getY(), ore.getZ(), 1000L + i));
+			}
+			for (int i = 0; i < 4; i++) {
+				BlockPos rock = o.offset(3 + i * 4, 2, 2 + zOffset);
+				digs.add(new io.github.alphain24.staffcore.modules.security.Excavation.Dig(
+						"minecraft:deepslate", world, rock.getX(), rock.getY(), rock.getZ(), 2000L + i));
+			}
+			XraySweep.Finding finding = XraySweep.score(level, "sweeptest", digs, 0);
+			clear(helper, placed);
+			return finding;
+		};
+
+		XraySweep.Finding sealed = run.apply(false, 0);
+		Harness.check(helper, sealed != null && sealed.found() == 8 && sealed.pValue() < 0.05,
+				"eight hidden gold ores in twelve blocks should look unlikely: " + sealed);
+
+		XraySweep.Finding cave = run.apply(true, 0);
+		Harness.check(helper, cave == null || cave.found() == 0,
+				"ore showing on a cave wall was scored as a blind find: " + cave);
+		helper.succeed();
+	}
+
+	@GameTest
+	public void aRealTunnelWithATurnIsReadAgainstTheDirectionsNotTaken(GameTestHelper helper) {
+		ServerLevel level = helper.getLevel();
+		ServerPlayer miner = Harness.namedPlayer(helper);
+		List<BlockPos> placed = slab(helper, 16, 5, 16);
+		BlockPos o = origin(helper);
+		long readBefore = OreSense.pathBlocksRead();
+
+		// Ten blocks east, two high, then eight north: one finished leg.
+		for (int x = 2; x < 12; x++) {
+			mineScored(level, miner, o.offset(x, 1, 13));
+			mineScored(level, miner, o.offset(x, 2, 13));
+		}
+		for (int z = 12; z > 4; z--) {
+			mineScored(level, miner, o.offset(11, 1, z));
+			mineScored(level, miner, o.offset(11, 2, z));
+		}
+
+		OreSense.Session session = Mods.security().oreSense().sessionFor(miner.getUUID());
+		Harness.check(helper, session != null && session.pathBlocks() > 0,
+				"the eastward leg was never read against the directions not taken: " + session);
+		Harness.check(helper, OreSense.pathBlocksRead() > readBefore,
+				"no rock was read for the directions not taken");
+		clear(helper, placed);
+		helper.succeed();
+	}
+
 }

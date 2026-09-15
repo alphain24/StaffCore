@@ -29,9 +29,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * break uncovers is decided by {@link OreSense#uncover}, the same code the break event calls,
  * and every break is scored by {@link OreSense#score} with the shipped defaults.
  * <p>
- * Two miners. The honest one branch-mines: a corridor with side tunnels every third block, and
- * mines out any ore a tunnel opens onto. The x-ray one walks straight to the nearest vein or
- * decoy it can see within thirty-two blocks, and mines it out.
+ * Three miners. The honest one branch-mines: a corridor with side tunnels every third block, and
+ * mines out any ore a tunnel opens onto. The cave miner walks cave systems and mines out the ore
+ * showing on their walls, with the odd short tunnel between them — the report that started the
+ * cave work. The x-ray one walks straight to the nearest vein or decoy it can see within
+ * thirty-two blocks, and mines it out. Every break also goes through {@link DigPath} and
+ * {@link OreSense#scanLeg}, so the tunnel evidence is the shipped code too.
  *
  * <h2>What this establishes and what it does not</h2>
  * That with the defaults, the arithmetic separates those two shapes: how often each crosses the
@@ -64,6 +67,9 @@ class OreSenseSimulationTest {
 		final OreSense sense = new OreSense();
 		final UUID player = UUID.randomUUID();
 		final Set<Long> counted = new LinkedHashSet<>();
+		final DigPath path = new DigPath();
+		/** Centres of the cave tunnels, in the order they were carved. */
+		final List<BlockPos> caveline = new ArrayList<>();
 		final List<BlockPos> ore = new ArrayList<>();
 		final Map<Long, Long> decoys = new HashMap<>();
 		long nextVein;
@@ -77,17 +83,56 @@ class OreSenseSimulationTest {
 		}
 
 		Session(long seed, double oreFraction) {
+			this(seed, oreFraction, false);
+		}
+
+		Session(long seed, double oreFraction, boolean caves) {
 			random = new Random(seed);
+			if (caves) carveCaves();
 			int veins = (int) (W * H * D * oreFraction / 4.3);
 			for (int i = 0; i < veins; i++) {
 				BlockPos seedPos = new BlockPos(random.nextInt(W), 1 + random.nextInt(H - 2),
 						random.nextInt(D));
 				grow(seedPos, Canaries.veinSize(random, true), pos -> {
 					if (cell(pos) != ROCK) return false;
+					// Vanilla discards half of small-vein ore that would touch air.
+					if (touchesOpen(pos) && random.nextBoolean()) return false;
 					set(pos, ORE);
 					ore.add(pos);
 					return true;
 				});
+			}
+		}
+
+		boolean touchesOpen(BlockPos pos) {
+			for (Direction face : Direction.values()) {
+				if (cell(pos.relative(face)) == OPEN) return true;
+			}
+			return false;
+		}
+
+		/** Worm caves, two or three blocks across, wandering mostly sideways. */
+		void carveCaves() {
+			for (int worm = 0; worm < 40; worm++) {
+				double x = random.nextInt(W), y = 2 + random.nextInt(H - 4), z = random.nextInt(D);
+				double yaw = random.nextDouble() * Math.PI * 2;
+				for (int step = 0; step < 160; step++) {
+					yaw += (random.nextDouble() - 0.5) * 0.6;
+					x += Math.cos(yaw);
+					z += Math.sin(yaw);
+					y = Math.max(2, Math.min(H - 3, y + (random.nextDouble() - 0.5) * 0.5));
+					BlockPos centre = new BlockPos((int) x, (int) y, (int) z);
+					if (!inside(centre)) break;
+					caveline.add(centre);
+					for (int dx = -1; dx <= 1; dx++) {
+						for (int dy = -1; dy <= 1; dy++) {
+							for (int dz = -1; dz <= 1; dz++) {
+								if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 2) continue;
+								set(centre.offset(dx, dy, dz), OPEN);
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -195,6 +240,7 @@ class OreSenseSimulationTest {
 		}
 
 		void breakOne(BlockPos pos) {
+			boolean wasOre = cell(pos) == ORE;
 			set(pos, OPEN);
 			breaks++;
 			clock += 500;
@@ -202,12 +248,21 @@ class OreSenseSimulationTest {
 
 			int decoysFound = uncoverDecoys(pos);
 			double chance = decoyChance(pos);
-			OreSense.Uncovered found = OreSense.uncover(terrain, pos, counted, true);
-			if (found.faces() == 0 && found.hiddenVeins() == 0 && decoysFound == 0) return;
+			OreSense.Uncovered found = OreSense.uncover(terrain, pos, counted, true, wasOre);
+
+			OreSense.LegScan leg = null;
+			if (!wasOre) {
+				DigPath.Leg ended = path.rock(pos);
+				path.opened(found.faces(), found.hiddenVeins() + decoysFound);
+				if (ended != null) {
+					leg = OreSense.scanLeg(terrain, at -> decoys.containsKey(at.asLong()), ended, counted);
+				}
+			}
+			if (found.faces() == 0 && found.hiddenVeins() == 0 && decoysFound == 0 && leg == null) return;
 
 			OreSense.Report report = sense.score(new OreSense.Observation(player, "sim",
 					"minecraft:overworld", clock, -58, true, found.faces(), found.hiddenVeins(),
-					decoysFound, chance, found.find()));
+					decoysFound, chance, found.find(), leg));
 			if (report == null) return;
 			if (loudest == null || report.loudness().ordinal() > loudest.ordinal()) {
 				loudest = report.loudness();
@@ -262,6 +317,37 @@ class OreSenseSimulationTest {
 				if (at.getY() + 1 < H - 1) s.dig(at.above());
 			}
 			s.dig(target);
+		}
+	}
+
+	/**
+	 * Walks the caves and mines what shows on their walls, with a short tunnel now and then to the
+	 * next cave — what an honest player does in a cave system.
+	 */
+	private static void caveMine(Session s) {
+		s.topUpDecoys(s.caveline.isEmpty() ? new BlockPos(W / 2, LAYER, D / 2) : s.caveline.get(0));
+		int walked = 0;
+		for (BlockPos centre : s.caveline) {
+			if (s.breaks >= BREAKS) break;
+			if (++walked % 40 == 0) s.topUpDecoys(centre);
+			for (int dx = -2; dx <= 2; dx++) {
+				for (int dy = -2; dy <= 2; dy++) {
+					for (int dz = -2; dz <= 2; dz++) {
+						BlockPos wall = centre.offset(dx, dy, dz);
+						if (s.cell(wall) == ORE && s.touchesOpen(wall)) s.dig(wall);
+					}
+				}
+			}
+			if (walked % 30 == 0) {
+				Direction way = Direction.from2DDataValue(s.random.nextInt(4));
+				int length = 3 + s.random.nextInt(8);
+				BlockPos at = centre;
+				for (int i = 0; i < length && s.breaks < BREAKS; i++) {
+					at = at.relative(way);
+					s.dig(at);
+					s.dig(at.above());
+				}
+			}
 		}
 	}
 
@@ -327,6 +413,8 @@ class OreSenseSimulationTest {
 						+ "%.1f expected, %d faces per session%n",
 				sessions, alerts, notices, worst, perThousand, decoys / (double) sessions,
 				expectedDecoys / sessions, faces / sessions);
+		System.out.printf(java.util.Locale.ROOT,
+				"[OreSenseSim] honest tunnels: %s%n", pathSummary(1000, sessions, OreSenseSimulationTest::branchMine, false));
 
 		double configured = io.github.alphain24.staffcore.config.StaffConfig.get()
 				.xrayNaturalVeinsPer1000Faces;
@@ -362,6 +450,72 @@ class OreSenseSimulationTest {
 				+ "raised an alert");
 	}
 
+	/** Tunnel evidence summed over some sessions, for the numbers quoted in decisions.md. */
+	private static String pathSummary(long seed, int sessions,
+			java.util.function.Consumer<Session> miner, boolean caves) {
+		long blocks = 0;
+		long finds = 0;
+		double expected = 0;
+		for (int i = 0; i < sessions; i++) {
+			Session s = new Session(seed + i, ORE_FRACTION, caves);
+			miner.accept(s);
+			OreSense.Session score = s.score();
+			if (score == null) continue;
+			blocks += score.pathBlocks();
+			finds += score.pathFinds();
+			expected += score.expectedPathFinds();
+		}
+		return String.format(java.util.Locale.ROOT,
+				"%d blocks of leg, %d finds on them against %.1f from the directions not taken",
+				blocks, finds, expected);
+	}
+
+	@Test
+	@DisplayName("mining the ore showing in caves never raises an alert")
+	void caveMiningStaysQuiet() {
+		int sessions = 100;
+		int alerts = 0;
+		int notices = 0;
+		int worst = 0;
+		long veins = 0;
+		long mined = 0;
+		for (int i = 0; i < sessions; i++) {
+			Session s = new Session(20_000 + i, ORE_FRACTION, true);
+			caveMine(s);
+			OreSense.Session score = s.score();
+			mined += s.breaks;
+			if (score != null) {
+				veins += score.hiddenVeins();
+				worst = Math.max(worst, score.confidence());
+			}
+			if (s.loudest == OreSense.Loudness.ALERT) alerts++;
+			else if (s.loudest == OreSense.Loudness.NOTICE) notices++;
+		}
+		System.out.printf(java.util.Locale.ROOT,
+				"[OreSenseSim] cave mining: %d sessions, %d alerts, %d notices, worst score %d, "
+						+ "%d breaks, %d counted as hidden veins%n",
+				sessions, alerts, notices, worst, mined, veins);
+		assertTrue(alerts == 0, alerts + " of " + sessions + " honest cave-mining sessions raised an alert");
+		assertTrue(notices <= sessions / 20, notices + " of " + sessions
+				+ " honest cave-mining sessions reached the notice line");
+	}
+
+	@Test
+	@DisplayName("x-ray in a world with caves is still caught")
+	void xrayAmongCavesIsCaught() {
+		int sessions = 40;
+		int caught = 0;
+		for (int i = 0; i < sessions; i++) {
+			Session s = new Session(30_000 + i, ORE_FRACTION, true);
+			xrayMine(s);
+			if (s.findsAtAlert >= 0) caught++;
+		}
+		System.out.printf(java.util.Locale.ROOT, "[OreSenseSim] x-ray among caves: %d of %d alerted%n",
+				caught, sessions);
+		assertTrue(caught >= sessions * 8 / 10, "only " + caught + " of " + sessions
+				+ " x-ray sessions among caves raised an alert");
+	}
+
 	@Test
 	@DisplayName("walking straight to visible ore is caught within a handful of finds")
 	void xrayMiningIsCaught() {
@@ -388,6 +542,8 @@ class OreSenseSimulationTest {
 						+ "%.2f sealed veins per 1000 faces, %.1f decoys per session%n",
 				caught, sessions, median, 1000.0 * veins / faces, decoys / (double) sessions);
 
+		System.out.printf(java.util.Locale.ROOT,
+				"[OreSenseSim] x-ray tunnels: %s%n", pathSummary(5000, sessions, OreSenseSimulationTest::xrayMine, false));
 		assertTrue(caught >= sessions * 9 / 10, "only " + caught + " of " + sessions
 				+ " x-ray sessions raised an alert");
 		assertTrue(median <= 12, "x-ray sessions needed a median of " + median

@@ -1562,34 +1562,37 @@
 
         <h3>X-ray</h3>
         <p>
-          The x-ray check reads the grief log rather than watching players, and it will not
-          fire at all until the dig reaches a volume of at least 512 blocks of rock.
-        </p>
-        <p>
-          A single ratio is a bad detector, so it is not one. Four independent signals are
-          scored into a confidence percentage with the evidence attached:
+          Two detectors, both reporting on the same 0&ndash;99 scale, neither able to punish.
         </p>
         <ul>
-          <li><strong>Ore fraction</strong> — the blunt signal, kept but no longer decisive.</li>
-          <li><strong>Directness</strong> — filler blocks dug between one vein and the next.
-            This is the signal that actually separates a lucky player from a guided one:
-            luck changes what you find, not how far you tunnel to reach it.</li>
-          <li><strong>Beelines</strong> — veins reached by a near-straight run of breaks.</li>
-          <li><strong>Ancient debris</strong> — never generates exposed, so every one found
-            had to be tunnelled to blind.</li>
+          <li><strong>The live score</strong> watches every break below y 16. Each break opens
+            rock faces; some of them turn out to be onto a diamond vein that was sealed on every
+            side. Honest digging finds those at a steady rate per face, x-ray far faster. Decoy
+            veins &mdash; shown only to that player &mdash; are counted the same way against
+            their own rate.</li>
+          <li><strong>The tunnel</strong> is read as well. Each straight run is a choice of
+            direction, and when it ends the directions the player did not take are read over the
+            same stretch. A cheater's tunnels uncover far more than the rock beside them; an
+            honest miner's about as much. Because that expectation comes from the rock right
+            there, a lucky ore-rich patch or a datapack does not make anybody look guilty.</li>
+          <li><strong>The sweep</strong> reads the grief log every few minutes, including players
+            who have logged off, and asks how unlikely the ore they took was among the rock around
+            their dig. It will not score a dig smaller than 512 blocks of rock.</li>
         </ul>
         <p>
-          Ore a player placed themselves is excluded from their own score. Placing a block and
-          breaking it again is an ordinary thing to do — moving a vein, decorating, testing
-          silk touch — and every one of those breaks used to read as a find. It also meant
-          anybody could inflate their own ore fraction to whatever they liked with a stack of
-          iron ore and a wall, which is a poor property for a detector to have.
+          <strong>Ore anybody could see is left out.</strong> A vein with any block showing on a
+          cave wall is not a hidden find, however it is reached; the sweep leaves cave air and
+          cave-wall ore out of its odds. Mining a cave clean is not x-ray.
         </p>
         <p>
-          A background sweep scores online players every five minutes and alerts above 55%,
-          re-alerting only when the score climbs. That matters because x-ray has no victim:
-          nobody files a report saying somebody else found diamonds too easily. Staff who are
-          clocked on are skipped; staff mining on their own time are not, because staff cheat
+          <strong>An alert needs the evidence to agree.</strong> From ore, the hidden-vein rate and
+          the tunnel have to point the same way &mdash; or the rate alone has to be a hundred
+          times less likely, for a cheater who never turns. Decoys can alert on their own. A sweep
+          finding the tunnel does not back up is a quiet line to staff, not an alert.
+        </p>
+        <p>
+          Ore a player placed themselves is excluded from their own score. Staff who are clocked
+          on are skipped and told so; staff mining on their own time are not, because staff cheat
           too.
         </p>
         <div class="note caution">
@@ -1601,7 +1604,7 @@
             honest sessions and forty guided ones showed the old settings were not quiet at
             all: the worst honest pattern scored <strong>66 against an alert line of 55</strong>,
             so ordinary strip mining and ordinary diamond hunting at y=-54 both tripped it.
-            The line is now <strong>65</strong> with a floor of <strong>200</strong>, which sit
+            The line is now <strong>65</strong> with a volume floor of <strong>512</strong>, which sit
             in the gap between the two populations: worst honest 50, weakest cheat 81. The run
             is recorded in <code>docs/decisions.md</code>.
           </p>

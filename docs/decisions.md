@@ -1771,7 +1771,8 @@ really holds: one to nine blocks in deepslate, one or two in stone, where they a
 rarer.
 
 What this does not establish: how real players mine. Honest players explore caves, and ore seen
-from a cave is never counted. Careful cheaters mix in branch mining. Nobody has watched an x-ray
+from a cave was meant never to be counted — it was, which is the next section. Careful cheaters
+mix in branch mining. Nobody has watched an x-ray
 client draw a decoy vein, which is still the manual check in `docs/manual-checks/`.
 
 **Threads.** Reading what a break uncovered stays in the break event, because the world can
@@ -1780,6 +1781,70 @@ below y 16, plus a vein walk when a diamond is touched. Scoring, sessions and ca
 the grief worker. Raising the signal comes back to the server thread, because announcing reads
 the player list. Decoy retirement stays synchronous (`CanaryRetirementIsSynchronousTest`): a
 deferred retirement would let one vein be counted twice.
+
+---
+
+## Caves, and the way a tunnel turns
+
+**Date:** 2026-09-15
+
+Reported from a real server: a player mined the ore they could see in a cave, with no x-ray, and
+was flagged. Both detectors were at fault, each for its own reason.
+
+**The live score.** `uncover` skipped a diamond facing the cave, but judged the block of the same
+vein behind it on its own — sealed on five sides, so a hidden find. Mining a visible vein scored
+its back half. A vein is now hidden only if no block of it touches open space other than the
+face just opened, and breaking a diamond (which only a visible one can be) marks its vein as
+seen. Measured by putting the old rule back: in `OreSenseSimulationTest`'s new cave world, **30
+of 100 honest cave-mining sessions alerted, worst score 99, 1,789 "hidden" veins**. With the
+rule: 0 alerts, 0 notices, worst score 7.
+
+**The sweep.** The hypergeometric draw assumes every block was chosen blind, and counted the
+cave's air as rock that could have been dug. Mining the gold, redstone and diamonds along a cave
+wall is almost every ore in very few blocks — the shape of cheating. The census now takes open
+space the player did not dig out of the population, and any ore touching it out of the ore count
+and the finds. `XrayScoreTests` builds the same eight gold ores twice: sealed in rock they are a finding
+under one in twenty; along a cave, no finding at all (with the old arithmetic, eight blind finds
+in twelve blocks).
+
+**The tunnel (`DigPath`).** Staff asked for movement to count as well. The rate test has an
+honest explanation it cannot rule out — the configured density is an estimate, and a patch
+richer than it makes an honest miner look lucky — so a second, local measurement was added. The
+tunnel is split into straight legs; when a leg ends, the directions not taken are read as
+straight corridors from the corner, and hidden veins per block of rock they would have looked
+into is set against the finds per face the leg itself opened.
+
+The first version counted per step and was **biased against honest miners**: over 150 honest
+branch-mining sessions it expected 1,801 finds on legs that made 2,549. Corridors ran through the
+player's own side tunnels (no rock, no ore) and vertical corridors look into fewer blocks per
+step. Counting rock blocks looked into, until the first hit, removes both: 2,663 expected against
+2,549. Per block rather than per leg because a leg ends when the player turns, and an honest
+player who turns the moment they find something stops a leg exactly at a find — per leg, that
+reads as aiming; per block, it does not (optional stopping leaves a Poisson rate unbiased).
+
+**Agreement.** An alert from ore now needs the hidden-vein rate and the tunnel to agree (the
+larger of the two chances), or a vein rate a hundred times less likely on its own for a cheater
+who never turns. Decoys stand alone, as before. The sweep's alerts need the live session's
+tunnel to look aimed, or a decoy; otherwise they are a quiet line saying the dig does not back
+it up.
+
+| Miner (`OreSenseSimulationTest`) | Sessions | Result |
+|---|---|---|
+| Honest branch mining, no caves | 150 | 0 alerts, 0 notices, worst 5; tunnel 2,549 finds against 2,663 |
+| Honest, 1.5× diamonds | 60 | 0 alerts, worst 26 |
+| Honest cave mining, caves carved first, half of exposed ore discarded as vanilla does | 100 | 0 alerts, 0 notices, worst 7 |
+| X-ray, no caves | 60 | 60 alerted, median 9 finds; tunnel 6,265 finds against 936 |
+| X-ray among caves | 40 | 40 alerted |
+
+**Threads.** Reading the directions not taken is on the server thread, in the break event that
+ends a leg: at most four corridors of sixteen blocks, eight blocks a step — about 500 reads, once
+per leg rather than per break — and counted (`OreSense.pathBlocksRead`). The judgement is on the
+worker with the rest of the score.
+
+What this does not establish: real players, again. Caves are worms three blocks across; ravines,
+aquifers and lush caves are not simulated. A cheater who digs one long straight tunnel and only
+peeks sideways leaves little tunnel evidence and has to be caught by the vein rate alone at the
+stricter bar, or by decoys.
 
 ---
 
@@ -1986,6 +2051,8 @@ Things that used to be on this list, and what replaced them:
 | Several commands did the same job (`panel`, `lookup`, `say`, `notes add`, three undos) | One command per job; `/staff undo <ref>` undoes everything |
 | A case closed as actioned did not say what the player got or why | Closing picks the punishment, and its type and reason go into the case history |
 | Case commands crashed when run from the console | They read the source's name, not the player's |
+| Mining visible ore in a cave was flagged as x-ray | A vein touching open space is not hidden; the sweep leaves cave air and cave-wall ore out of its odds |
+| X-ray judged only what was found, never how the player dug | Each tunnel leg is weighed against the directions not taken, and an alert from ore needs the two to agree |
 
 ---
 

@@ -211,7 +211,7 @@ public class GriefModule implements Module {
 			// What the break uncovered, read now while the world still looks the way it did
 			// the moment the face opened; scored on the worker.
 			if (level instanceof ServerLevel server) {
-				Mods.security().oreSense().onBreak(server, sp, pos, contact);
+				Mods.security().oreSense().onBreak(server, sp, pos, contact, state);
 			}
 
 			long now = System.currentTimeMillis();

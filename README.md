@@ -40,7 +40,8 @@ Nineteen modules behind one `/staff` command:
   rollback. Restoring a death snapshot does not duplicate the drops.
 - **Anti-cheat support** — contraband detection covering every item that cannot be obtained
   in survival, an x-ray heuristic that reads ore type and mining pattern, a live score of how
-  many sealed diamond veins and decoy veins each player uncovers, alt detection, and
+  many sealed diamond veins and decoy veins each player uncovers — ore showing in a cave does
+  not count — weighed against the directions their tunnels could have gone, alt detection, and
   a bridge for findings from an anti-cheat you already run.
 - **Staff tools** — vanish that actually hides you, staff mode with an inventory stash,
   freeze, teleport, staff chat, command spy, and per-person activity records.
@@ -506,7 +507,10 @@ known gap — not a bug list.
   match can ever auto-ban.
 - **The x-ray check is a heuristic.** It flags, it never acts, and by default it will not
   commit to a verdict below a 512-block volume of rock. It no longer counts ore the player placed
-  themselves, but it is still inference from a block log. The thresholds are measured
+  themselves, or ore and air a cave left open, but it is still inference from a block log. An
+  alert from ore needs the hidden-vein rate and the way the player's tunnels turned to agree;
+  a cheater who digs one straight tunnel and only peeks sideways leaves little of the second and
+  is held to a stricter bar on the first. The thresholds are measured
   against generated mining patterns rather than real player data — see
   [decisions.md](docs/decisions.md), which records what that does and does not establish.
 - **The live vein score starts from worked-out numbers, not measured ones.** How many sealed
@@ -541,7 +545,8 @@ known gap — not a bug list.
   worker. Measurements are in [decisions.md](docs/decisions.md). The live vein score has the
   same split for the same reason: what a break uncovered is read inside the break event, about
   thirty-six block reads below y 16 (more only when a diamond is actually touched), and the
-  scoring runs on the worker.
+  scoring runs on the worker. When a straight leg of tunnel ends, the directions the player did
+  not take are read too: at most four corridors of sixteen blocks, about 500 reads, once per leg.
 - **A permission node written by hand, rather than taken from `Nodes`, fails in a shape that
   looks like success.** `Actor` resolves permissions by walking the nodes declared in `Nodes`,
   so a string that is not one of them is in nobody's resolved set — denied to every player, and

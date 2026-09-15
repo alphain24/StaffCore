@@ -40,6 +40,14 @@ import java.util.Map;
  * number is what makes the first mean anything. Finding four diamonds is unremarkable if there
  * were forty in reach and damning if there were four. Only the world knows, and only for what
  * is still there, which is why this counts what remains and adds back what was removed.
+ *
+ * <h2>Ore on a cave wall is not a draw</h2>
+ * The arithmetic assumes every block was chosen blind. Ore showing on a cave wall was not — it
+ * was seen and walked to — and a cave's air is not rock anybody could have dug. Both used to
+ * count: somebody mining the diamonds, gold and redstone along a cave took nearly every "ore in
+ * the volume" in very few "blocks", which is exactly the shape of cheating, and was flagged for
+ * it. The census now leaves out open space the player did not dig themselves, and any ore that
+ * touched such space, from the population, the ore and what was found.
  */
 public final class XraySweep {
 	private XraySweep() {}
@@ -177,32 +185,63 @@ public final class XraySweep {
 				// Gated on volume rather than on how many blocks were broken. A player who
 				// removed thirty blocks from a pocket of forty has drawn almost all of it, and
 				// the arithmetic on a population that small produces confident nonsense —
-				// which is where every false positive in the old detector lived.
+				// which is where every false positive in the old detector lived. Checked again
+				// after the census, once the cave air is out of it.
 				if (segment.population() < cfg.xrayMinimumVolume) continue;
 
 				ServerLevel level = levelFor(server, segment.world());
 				if (level == null) continue;
 
-				long censusStart = System.nanoTime();
-				Census census = census(level, segment);
-				censusNanos += System.nanoTime() - censusStart;
-				blocksRead += census.read();
-
-				long mathStart = System.nanoTime();
-				int ores = segment.found() + census.remaining();
-				double p = Hypergeometric.atLeast(segment.population(), ores,
-						segment.drawn(), segment.found());
-				mathNanos += System.nanoTime() - mathStart;
-
-				if (ores > 0 && segment.found() > 0) {
-					findings.add(new Finding(entry.getKey(), segment.world(), segment.band(),
-							segment.population(), ores, segment.drawn(), segment.found(), p));
-				}
+				Scored scored = scored(level, entry.getKey(), segment, cfg.xrayMinimumVolume);
+				censusNanos += scored.censusNanos();
+				mathNanos += scored.mathNanos();
+				blocksRead += scored.read();
+				if (scored.finding() != null) findings.add(scored.finding());
 			}
 		}
 
 		return new Swept(findings, new Timing(readMicros, censusNanos / 1000,
 				mathNanos / 1000, blocksRead, byPlayer.size()));
+	}
+
+	/** One segment, scored, with what it cost. */
+	private record Scored(Finding finding, int read, long censusNanos, long mathNanos) {}
+
+	/** Census and arithmetic for one segment — the one path both the sweep and a test take. */
+	private static Scored scored(ServerLevel level, String player, Excavation.Segment segment,
+			int minimumVolume) {
+
+		long censusStart = System.nanoTime();
+		Census census = census(level, segment);
+		long censusNanos = System.nanoTime() - censusStart;
+
+		long mathStart = System.nanoTime();
+		Blind blind = blind(segment.population(), segment.drawn(), segment.found(), census);
+		double p = Hypergeometric.atLeast(blind.population(), blind.ores(), blind.drawn(),
+				blind.found());
+		long mathNanos = System.nanoTime() - mathStart;
+
+		Finding finding = blind.population() >= minimumVolume && blind.ores() > 0 && blind.found() > 0
+				? new Finding(player, segment.world(), segment.band(), blind.population(),
+						blind.ores(), blind.drawn(), blind.found(), p)
+				: null;
+		return new Scored(finding, census.read(), censusNanos, mathNanos);
+	}
+
+	/**
+	 * Scores one set of breaks against the world as it stands, with a volume floor of the caller's
+	 * choosing. The sweep's own path, for a test that builds a dig smaller than the configured
+	 * floor.
+	 *
+	 * @return the finding, or null when there is nothing in it to report
+	 */
+	public static Finding score(ServerLevel level, String player, java.util.Collection<Excavation.Dig> digs,
+			int minimumVolume) {
+		for (Excavation.Segment segment : Excavation.segment(digs)) {
+			Finding finding = scored(level, player, segment, minimumVolume).finding();
+			if (finding != null) return finding;
+		}
+		return null;
 	}
 
 	/**
@@ -268,8 +307,37 @@ public final class XraySweep {
 		return "Enough digging to score, and nothing in it is more than chance would give.";
 	}
 
-	/** How much ore is still standing, and how many blocks it took to find out. */
-	private record Census(int remaining, int read) {}
+	/**
+	 * What the rock around an excavation holds, and what of it anybody could see.
+	 *
+	 * @param remaining        target ore still standing
+	 * @param read             blocks read to find out
+	 * @param open             positions that are open space the player did not dig — a cave, a
+	 *                         ravine, somebody else's tunnel
+	 * @param visibleFound     ore they took that was touching such space
+	 * @param visibleRemaining ore still standing that is touching such space
+	 */
+	record Census(int remaining, int read, int open, int visibleFound, int visibleRemaining) {}
+
+	/** The draw with what could be seen taken out of it. */
+	record Blind(int population, int ores, int drawn, int found) {}
+
+	/**
+	 * Takes the visible out of a segment's numbers. Pure.
+	 * <p>
+	 * Open space is not rock, so it leaves the population. Ore that touched it was seen rather than
+	 * drawn, so it leaves the population, the ore count, and — for what was taken — the draw and
+	 * the finds too.
+	 */
+	static Blind blind(int population, int drawn, int found, Census census) {
+		int seenFound = Math.min(found, census.visibleFound());
+		int blindFound = found - seenFound;
+		int blindDrawn = Math.max(0, drawn - seenFound);
+		int blindOres = blindFound + Math.max(0, census.remaining() - census.visibleRemaining());
+		int blindPopulation = Math.max(0, population - census.open() - seenFound
+				- Math.min(census.remaining(), census.visibleRemaining()));
+		return new Blind(blindPopulation, blindOres, blindDrawn, blindFound);
+	}
 
 	/**
 	 * Counts the target ore still in the rock around an excavation.
@@ -280,17 +348,51 @@ public final class XraySweep {
 	 */
 	private static Census census(ServerLevel level, Excavation.Segment segment) {
 		int remaining = 0;
-		int read = 0;
+		int open = 0;
+		int visibleRemaining = 0;
+		int visibleFound = 0;
+		int[] read = {0};
 		var targets = Excavation.targetBlocks();
+
+		java.util.Set<BlockPos> dug = new java.util.HashSet<>();
+		for (Excavation.Dig dig : segment.digs()) dug.add(new BlockPos(dig.x(), dig.y(), dig.z()));
+
+		java.util.Map<BlockPos, BlockState> states = new java.util.HashMap<>();
+		java.util.function.Function<BlockPos, BlockState> stateAt = pos -> states.computeIfAbsent(pos,
+				at -> {
+					read[0]++;
+					return level.getBlockState(at);
+				});
 
 		for (BlockPos pos : segment.shell()) {
 			if (!level.isLoaded(pos)) continue;
-
-			read++;
-			BlockState state = level.getBlockState(pos);
-			if (targets.contains(state.getBlock())) remaining++;
+			BlockState state = stateAt.apply(pos);
+			if (!dug.contains(pos) && !state.canOcclude()) {
+				open++;
+				continue;
+			}
+			if (!dug.contains(pos) && targets.contains(state.getBlock())) {
+				remaining++;
+				if (touchesOpen(level, pos, dug, stateAt)) visibleRemaining++;
+			}
 		}
-		return new Census(remaining, read);
+		for (Excavation.Dig dig : segment.digs()) {
+			if (!dig.isTarget()) continue;
+			BlockPos pos = new BlockPos(dig.x(), dig.y(), dig.z());
+			if (level.isLoaded(pos) && touchesOpen(level, pos, dug, stateAt)) visibleFound++;
+		}
+		return new Census(remaining, read[0], open, visibleFound, visibleRemaining);
+	}
+
+	/** Whether a block has a face onto open space that this player did not dig out themselves. */
+	private static boolean touchesOpen(ServerLevel level, BlockPos pos, java.util.Set<BlockPos> dug,
+			java.util.function.Function<BlockPos, BlockState> stateAt) {
+		for (net.minecraft.core.Direction face : net.minecraft.core.Direction.values()) {
+			BlockPos beside = pos.relative(face);
+			if (dug.contains(beside) || !level.isLoaded(beside)) continue;
+			if (!stateAt.apply(beside).canOcclude()) return true;
+		}
+		return false;
 	}
 
 	private static ServerLevel levelFor(MinecraftServer server, String world) {
