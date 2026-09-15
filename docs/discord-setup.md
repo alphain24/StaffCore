@@ -239,16 +239,46 @@ A new settings file sets the first five to `"create"`. Two are left empty on pur
 > **Your file was written by an earlier build?** Its channel settings will be `""`. Change the ones
 > you want to `"create"`.
 
-### How the role mapping works
+### `roleNodes`, in plain words
 
-A role **never gives anybody a permission they do not have in game**. What someone can do from
-Discord is the smaller of what their role lists and what their linked Minecraft account holds in
-game. So a role that lists `staff.appeals` lets a moderator decide appeals from Discord only if
-their Minecraft account can already do that in game — handing that role to the wrong person grants
-them nothing.
+`roleNodes` answers one question: **which of your Discord roles are staff, and what may each role do
+through the bot?** With names instead of numbers it reads like this:
 
-Write each permission out in full; wildcards like `staff.*` are refused. The permissions the bot uses
-today:
+```
+Discord role "Helper"  →  may claim reports, see history, add notes, freeze, use staff chat
+Discord role "Admin"   →  all of that, plus decide appeals
+```
+
+In the file, the role is written as its **role id** (the long number from step 5, in quotes), and
+what it may do is a list:
+
+```json
+"roleNodes": {
+  "111111111111111111": ["report.view", "staff.history", "staff.notes", "staff.freeze", "staff.chat", "staff.gui"],
+  "222222222222222222": ["report.view", "staff.history", "staff.notes", "staff.freeze", "staff.chat", "staff.gui", "staff.appeals"]
+}
+```
+
+One line per staff role. It does two jobs:
+
+1. **Who can see the private channels.** Only the roles listed here are given access to the channels
+   the bot makes.
+2. **What each role may do from Discord.** But a role **never gives anybody more than they have in
+   game**: somebody with the *Admin* role can decide appeals from Discord only if their linked
+   Minecraft account can decide appeals in game. Handing the role to the wrong person grants them
+   nothing.
+
+**Not sure what to put?** Give every staff role the full list — the second line above. Because of
+point 2, the game still decides what each person can actually do, so listing too much is safe;
+listing too little only stops people doing from Discord what they could do in game.
+
+Things that make the bot ignore an entry (the log says which, and why):
+
+- the role's **name** (`"Admin"`) instead of its id;
+- a **wildcard** like `"staff.*"` — write each permission out;
+- a permission that is misspelled.
+
+The permissions the bot uses today:
 
 | Permission | Lets them, from Discord |
 |---|---|
