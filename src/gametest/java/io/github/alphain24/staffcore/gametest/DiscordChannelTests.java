@@ -238,20 +238,18 @@ public class DiscordChannelTests {
 		ServerPlayer target = Harness.namedPlayer(helper);
 		ServerPlayer mod = Harness.namedPlayer(helper);
 		PermissionGroups groups = PermissionGroups.get();
-		groups.players.put(mod.getUUID().toString(), "helper");
-		String group = "gametest-notes-" + mod.getUUID().toString().substring(0, 8);
 		try {
 			fileReport(helper, target);   // opens a case the note should attach to
 			DiscordUser user = link(helper, mod.getUUID(), Harness.name(mod), Nodes.NOTES);
 
-			// The starter helper group's staff.notes.* covers the nodes under staff.notes and not
-			// staff.notes itself, so a helper cannot write a note with /staff note either — and
-			// Discord gives them nothing more.
+			// In no group, the account cannot write a note in game, and the role mapping naming
+			// staff.notes gives it nothing more.
 			Harness.check(helper, !DiscordAccess.addNote(user, target.getUUID(), "x").join().done(),
 					"Discord allowed a note the same account could not write in game");
 
-			groups.groups.put(group, new java.util.ArrayList<>(List.of(Nodes.NOTES)));
-			groups.players.put(mod.getUUID().toString(), group);
+			// The starter helper group, as shipped: it has to grant staff.notes and not only
+			// staff.notes.*, which covers the nodes beneath it.
+			groups.players.put(mod.getUUID().toString(), "helper");
 			var result = DiscordAccess.addNote(user, target.getUUID(), "seen§c near the base\nat night").join();
 			Harness.check(helper, result.done(), "the note failed: " + result.message());
 
@@ -261,7 +259,6 @@ public class DiscordChannelTests {
 			Harness.check(helper, note.caseId() != null, "the note was not attached to the open case");
 		} finally {
 			groups.players.remove(mod.getUUID().toString());
-			groups.groups.remove(group);
 		}
 		helper.succeed();
 	}

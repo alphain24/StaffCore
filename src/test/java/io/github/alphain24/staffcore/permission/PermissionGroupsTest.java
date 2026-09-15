@@ -115,4 +115,76 @@ class PermissionGroupsTest {
 		assertTrue(g.check(null, "a", Nodes.ROLLBACK), "an admin should");
 		assertEquals(3, g.groups.size(), "helper, moderator, admin");
 	}
+
+	@Test
+	@DisplayName("a helper can write a note, and so can everybody who inherits helper")
+	void helpersWriteNotes() {
+		PermissionGroups g = new PermissionGroups();
+		g.players.put("h", "helper");
+		g.players.put("m", "moderator");
+		g.players.put("a", "admin");
+
+		// staff.notes.* alone covers view and remove but not staff.notes, which is the node
+		// /staff note and Discord's Add Note check — so the starter groups used to leave writing
+		// a note to operators.
+		assertTrue(g.check(null, "h", Nodes.NOTES), "the starter helper group cannot write notes");
+		assertTrue(g.check(null, "m", Nodes.NOTES), "moderator does not inherit it");
+		assertTrue(g.check(null, "a", Nodes.NOTES), "admin does not inherit it");
+		assertTrue(g.check(null, "h", Nodes.NOTES_VIEW), "and reading them still works");
+	}
+
+	// ------------------------------------------------------------------ upgrading
+
+	/** A file as a build before v1 wrote it: no version, and helper's staff.notes.* only. */
+	private static PermissionGroups writtenBeforeV1() {
+		PermissionGroups g = new PermissionGroups();
+		g.configVersion = 0;
+		g.groups.put("helper", new java.util.ArrayList<>(List.of(
+				"staff.gui", "staff.mode", "staff.vanish", "staff.freeze", "staff.tp",
+				"staff.chat", "staff.alerts", "staff.notes.*", "staff.history",
+				"report.view", "security.invsee")));
+		g.players.put("h", "helper");
+		return g;
+	}
+
+	@Test
+	@DisplayName("an untouched helper group from an older build gains staff.notes")
+	void oldDefaultHelperIsUpgraded() {
+		PermissionGroups g = writtenBeforeV1();
+		assertFalse(g.check(null, "h", Nodes.NOTES),
+				"the fixture already grants staff.notes, so this test cannot show the upgrade did");
+
+		assertTrue(g.migrate(), "the file was not marked for rewriting");
+		assertTrue(g.check(null, "h", Nodes.NOTES), "an old-default helper still cannot write notes");
+		assertEquals(new PermissionGroups().groups.get("helper"), g.groups.get("helper"),
+				"the upgraded group should be exactly what a new install writes");
+	}
+
+	@Test
+	@DisplayName("a helper group the owner edited is never changed")
+	void editedHelperIsLeftAlone() {
+		PermissionGroups g = writtenBeforeV1();
+		g.groups.get("helper").remove("security.invsee");
+		List<String> chosen = List.copyOf(g.groups.get("helper"));
+
+		g.migrate();
+		assertEquals(chosen, g.groups.get("helper"),
+				"an edited group was rewritten; the upgrade may only move a group that still "
+						+ "holds the old default");
+		assertFalse(g.check(null, "h", Nodes.NOTES));
+	}
+
+	@Test
+	@DisplayName("the upgrade runs once, so taking staff.notes back out sticks")
+	void upgradeDoesNotRepeat() {
+		PermissionGroups g = writtenBeforeV1();
+		g.migrate();
+
+		// The owner removes it again, leaving a group identical to the old default. Only the
+		// version tells this apart from a file that was never upgraded.
+		g.groups.get("helper").remove(Nodes.NOTES);
+		assertFalse(g.migrate(), "an up-to-date file was upgraded again");
+		assertFalse(g.check(null, "h", Nodes.NOTES),
+				"staff.notes was put back after the owner deliberately removed it");
+	}
 }

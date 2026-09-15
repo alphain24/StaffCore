@@ -37,6 +37,18 @@ import java.util.UUID;
  */
 public final class PermissionGroups {
 
+	/**
+	 * What this file was last written by, so a changed starter group can reach an existing install.
+	 * <p>
+	 * The same problem {@code StaffConfig.configVersion} solves. The starter groups are written
+	 * once, on first run, and editing {@link #defaultGroups} afterwards changes nothing for a
+	 * server that already has the file. See {@link #migrate} for what moves and what never does.
+	 */
+	public int configVersion = 0;
+
+	/** The version this build writes. Raise it when a starter group changes and should propagate. */
+	private static final int CURRENT_VERSION = 1;
+
 	/** Groups, in the shape the handbook has always suggested setting them up. */
 	public Map<String, List<String>> groups = defaultGroups();
 
@@ -60,9 +72,12 @@ public final class PermissionGroups {
 
 	private static Map<String, List<String>> defaultGroups() {
 		Map<String, List<String>> out = new LinkedHashMap<>();
+		// staff.notes and staff.notes.* both, for the reason moderator lists staff.punish beside
+		// staff.punish.*: a wildcard covers what is beneath a node and not the node itself, and
+		// staff.notes is the one /staff note checks.
 		out.put("helper", new ArrayList<>(List.of(
 				Nodes.STAFF_GUI, Nodes.STAFF_MODE, Nodes.VANISH, Nodes.FREEZE, Nodes.TP,
-				Nodes.CHAT, Nodes.ALERTS, "staff.notes.*", Nodes.HISTORY,
+				Nodes.CHAT, Nodes.ALERTS, Nodes.NOTES, "staff.notes.*", Nodes.HISTORY,
 				Nodes.REPORT_VIEW, Nodes.INVSEE)));
 		out.put("moderator", new ArrayList<>(List.of(
 				"@helper", "staff.punish.*", Nodes.PUNISH, Nodes.TP_HERE, Nodes.TP_POS,
@@ -73,6 +88,69 @@ public final class PermissionGroups {
 				Nodes.ROLLBACK, Nodes.GRIEF_PURGE, "control.*", Nodes.ANALYTICS,
 				Nodes.RELOAD, "security.*", Nodes.APPEALS, Nodes.PERMS_ADMIN, Nodes.REPLAY)));
 		return out;
+	}
+
+	/**
+	 * The helper group exactly as every build before v1 wrote it.
+	 * <p>
+	 * Literals rather than {@link Nodes} constants on purpose: this is a record of what is on
+	 * disk on servers that ran an older build, and it has to keep matching those files even if
+	 * a constant is renamed later.
+	 */
+	private static final List<String> HELPER_BEFORE_V1 = List.of(
+			"staff.gui", "staff.mode", "staff.vanish", "staff.freeze", "staff.tp",
+			"staff.chat", "staff.alerts", "staff.notes.*", "staff.history",
+			"report.view", "security.invsee");
+
+	/**
+	 * Brings a file written by an older build forward when a starter group has changed.
+	 * <p>
+	 * The rule is {@code StaffConfig}'s: a group is changed only while it still holds the old
+	 * default exactly, entry for entry and in order. A group an owner has edited in any way is
+	 * left as it is, and the log says what it would have needed. Every change is logged too.
+	 * <p>
+	 * The version is what keeps that promise after the first boot. Without it, an owner who
+	 * takes {@code staff.notes} back out of helper would leave a group matching the old default
+	 * again, and would have it put back on every restart.
+	 *
+	 * @return true when anything changed and the file should be rewritten
+	 */
+	boolean migrate() {
+		if (configVersion >= CURRENT_VERSION) return false;
+		int from = configVersion;
+
+		// v1: helper gained staff.notes. The starter group had staff.notes.* only, which covers
+		// staff.notes.view and staff.notes.remove but not staff.notes, so no helper — and through
+		// @helper no moderator or admin either — could write a note. Only operators could.
+		if (from < 1 && groups != null && groups.containsKey("helper")) {
+			List<String> helper = groups.get("helper");
+			if (HELPER_BEFORE_V1.equals(helper)) {
+				List<String> upgraded = new ArrayList<>(helper);
+				upgraded.add(upgraded.indexOf("staff.notes.*"), Nodes.NOTES);
+				groups.put("helper", upgraded);
+				StaffCore.LOGGER.info("[StaffCore] Permissions upgrade: added staff.notes to the "
+						+ "helper group, so helpers can write notes with /staff note. If helpers "
+						+ "were meant not to, take it back out of config/staffcore-permissions.json.");
+			} else if (!holds("helper", Nodes.NOTES)) {
+				StaffCore.LOGGER.warn("[StaffCore] Permissions upgrade: the helper group has been "
+						+ "edited, so it was left as it is. It does not grant staff.notes, which "
+						+ "/staff note needs - add \"staff.notes\" to it in "
+						+ "config/staffcore-permissions.json if helpers should write notes.");
+			}
+		}
+
+		configVersion = CURRENT_VERSION;
+		StaffCore.LOGGER.info("[StaffCore] Permissions file upgraded from v{} to v{}.", from,
+				CURRENT_VERSION);
+		return true;
+	}
+
+	/** Whether a group, with everything it inherits, covers a node. */
+	private boolean holds(String group, String node) {
+		for (String granted : expand(group, new ArrayList<>())) {
+			if (grants(granted, node)) return true;
+		}
+		return false;
 	}
 
 	// ------------------------------------------------------------------- resolving
@@ -103,10 +181,7 @@ public final class PermissionGroups {
 			return false;
 		}
 
-		for (String granted : expand(group, new ArrayList<>())) {
-			if (grants(granted, node)) return true;
-		}
-		return false;
+		return holds(group, node);
 	}
 
 	/**
@@ -290,6 +365,7 @@ public final class PermissionGroups {
 		Path file = path();
 		if (!Files.exists(file)) {
 			instance = new PermissionGroups();
+			instance.configVersion = CURRENT_VERSION;
 			save();
 			StaffCore.LOGGER.info("[StaffCore] No permissions mod found - wrote starter groups to {}",
 					file);
@@ -302,6 +378,9 @@ public final class PermissionGroups {
 			instance = loaded != null ? loaded : new PermissionGroups();
 			if (instance.groups == null) instance.groups = defaultGroups();
 			if (instance.players == null) instance.players = new LinkedHashMap<>();
+			// Written back straight away, or the upgrade would run again on every boot and the
+			// file would go on saying something the server is not doing.
+			if (instance.migrate()) save();
 			StaffCore.LOGGER.info("[StaffCore] Loaded {} permission group(s) for {} player(s).",
 					instance.groups.size(), instance.players.size());
 

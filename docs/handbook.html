@@ -2762,19 +2762,24 @@
         </p>
 
         <h3>Suggested groups</h3>
-        <p>These ship as the defaults in that file.</p>
+        <p>
+          These ship as the defaults in that file. Like <code>staffcore.json</code> it carries a
+          <code>configVersion</code>: when a starter group changes, a group on an existing server
+          is updated only if it still holds the old default exactly, so a group you have edited
+          is never touched and every change is logged.
+        </p>
         <div class="grid-cards">
           <div class="card">
             <h4>Helper</h4>
-            <p><span class="mono">staff.gui · staff.mode · staff.vanish · staff.freeze · staff.tp · staff.chat · staff.alerts · staff.notes* · staff.history · report.view · security.invsee</span></p>
+            <p><span class="mono">staff.gui · staff.mode · staff.vanish · staff.freeze · staff.tp · staff.chat · staff.alerts · staff.notes · staff.notes.* · staff.history · report.view · security.invsee</span></p>
           </div>
           <div class="card">
             <h4>Moderator</h4>
-            <p>Helper, plus <span class="mono">staff.punish.* · staff.tphere · staff.tppos · security.check · security.itemscanner · control.spy · staff.alts · staff.logs · grief.inspect · grief.search</span></p>
+            <p>Helper, plus <span class="mono">staff.punish.* · staff.punish · staff.tphere · staff.tppos · security.check · security.itemscanner · control.spy · staff.alts · staff.logs · grief.inspect · grief.search</span></p>
           </div>
           <div class="card">
             <h4>Admin</h4>
-            <p>Moderator, plus <span class="mono">staff.punish.revoke · staff.history.clear · security.invsee.edit · grief.rollback · grief.purge · control.* · security.* · analytics.stats · staff.reload · staff.perms</span></p>
+            <p>Moderator, plus <span class="mono">staff.punish.revoke · staff.history.clear · security.invsee.edit · grief.rollback · grief.purge · control.* · security.* · analytics.stats · staff.reload · staff.appeals · staff.perms · staff.replay</span></p>
           </div>
         </div>
         <div class="note">

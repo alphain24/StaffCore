@@ -261,6 +261,12 @@ starter groups on first run and holds groups (node lists, with `@other` to inher
 }
 ```
 
+Like `staffcore.json`, the file carries a `configVersion`. When a starter group changes, a
+group on an existing server is updated **only if it still holds the old default exactly** — a
+group you have edited is never touched, and every change is logged. Version 1 added
+`staff.notes` to `helper`: its `staff.notes.*` covers the nodes beneath `staff.notes` but not
+`staff.notes` itself, so before it only operators could write a note.
+
 `operatorsBypass` starts **on** so writing this file cannot lock you out before you have
 added yourself to it. Turn it off and op stops being a way around the groups. Only then do
 staff ranks actually mean anything on a server without LuckPerms — before this, every node
