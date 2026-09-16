@@ -75,47 +75,47 @@ public final class StartupCheck {
 			new Target(Tier.REQUIRED, "Bans and maintenance login gate", "net.minecraft.server.players.PlayerList",
 					"canPlayerLogin", "staffcore$gateLogin", MIXIN_PKG + "PlayerListMixin",
 					"java.net.SocketAddress", "net.minecraft.server.players.NameAndId"),
-			new Target(Tier.OPTIONAL, "Vanish — join suppression and tab list", "net.minecraft.server.players.PlayerList",
+			new Target(Tier.OPTIONAL, "Vanish: join suppression and tab list", "net.minecraft.server.players.PlayerList",
 					"placeNewPlayer", "staffcore$restoreVanishEarly", MIXIN_PKG + "VanishJoinMixin",
 					"net.minecraft.network.Connection",
 					"net.minecraft.server.level.ServerPlayer",
 					"net.minecraft.server.network.CommonListenerCookie"),
-			new Target(Tier.OPTIONAL, "Vanish — leave suppression", "net.minecraft.server.players.PlayerList",
+			new Target(Tier.OPTIONAL, "Vanish: leave suppression", "net.minecraft.server.players.PlayerList",
 					"remove", "staffcore$forgetVanishAfterLeaveLine", MIXIN_PKG + "VanishLeaveMixin",
 					"net.minecraft.server.level.ServerPlayer"),
-			new Target(Tier.OPTIONAL, "Vanish — tab-list withholding", "net.minecraft.server.players.PlayerList",
+			new Target(Tier.OPTIONAL, "Vanish: tab-list withholding", "net.minecraft.server.players.PlayerList",
 					"broadcastAll", null, null, "net.minecraft.network.protocol.Packet"),
-			new Target(Tier.OPTIONAL, "Vanish — announcement suppression", "net.minecraft.server.players.PlayerList",
+			new Target(Tier.OPTIONAL, "Vanish: announcement suppression", "net.minecraft.server.players.PlayerList",
 					"broadcastSystemMessage", "staffcore$suppressVanishedBroadcast",
 					MIXIN_PKG + "VanishJoinMixin",
 					"net.minecraft.network.chat.Component", "boolean"),
-			new Target(Tier.OPTIONAL, "Vanish — locator bar", "net.minecraft.server.waypoints.ServerWaypointManager",
+			new Target(Tier.OPTIONAL, "Vanish: locator bar", "net.minecraft.server.waypoints.ServerWaypointManager",
 					"createConnection", null, null, "net.minecraft.server.level.ServerPlayer",
 					"net.minecraft.world.waypoints.WaypointTransmitter"),
-			new Target(Tier.OPTIONAL, "Vanish — server-list ping", "net.minecraft.server.MinecraftServer",
+			new Target(Tier.OPTIONAL, "Vanish: server-list ping", "net.minecraft.server.MinecraftServer",
 					"buildPlayerStatus", "staffcore$hideFromPing",
 					MIXIN_PKG + "vanish.VanishStatusMixin"),
 			// On LivingEntity, not Entity. It was on Entity and did nothing: LivingEntity
 			// overrides isPushable, so the override won for every player and every mob while
 			// the health check happily reported the target present.
-			new Target(Tier.OPTIONAL, "Vanish — entity collision",
+			new Target(Tier.OPTIONAL, "Vanish: entity collision",
 					"net.minecraft.world.entity.LivingEntity",
 					"isPushable", "staffcore$notPushable",
 					MIXIN_PKG + "vanish.VanishLivingCollisionMixin"),
-			new Target(Tier.OPTIONAL, "Vanish — block placement", "net.minecraft.world.entity.Entity",
+			new Target(Tier.OPTIONAL, "Vanish: block placement", "net.minecraft.world.entity.Entity",
 					"blocksBuilding", null, null),
 			// The one that actually makes a vanished player invisible. Worth verifying by
 			// handler rather than by target alone: the target is a public vanilla method
 			// that will not vanish, so "it exists" proves nothing about our code being in it.
-			new Target(Tier.OPTIONAL, "Vanish — entity visibility", "net.minecraft.world.entity.Entity",
+			new Target(Tier.OPTIONAL, "Vanish: entity visibility", "net.minecraft.world.entity.Entity",
 					"broadcastToPlayer", "staffcore$hideFromTracker",
 					MIXIN_PKG + "vanish.VanishBroadcastMixin",
 					"net.minecraft.server.level.ServerPlayer"),
-			new Target(Tier.OPTIONAL, "Vanish — /list", "net.minecraft.server.commands.ListPlayersCommand",
+			new Target(Tier.OPTIONAL, "Vanish: /list", "net.minecraft.server.commands.ListPlayersCommand",
 					"format", "staffcore$hideFromList",
 					MIXIN_PKG + "vanish.VanishPlayerListCommandMixin",
 					"net.minecraft.commands.CommandSourceStack", "java.util.function.Function"),
-			new Target(Tier.OPTIONAL, "Vanish — chunk loading", "net.minecraft.server.level.DistanceManager",
+			new Target(Tier.OPTIONAL, "Vanish: chunk loading", "net.minecraft.server.level.DistanceManager",
 					"addPlayer", "staffcore$skipSpawnCounting",
 					MIXIN_PKG + "vanish.VanishSpawnChunkMixin",
 					"net.minecraft.core.SectionPos", "net.minecraft.server.level.ServerPlayer"),
@@ -147,7 +147,7 @@ public final class StartupCheck {
 			// TNT lit by redstone or fire names nobody, and redstone is how TNT griefing is
 			// done. Without this those blasts are still logged and still roll back — they are
 			// just on nobody, so they cannot count toward a mass-grief alert.
-			new Target(Tier.OPTIONAL, "Mass grief — who placed redstone-lit TNT",
+			new Target(Tier.OPTIONAL, "Mass grief: who placed redstone-lit TNT",
 					"net.minecraft.world.entity.item.PrimedTnt",
 					"<init>", "staffcore$rememberUnownedTnt", MIXIN_PKG + "PrimedTntMixin",
 					"net.minecraft.world.level.Level", "double", "double", "double",
@@ -341,7 +341,7 @@ public final class StartupCheck {
 			// Tier unknown: nobody wrote this one an entry, so there is nothing that says how
 			// much it matters. Optional is the honest guess and the safe one — treating an
 			// unclassified failure as important would take features down on a guess.
-			findings.add(new Finding(simple(entry.getKey()), "—", "—",
+			findings.add(new Finding(simple(entry.getKey()), "-", "-",
 					Health.NOT_APPLIED, entry.getValue(), Tier.OPTIONAL));
 			StaffCore.LOGGER.error("[StaffCore] {} did not apply", simple(entry.getKey()));
 			StaffCore.LOGGER.error("[StaffCore]     {}", entry.getValue());

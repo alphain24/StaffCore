@@ -1317,7 +1317,16 @@ public class GriefModule implements Module {
 					StaffCore.LOGGER.error("[Grief] Background read failed", error);
 					return onFailure;
 				})
-				.thenAccept(result -> server.execute(() -> onDone.accept(result)));
+				.thenAccept(result -> {
+					Runnable done = () -> onDone.accept(result);
+					// Always a later task, never inside the caller. A read quick enough to finish
+					// before this callback is attached runs it on the thread that asked, and
+					// server.execute on the server thread runs at once: a screen that asked for a
+					// refresh from a click handler was repainted in the middle of that handler, and
+					// whatever the click had just drawn was gone before anybody saw it.
+					if (server.isSameThread()) server.schedule(server.wrapRunnable(done));
+					else server.execute(done);
+				});
 	}
 
 	/**

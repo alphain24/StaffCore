@@ -62,7 +62,7 @@ public final class SelfTest {
 				int version = rs.next() ? rs.getInt(1) : 0;
 				return version > 0
 						? "open, schema v" + version
-						: "schema version is 0 — migrations never stamped it";
+						: "schema version is 0; migrations never stamped it";
 			}
 		}, detail -> detail.startsWith("open,")));
 

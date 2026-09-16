@@ -566,9 +566,11 @@ public class GriefMenu extends Gui {
 				result -> reopen(viewer, centre, windowMinutes, playerFilter),
 				() -> reopen(viewer, centre, windowMinutes, playerFilter));
 		if (!opened) {
+			// Said on the row, and left there until the next automatic refresh rather than read
+			// again at once: the row has usually just been rolled back by somebody else, the
+			// fresh page no longer has it, and the warning would go with it before it was read.
 			nothingLeftAt = run.first().id();
 			render();
-			fetch(true);
 		}
 	}
 

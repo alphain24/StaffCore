@@ -135,7 +135,7 @@ public final class Approvals {
 		if (onApproved != null) actions.put(id, onApproved);
 
 		StaffCore.LOGGER.info("[Approvals] {} staged a {} ({}): {}",
-				staff.name(), action.label(), id, summary);
+				staff.name(), action.label(), id, io.github.alphain24.staffcore.util.ConsoleText.ascii(summary));
 		return staged;
 	}
 

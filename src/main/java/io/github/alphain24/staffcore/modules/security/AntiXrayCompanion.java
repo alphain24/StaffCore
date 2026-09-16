@@ -75,8 +75,8 @@ public final class AntiXrayCompanion {
 	 * pretended away.
 	 */
 	private static final Map<String, String> KNOWN = new LinkedHashMap<>(Map.of(
-			"antixray", "AntiXray (DrexHD) — Paper's 0367-Anti-Xray patch, ported",
-			"meowantixray", "Meow Anti-Xray — Paper-like obfuscation, engine mode 2"));
+			"antixray", "AntiXray (DrexHD): Paper's 0367-Anti-Xray patch, ported",
+			"meowantixray", "Meow Anti-Xray: Paper-like obfuscation, engine mode 2"));
 
 	/** What was found, resolved once at startup. */
 	public record Found(String modId, String description, String version) {}
@@ -122,7 +122,7 @@ public final class AntiXrayCompanion {
 		String names = String.join(" and ", found.stream().map(Found::modId).toList());
 		return "Canaries are off because " + names + " is installed. That mod already fills the "
 				+ "world with ore that is not there, so an x-ray user learns within an hour that "
-				+ "nothing their pack shows them is real and stops digging to any of it — which "
+				+ "nothing their pack shows them is real and stops digging to any of it, which "
 				+ "costs the decoys their true positives, not just the reading of them. Set "
 				+ "canaryForceWithBulkAntiXray if you are testing how the two interact; signals "
 				+ "produced that way are not defensible in an appeal.";
@@ -133,7 +133,7 @@ public final class AntiXrayCompanion {
 		List<Found> found = installed();
 		if (found.isEmpty()) {
 			return "Anti-xray: none installed. StaffCore detects x-ray after the fact and does "
-					+ "not prevent it — an obfuscating mod alongside this one is the half that "
+					+ "not prevent it; an obfuscating mod alongside this one is the half that "
 					+ "stops it happening.";
 		}
 

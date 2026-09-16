@@ -74,7 +74,7 @@ public final class MixinFailureRecorder implements IMixinErrorHandler {
 
 		int detail = message.indexOf(". ");
 		String first = detail > 0 ? message.substring(0, detail) : message;
-		return first.length() > 160 ? first.substring(0, 157) + "…" : first;
+		return first.length() > 160 ? first.substring(0, 157) + "..." : first;
 	}
 
 	/** Every StaffCore mixin that failed, class name to reason. Empty on a healthy server. */

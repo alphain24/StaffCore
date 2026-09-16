@@ -95,7 +95,7 @@ public class AlertsModule implements Module {
 				.append(Icon.text(message, Theme.TEXT));
 
 		deliverInGame(server, line);
-		StaffCore.LOGGER.info("[Alert:{}] {}", category, message);
+		StaffCore.LOGGER.info("[Alert:{}] {}", category, io.github.alphain24.staffcore.util.ConsoleText.ascii(message));
 		toDiscord(category, message);
 	}
 
@@ -117,7 +117,7 @@ public class AlertsModule implements Module {
 				.append(Icon.text(" · ", Theme.MUTED))
 				.append(Icon.text(message, Theme.TEXT));
 
-		StaffCore.LOGGER.info("[Alert:{}:test] {}", category, message);
+		StaffCore.LOGGER.info("[Alert:{}:test] {}", category, io.github.alphain24.staffcore.util.ConsoleText.ascii(message));
 		return deliverInGame(server, line);
 	}
 
@@ -134,7 +134,7 @@ public class AlertsModule implements Module {
 	}
 
 	private void discordOnly(String category, String message) {
-		StaffCore.LOGGER.info("[Alert:{}] {}", category, message);
+		StaffCore.LOGGER.info("[Alert:{}] {}", category, io.github.alphain24.staffcore.util.ConsoleText.ascii(message));
 		toDiscord(category, message);
 	}
 
