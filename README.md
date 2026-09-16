@@ -485,8 +485,9 @@ commands for looking players up and punishing them; and bridges staff chat both 
 and inviting the bot, filling in the settings, linking accounts, appeals and troubleshooting. In short:
 
 1. Create an application and a bot in the Discord developer portal, and invite the bot to your
-   server with the link in the guide. It needs no privileged intents unless you bridge staff chat,
-   which needs **Message Content Intent** switched on for the bot. It needs to view, send messages,
+   server with the link in the guide. Switch on **Message Content Intent** for the bot so staff can
+   type in the staff chat channel; without it the bot still connects and staff use `/staffchat` there
+   instead. It needs to view, send messages,
    embed links, read message history, create public threads and send messages in threads — and
    Manage Channels and Manage Roles to make its own private channels, which can be taken away again
    once it has.
@@ -532,7 +533,7 @@ companion is doing instead.
 | `appealsChannelId` | `create` | Where appeals are posted for staff, each with a thread and buttons. Setting it offers `/appeal` to players and has the bot read direct messages sent to it, which is where players answer questions and hear verdicts. Empty takes no appeals from Discord. |
 | `appealIntakeChannelId` | empty | The one channel `/appeal` is answered in, so appeals can be made somewhere players see while `appealsChannelId` stays staff-only. Empty answers `/appeal` anywhere in the server. Never `create`: it is for players, so you make it. |
 | `staffLogChannelId` | `create` | Where every audited staff action is posted — one post per command on a busy server. Empty posts none. |
-| `staffChatChannelId` | empty | A channel bridged with staff chat both ways. Setting it makes the bot ask for Message Content Intent; without that switched on in the portal it cannot log in, which is why it is not `create` to begin with. Empty bridges nothing. |
+| `staffChatChannelId` | `create` | A channel bridged with staff chat both ways. Typing there needs Message Content Intent switched on for the bot; without it the bot connects anyway, game lines still arrive, and staff answer with `/staffchat`, which `/staff status` and the panel point out. Empty bridges nothing. |
 | `discordAlertSeverity` | `70` | The lowest signal confidence (0–100) posted to the alerts channel on its own. A signal that opens a case is always posted, because the case needs its thread. |
 | `serverName` | empty | Shown on report posts, for a network sharing one Discord. Empty shows nothing. |
 | `playerHeadUrl` | `https://mc-heads.net/avatar/{uuid}/64` | The head picture on posts about a player. Discord fetches it, so that service sees player ids and nothing else. Empty shows no heads. |
@@ -573,7 +574,9 @@ linked account, lookups included. Profile shows conduct only: nothing drawn from
 connects from, and not the accounts linked to them that way.
 
 Only linked staff holding `staff.chat` are bridged into staff chat; anybody else gets a short reply
-that disappears. Lines from the game are sent with mentions switched off.
+that disappears. Lines from the game are sent with mentions switched off. **`/staffchat <message>`**
+in the staff chat channel does the same as typing, and is how staff talk there when Message Content
+Intent is off: the bot posts the line in the channel once the game has it.
 
 ### Commands
 

@@ -98,8 +98,9 @@ You can stop the server now, or leave it running; settings are only read when it
    `token=`, nothing else. Save it.
 4. Still on the **Bot** page, under **Privileged Gateway Intents**:
    - Leave **Presence Intent** and **Server Members Intent** off. The bot does not use them.
-   - Turn **Message Content Intent** on **only** if you are going to bridge staff chat
-     (`staffChatChannelId`). Without it, a bot with the bridge set up cannot log in.
+   - Turn **Message Content Intent** on, so staff can type in `#staff-chat`. If you leave it off the
+     bot still works: staff talk there with `/staffchat <message>` instead, and `/staff status` says
+     the intent is off.
 5. Optional but sensible: turn **Public Bot** off, so nobody but you can add it to a server.
 6. On **General Information**, copy the **Application ID**. You need it for the invite link.
 
@@ -186,7 +187,7 @@ Open the file the server wrote and fill it in. A complete example — your ids w
   "appealsChannelId": "create",
   "appealIntakeChannelId": "",
   "staffLogChannelId": "create",
-  "staffChatChannelId": "",
+  "staffChatChannelId": "create",
   "discordAlertSeverity": 70,
   "serverName": "",
   "playerHeadUrl": "https://mc-heads.net/avatar/{uuid}/64"
@@ -234,16 +235,14 @@ restarting never makes them again. You can rename or move the channels, and chan
 permissions — the bot goes by id and never touches permissions again. To let another role see them,
 add it to the category's permissions in Discord.
 
-A new settings file sets the first five to `"create"`. Two are left empty on purpose:
+A new settings file sets all six to `"create"`. One is left empty on purpose:
 
-- **`staffChatChannelId`** — bridging staff chat needs **Message Content Intent** turned on
-  (step 3). Turn it on first, then set this to `"create"`.
 - **`appealIntakeChannelId`** — this one is for players, so it cannot be private and the bot does
   not make it. Leave it empty and players can use `/appeal` in any channel; see
   [step 9](#9-set-up-appeals).
 
-> **Your file was written by an earlier build?** Its channel settings will be `""`. Change the ones
-> you want to `"create"`.
+> **Your file was written by an earlier build?** Some channel settings will be `""` — `staffChatChannelId`
+> was empty by default before 1.2.0. Change the ones you want to `"create"`.
 
 ### `roleNodes`, in plain words
 
@@ -436,7 +435,7 @@ entry of `/staff` → **Discord**, and in `logs/latest.log` (lines starting `[St
 | `off: The token file is empty…` | Paste the token into it — see [step 3](#3-make-the-bot-in-discord). |
 | `off: The token file does not hold a bot token…` | You pasted something else. The token is on the **Bot** page, not the Client Secret or Application ID on other pages. |
 | `could not log in: Discord refused the token` or `could not start (InvalidTokenException)` | The token was reset or copied wrong. Reset it again and paste the new one. |
-| `stopped: staffChatChannelId needs Message Content Intent…` | Turn on **Message Content Intent** on the Bot page, or empty `staffChatChannelId`. Restart. |
+| `Message Content Intent is off for this bot…` | The bot connected without it. Staff use `/staffchat` in `#staff-chat`; to type there normally, turn on **Message Content Intent** on the Bot page and restart. |
 | `connected as …, but not in the guild named by guildId; invite the bot to that server` | The bot is not in that server, or `guildId` is wrong. Invite it (step 4) or copy the id again. |
 | `channels set to "create" were not made: the bot needs Manage Channels and Manage Roles…` | Invite the bot again with the link in [step 4](#4-invite-the-bot-to-your-server) — it updates the permissions — and restart. |
 | `the … channel has not been made yet, so nothing is posted there` | Look at the line above it for why. Channels still set to `"create"` are tried again at every start. |

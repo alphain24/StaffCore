@@ -136,12 +136,13 @@ public final class DiscordSettings {
 	/**
 	 * A channel bridged with staff chat in game, both ways. Lines from Discord are marked
 	 * {@code [Discord]} in game and only linked staff holding {@code staff.chat} are bridged.
-	 * Setting it makes the bot ask Discord for message content, which is a privileged intent: turn on
-	 * Message Content Intent for the bot in the developer portal first, or it cannot log in. Empty
-	 * bridges nothing and asks for no intents — which is why, unlike the others, it is empty rather than
-	 * {@code "create"} to begin with.
+	 * <p>
+	 * Reading what is typed there needs Message Content Intent, a privileged intent switched on for the
+	 * bot in the developer portal. With it off the bot still connects, without it: game lines still reach
+	 * the channel, and staff talk back with {@code /staffchat} there instead of typing. Empty bridges
+	 * nothing.
 	 */
-	public volatile String staffChatChannelId = "";
+	public volatile String staffChatChannelId = CREATE;
 
 	/**
 	 * The lowest signal confidence, 0 to 100, posted to the alerts channel on its own.

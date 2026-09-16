@@ -93,6 +93,10 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	private final AtomicLong undelivered = new AtomicLong();
 	private final Map<Outbound.Channel, String> channelProblems = new ConcurrentHashMap<>();
 	private volatile String intakeProblem;
+	/** True once Discord refused the message content intent and the bot connected without it. */
+	private volatile boolean contentIntentMissing;
+	/** When a typed staff chat line was last answered with how to use /staffchat instead. */
+	private volatile long contentHintAt;
 	/** Null until Discord says the bot is ready; then whether it is in the guild {@code guildId} names. */
 	private volatile Boolean inGuild;
 	/** Whether the channels have been made and checked since the bot connected. */
@@ -114,15 +118,31 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 
 	@Override
 	public void start() {
-		state = "connecting";
+		connect(intents(settings, true));
+	}
+
+	/**
+	 * What the bot asks Discord for.
+	 *
+	 * @param messageContent whether to ask for message content, the one privileged intent, which only the
+	 *                       staff chat bridge uses
+	 */
+	static EnumSet<GatewayIntent> intents(DiscordSettings settings, boolean messageContent) {
 		EnumSet<GatewayIntent> intents = EnumSet.noneOf(GatewayIntent.class);
 		if (!settings.staffChatChannelId.isEmpty()) {
+			// Kept without the content intent too, so a typed line can be answered with how to use
+			// /staffchat instead of vanishing.
 			intents.add(GatewayIntent.GUILD_MESSAGES);
-			intents.add(GatewayIntent.MESSAGE_CONTENT);
+			if (messageContent) intents.add(GatewayIntent.MESSAGE_CONTENT);
 		}
 		// A player answers a question about their appeal by replying to the bot. Direct messages are
 		// not a privileged intent, and Discord gives a bot the content of messages sent to it directly.
 		if (!settings.appealsChannelId.isEmpty()) intents.add(GatewayIntent.DIRECT_MESSAGES);
+		return intents;
+	}
+
+	private void connect(EnumSet<GatewayIntent> intents) {
+		state = "connecting";
 		jda = JDABuilder.createLight(token.revealForLogin(), intents)
 				.setEnableShutdownHook(false)
 				.addEventListeners(this)
@@ -194,9 +214,11 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			} else if (!channelsChecked) {
 				out.add(new DiscordBotStatus.Channel(name, false, settings.toCreate(channel)
 						? "made when the bot connects" : "checked when the bot connects"));
+			} else if (channel == Outbound.Channel.STAFF_CHAT) {
+				out.add(new DiscordBotStatus.Channel(name, true, contentIntentMissing
+						? "bridged; staff reply with /staffchat (Message Content Intent is off)" : "bridged"));
 			} else {
-				out.add(new DiscordBotStatus.Channel(name, true,
-						channel == Outbound.Channel.STAFF_CHAT ? "bridged" : "posting"));
+				out.add(new DiscordBotStatus.Channel(name, true, "posting"));
 			}
 		}
 		return out;
@@ -207,6 +229,10 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		List<String> out = new ArrayList<>(setupProblems);
 		out.addAll(channelProblems.values());
 		if (intakeProblem != null) out.add(intakeProblem);
+		if (contentIntentMissing) {
+			out.add("Message Content Intent is off for this bot, so lines typed in the staff chat channel cannot be "
+					+ "read; staff use /staffchat there. Turn it on in the developer portal (Bot page) and restart");
+		}
 		if (failed.get() > 0) out.add("posts Discord refused: " + failed.get() + " (the log names why)");
 		if (skipped.get() > 0) out.add("posts not made because the bot was not connected: " + skipped.get());
 		if (undelivered.get() > 0) {
@@ -240,6 +266,12 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					.addOption(OptionType.STRING, "code", "The appeal code, like ABCD-EFGH-JKMN", true));
 		}
 		commands.add(StaffCommands.definition());
+		if (!settings.staffChatChannelId.isEmpty()) {
+			// Works with or without Message Content Intent: a command carries what was typed.
+			commands.add(Commands.slash("staffchat", "Say something in staff chat in game")
+					.addOptions(new net.dv8tion.jda.api.interactions.commands.build.OptionData(OptionType.STRING,
+							"message", "What to say", true).setMaxLength(256)));
+		}
 		guild.updateCommands().addCommands(commands).queue(ok -> { }, failure -> StaffCoreDiscord.LOGGER.warn(
 				"[StaffCore Discord] Could not register commands in {} ({}).", guild.getName(), describe(failure)));
 
@@ -273,14 +305,32 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 
 	@Override
 	public void onShutdown(ShutdownEvent event) {
-		if (event.getCloseCode() != null) {
-			closeReason = event.getCloseCode().getMeaning();
-			if (event.getCloseCode() == net.dv8tion.jda.api.requests.CloseCode.DISALLOWED_INTENTS) {
-				closeReason = "staffChatChannelId needs Message Content Intent, which is off for this bot in "
-						+ "the Discord developer portal";
-			}
-			StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Disconnected: {}", closeReason);
+		if (event.getCloseCode() == null) return;
+		if (event.getCloseCode() == net.dv8tion.jda.api.requests.CloseCode.DISALLOWED_INTENTS
+				&& !contentIntentMissing && !"stopping".equals(state)) {
+			// Message Content Intent is off in the developer portal. Everything but reading typed staff chat
+			// works without it, so connect again without asking for it, once.
+			contentIntentMissing = true;
+			jda = null;
+			state = "connecting";
+			StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Message Content Intent is off for this bot in the "
+					+ "Discord developer portal. Connecting without it: lines typed in the staff chat channel "
+					+ "cannot be read, so staff use /staffchat there. Turn it on (Bot page) and restart to type "
+					+ "normally.");
+			worker.execute(() -> {
+				try {
+					connect(intents(settings, false));
+				} catch (RuntimeException e) {
+					closeReason = "could not connect again without Message Content Intent ("
+							+ e.getClass().getSimpleName() + ")";
+					state = "stopped: " + closeReason;
+					StaffCoreDiscord.LOGGER.error("[StaffCore Discord] {}", closeReason);
+				}
+			});
+			return;
 		}
+		closeReason = event.getCloseCode().getMeaning();
+		StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Disconnected: {}", closeReason);
 	}
 
 	/** Every configured channel has to be a text channel in the guild. Said once, at connect. */
@@ -505,6 +555,7 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			case "whoami" -> answer(event, DiscordAccess.standing(user).thenApply(Replies::standing));
 			case "appeal" -> appeal(event);
 			case "staff" -> staff(event, user);
+			case "staffchat" -> staffChatCommand(event, user);
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
 	}
@@ -691,6 +742,42 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	}
 
 	/**
+	 * {@code /staffchat}: a line for staff chat in game, from the bridged channel.
+	 * <p>
+	 * The same call a typed line makes, so the same checks. A typed line is already in the channel; this
+	 * one is not, so the bot posts it there once StaffCore has taken it, for the rest of staff to read.
+	 */
+	private void staffChatCommand(SlashCommandInteractionEvent event, DiscordUser user) {
+		String channelId = settings.staffChatChannelId;
+		if (!SNOWFLAKE.matcher(channelId).matches()) {
+			event.reply("Staff chat is not bridged on this server.").setEphemeral(true).queue();
+			return;
+		}
+		if (!channelId.equals(event.getChannel().getId())) {
+			event.reply("Use /staffchat in <#" + channelId + ">.").setEphemeral(true).queue();
+			return;
+		}
+		String text = event.getOption("message", "", OptionMapping::getAsString);
+		event.deferReply(true).queue();
+		InteractionHook hook = event.getHook();
+		net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel = event.getChannel();
+		DiscordAccess.staffChat(user, text)
+				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+				.whenCompleteAsync((result, failure) -> {
+					if (failure == null && result.done()) {
+						channel.sendMessage(new MessageCreateBuilder()
+								.setContent(Text.clip("**" + Text.safe(user.name(), 100) + "**: " + Text.safe(text, 1500), 2000))
+								.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)).build())
+								.queue(ok -> { }, ignored -> { });
+						hook.editOriginal("Sent to staff chat in game.").queue(ok -> { }, ignored -> { });
+						return;
+					}
+					String why = failure != null ? Replies.failure(failure) : result.message();
+					hook.editOriginal("Not sent to the game: " + token.redact(why)).queue(ok -> { }, ignored -> { });
+				}, worker);
+	}
+
+	/**
 	 * A line typed in the bridged staff chat channel, sent into staff chat in game.
 	 * <p>
 	 * Only from a person — never the bot's own lines or a webhook's — and only when StaffCore agrees
@@ -709,6 +796,18 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 
 		DiscordUser user = userOf(event.getMember(), event.getAuthor());
 		Message message = event.getMessage();
+		if (contentIntentMissing) {
+			// Discord hands over nothing of what was typed. Say how to be heard instead, now and then,
+			// rather than to every line.
+			long now = System.currentTimeMillis();
+			if (now - contentHintAt < 300_000L) return;
+			contentHintAt = now;
+			message.reply("The bot cannot read lines typed here, so this was not sent to the game. Use "
+							+ "`/staffchat` in this channel, or ask an admin to turn on Message Content Intent for the bot.")
+					.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class))
+					.queue(reply -> reply.delete().queueAfter(60, TimeUnit.SECONDS), ignored -> { });
+			return;
+		}
 		DiscordAccess.staffChat(user, message.getContentDisplay())
 				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
 				.whenCompleteAsync((result, failure) -> {

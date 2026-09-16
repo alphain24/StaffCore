@@ -128,12 +128,11 @@ class DiscordSettingsTest {
 				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.REPORTS,
 				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.ALERTS,
 				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.APPEALS,
-				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.STAFF_LOG)) {
+				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.STAFF_LOG,
+				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.STAFF_CHAT)) {
 			assertTrue(s.toCreate(channel), channel + " is not made by default");
 		}
-		// Staff chat needs a privileged intent switched on in Discord first; making its channel by default
-		// would stop the bot logging in on every server that had not.
-		assertEquals("", s.staffChatChannelId);
+		// The players' channel is theirs, not the bot's to make private.
 		assertEquals("", s.appealIntakeChannelId);
 	}
 

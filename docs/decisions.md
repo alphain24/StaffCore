@@ -2079,6 +2079,30 @@ Discord, naming the Discord account.
 
 ---
 
+## A staff chat channel by default
+
+**Date:** 2026-09-16
+
+Phase 6.3. `staffChatChannelId` was the one channel left empty, because reading what staff type needs
+Message Content Intent, a privileged intent switched on by hand in the developer portal, and a bot that
+asks for it without it being on is refused at login — the whole bot, not just the bridge.
+
+**It is `create` now, and the refusal is survived.** When Discord closes the connection with "disallowed
+intents", the bot connects again, once, without message content. Everything else works: posts, buttons,
+commands, and game lines reaching the channel. Only reading typed lines is lost, and `/staffchat` covers
+it, because a command carries what was typed whatever the intents. `/staff status` and the panel say the
+intent is off, and a line typed in the channel gets a reply saying to use `/staffchat` — at most every
+five minutes, and deleted after one, so the channel does not fill with them. `GUILD_MESSAGES` is kept
+without the content intent so that reply is possible at all.
+
+**`/staffchat` posts the line itself.** A typed line is already in the channel; a command is not, so once
+StaffCore has taken it the bot posts it there, name and all, with mentions off. It is the same call a
+typed line makes, so the same link, permission and rate checks.
+
+Files written by earlier builds keep `""`; the guide says to change it.
+
+---
+
 ## Back after a ban
 
 **Date:** 2026-09-16

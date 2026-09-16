@@ -10,8 +10,13 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`.
   lifted is announced in game, in the Discord alerts channel and in the ban's case, once per ban.
   `notifyReturningPlayers` (on). Bans already over when you upgrade are not announced.
 
+- **`/staffchat <message>`** in the Discord staff chat channel.
+
 ### Changed
 
+- **The Discord staff chat channel is made by default** (`staffChatChannelId` is `create` in new
+  settings files). Without Message Content Intent the bot now connects anyway, and staff use
+  `/staffchat` in that channel; before, the bot could not log in at all.
 - **An appeal code stops working once its appeal is accepted or rejected.** Rejecting asks how many
   days the player must wait (0–365, `appealCooldownDays` by default), in Discord and in game; the
   punishment gets a new code, shown on the ban screen with the day it starts working and in chat to a
