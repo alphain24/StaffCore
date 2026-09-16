@@ -11,7 +11,7 @@ wrong. For what every setting does in detail, see the
 [3. Make the bot](#3-make-the-bot-in-discord) ·
 [4. Invite it](#4-invite-the-bot-to-your-server) ·
 [5. Copy the ids](#5-copy-the-two-kinds-of-id-you-need) ·
-[6. Fill in the settings](#6-fill-in-configstaffcore-discordjson) ·
+[6. Fill in the settings](#6-fill-in-configstaffcorediscordjson) ·
 [7. Restart and check](#7-restart-and-check-it-connected) ·
 [8. Link staff accounts](#8-link-your-staff-accounts) ·
 [9. Appeals](#9-set-up-appeals) ·
@@ -46,15 +46,22 @@ your-server/
 │   ├── staffcore-1.1.0.jar
 │   └── staffcore-discord-1.0.0.jar          ← put it here
 ├── config/
-│   ├── staffcore.json
-│   ├── staffcore-discord.json               ← created on first start
-│   └── staffcore-discord.token              ← created empty on first start; your token goes in here
+│   └── staffcore/
+│       ├── staffcore.json
+│       ├── permissions.json
+│       ├── discord.json                     ← created on first start
+│       └── discord.token                    ← created empty on first start; your token goes in here
 └── world/
     └── staffcore-discord/
         └── threads.json                     ← the bot's own memory; leave it alone
 ```
 
-`config/` is the folder beside `mods/`, not a folder inside it.
+`config/` is the folder beside `mods/`, not a folder inside it, and every StaffCore file is in
+`config/staffcore/` inside that.
+
+> **Upgrading from an earlier build?** It kept these files loose in `config/` as
+> `staffcore-discord.json` and `staffcore-discord.token`. They are moved into `config/staffcore/`
+> on the first start, as `discord.json` and `discord.token`, and the log says so.
 
 ---
 
@@ -66,18 +73,17 @@ has **fully started**, not when the jar is loaded, so wait for the usual `Done` 
 In `logs/latest.log` you should see:
 
 ```
-[StaffCore Discord] loaded against StaffCore API v3
-[StaffCore Discord] Created config/staffcore-discord.token, empty. Paste the bot token into it, …
+[StaffCore Discord] loaded against StaffCore API v4
+[StaffCore Discord] Created config/staffcore/discord.token, empty. Paste the bot token into it, …
 [StaffCore Discord] Installed and switched off. Set enabled, guildId and the token file to start the bot.
 ```
 
 The bot is off at this point, and that is expected: nothing happens until you switch it on in step 6.
 
-> **Can't find `staffcore-discord.token`?** Builds before the one that added this step did not create
-> it. Either update to the current jar and start the server again, or create it yourself: a plain
-> text file named exactly `staffcore-discord.token` in `config/`. Watch out for Windows hiding the
-> extension and saving it as `staffcore-discord.token.txt` — turn on *File name extensions* in
-> Explorer's *View* menu to check.
+> **Can't find `discord.token`?** Look inside `config/staffcore/`, not `config/`. If it is not
+> there either, create it yourself: a plain text file named exactly `discord.token` in
+> `config/staffcore/`. Watch out for Windows hiding the extension and saving it as
+> `discord.token.txt` — turn on *File name extensions* in Explorer's *View* menu to check.
 
 You can stop the server now, or leave it running; settings are only read when it starts.
 
@@ -88,7 +94,7 @@ You can stop the server now, or leave it running; settings are only read when it
 1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and choose
    **New Application**. Give it the name staff should see, for example *StaffCore*.
 2. On the **Bot** page, choose **Reset Token**, confirm, and **Copy** the token.
-3. Open `config/staffcore-discord.token` and paste the token in. **Only the token** — no quotes, no
+3. Open `config/staffcore/discord.token` and paste the token in. **Only the token** — no quotes, no
    `token=`, nothing else. Save it.
 4. Still on the **Bot** page, under **Privileged Gateway Intents**:
    - Leave **Presence Intent** and **Server Members Intent** off. The bot does not use them.
@@ -98,14 +104,14 @@ You can stop the server now, or leave it running; settings are only read when it
 6. On **General Information**, copy the **Application ID**. You need it for the invite link.
 
 **The token is a password for the bot.** Anybody who has it can post as the bot. Never paste it in
-Discord, a support channel, a screenshot or `staffcore-discord.json`. If it ever leaks, press
+Discord, a support channel, a screenshot or `discord.json`. If it ever leaks, press
 **Reset Token** again — the old one stops working at once — and put the new one in the file.
 
 On Linux the file is created readable only by the account the server runs as. If you created it
 yourself, run:
 
 ```bash
-chmod 600 config/staffcore-discord.token
+chmod 600 config/staffcore/discord.token
 ```
 
 On a Windows machine shared with other people, open the file's *Properties → Security* and remove
@@ -161,7 +167,7 @@ instead of `"create"`.
 
 ---
 
-## 6. Fill in `config/staffcore-discord.json`
+## 6. Fill in `config/staffcore/discord.json`
 
 Open the file the server wrote and fill it in. A complete example — your ids will differ:
 
@@ -325,11 +331,15 @@ You want a line like:
 Discord: connected as StaffCore in Your Server
 ```
 
-with no other `Discord:` lines under it. In Discord you should see the **StaffCore** category with
-its channels, and typing `/` shows the bot's commands: `/link`, `/unlink`, `/whoami`, and `/appeal`.
-If the commands do not show up, press `Ctrl+R` in Discord to reload it.
+with no other `Discord:` lines under it. Or open `/staff` and look at the **Discord** button: it
+says `Bot: running`. Inside, the **Bot** entry names what is wrong if anything is, and **Channels**
+shows each channel and whether posts reach it.
 
-Open `config/staffcore-discord.json` again: the `"create"` values are now channel ids.
+In Discord you should see the **StaffCore** category with its channels, and typing `/` shows the
+bot's commands: `/link`, `/unlink`, `/whoami`, `/appeal` and `/staff`. If the commands do not show
+up, press `Ctrl+R` in Discord to reload it.
+
+Open `config/staffcore/discord.json` again: the `"create"` values are now channel ids.
 
 If the status says anything else, see [Troubleshooting](#troubleshooting).
 
@@ -340,16 +350,15 @@ If the status says anything else, see [Troubleshooting](#troubleshooting).
 Every staff member links their own Discord account once. Until they do, they can read the channels
 their role lets them see, and nothing else.
 
-1. In game: `/staff discord link`. You get a code like `ABCD-EFGH`. It lasts 10 minutes and works
-   once.
+1. In game: `/staff discord link`, or `/staff` → **Discord** → **Your link**. You get a code like
+   `ABCD-EFGH`. It lasts 10 minutes and works once.
 2. In your Discord server: `/link ABCD-EFGH`.
 3. Check with `/whoami` — it names the Minecraft account and lists what you can use from Discord.
 
 `/staff discord` shows your link, and `/staff discord unlink` ends it. An admin with `staff.perms`
 can end somebody else's link with `/staff discord unlink <player>`, which is the quick way to cut
-off a Discord account that has been taken over.
-
----
+off a Discord account that has been taken over. Admins can see everybody who is linked in
+`/staff` → **Discord** → **Linked staff**.
 
 ### Using the commands
 
@@ -376,8 +385,8 @@ Durations are written the way they are in game: `30m`, `12h`, `7d`, `1h30m`.
 
 A command from Discord meets the same checks as in game — the permission, the punishment rate limit,
 the rule against punishing somebody who outranks you — and on top of that everything you change from
-Discord counts against `discordActionsPerMinute` in `config/staffcore.json` (20 a minute unless
-changed). IP bans, rollbacks and inventory edits are not available from Discord at all.
+Discord counts against `discordActionsPerMinute` in `config/staffcore/staffcore.json` (20 a minute
+unless changed). IP bans, rollbacks and inventory edits are not available from Discord at all.
 
 ---
 
@@ -385,7 +394,7 @@ changed). IP bans, rollbacks and inventory edits are not available from Discord 
 
 With `appealsChannelId` set, banned and muted players can appeal from Discord.
 
-1. In `config/staffcore.json`, set `discordInvite` to an invite link for your Discord, so the ban
+1. In `config/staffcore/staffcore.json`, set `discordInvite` to an invite link for your Discord, so the ban
    screen tells players where to go. With the bot taking appeals, the ban screen tells them to type
    `/appeal` with the appeal code shown underneath.
 2. `#appeals` is private to staff. Appeals and staff discussion go there, and players never see it.
@@ -411,19 +420,20 @@ are kept for when you switch it back on.
 
 ## Troubleshooting
 
-Everything the bot has to say is in `/staff status` (lines starting `Discord:`) and in
-`logs/latest.log` (lines starting `[StaffCore Discord]`).
+Everything the bot has to say is in `/staff status` (lines starting `Discord:`), in the **Bot**
+entry of `/staff` → **Discord**, and in `logs/latest.log` (lines starting `[StaffCore Discord]`).
 
 | `/staff status` says | What to do |
 |---|---|
 | `waiting for the server to start` | The server has not finished starting. Wait for it. |
-| `off (enabled is false in config/staffcore-discord.json)` | Set `"enabled": true` and restart. |
-| `off: There is no token file…` | Create `config/staffcore-discord.token` — see [step 2](#2-start-the-server-once). |
+| `off (enabled is false in config/staffcore/discord.json)` | Set `"enabled": true` and restart. |
+| `off: config/staffcore/discord.json needs fixing` | The file cannot be read, or `guildId` is not a server id. The line under it says which. |
+| `off: There is no token file…` | Create `config/staffcore/discord.token` — see [step 2](#2-start-the-server-once). |
 | `off: The token file is empty…` | Paste the token into it — see [step 3](#3-make-the-bot-in-discord). |
 | `off: The token file does not hold a bot token…` | You pasted something else. The token is on the **Bot** page, not the Client Secret or Application ID on other pages. |
 | `could not log in: Discord refused the token` or `could not start (InvalidTokenException)` | The token was reset or copied wrong. Reset it again and paste the new one. |
 | `stopped: staffChatChannelId needs Message Content Intent…` | Turn on **Message Content Intent** on the Bot page, or empty `staffChatChannelId`. Restart. |
-| `connected as …, but not in the guild named by guildId` | The bot is not in that server, or `guildId` is wrong. Invite it (step 4) or copy the id again. |
+| `connected as …, but not in the guild named by guildId; invite the bot to that server` | The bot is not in that server, or `guildId` is wrong. Invite it (step 4) or copy the id again. |
 | `channels set to "create" were not made: the bot needs Manage Channels and Manage Roles…` | Invite the bot again with the link in [step 4](#4-invite-the-bot-to-your-server) — it updates the permissions — and restart. |
 | `the … channel has not been made yet, so nothing is posted there` | Look at the line above it for why. Channels still set to `"create"` are tried again at every start. |
 | `making the private channels stopped part way (…)` | The bracket names what Discord refused, such as `MISSING_PERMISSIONS` or `InsufficientPermissionException`: the bot is missing one of the permissions from [step 4](#4-invite-the-bot-to-your-server). Give it back and restart; channels already made are used, not made twice. |
@@ -436,6 +446,7 @@ Everything the bot has to say is in `/staff status` (lines starting `Discord:`) 
 | `direct messages players did not receive: …` | Those players have direct messages off. Each appeal's thread says which. |
 | `warning: the token file is readable by every user on this machine` | Restrict the file — see [step 3](#3-make-the-bot-in-discord). |
 | `disabled: built for a different StaffCore API version` | The two jars are from different builds. Replace both — see [Updating](#updating). |
+| `Both config/staffcore-discord.json and config/staffcore/discord.json exist` (log) | The folder's copy is used. Check nothing in the old file is missing, then delete it. |
 
 **Staff can't see the channels.** Only roles listed in `roleNodes` were given access when the channels
 were made. In Discord, add the role to the **StaffCore** category (*Edit Category → Permissions*)
@@ -453,6 +464,7 @@ you are online, so join the server and try again.
 **A button says you need a permission.** It needs that permission both in `roleNodes` for one of your
 roles and in game for your linked account.
 
-**The files never appeared.** Check that `staffcore-discord-1.0.0.jar` is in `mods/` beside
-`staffcore-1.1.0.jar`, that the server finished starting, and search `logs/latest.log` for
-`StaffCore Discord`.
+**The files never appeared.** Look in `config/staffcore/`. Check that `staffcore-discord-1.0.0.jar`
+is in `mods/` beside `staffcore-1.1.0.jar`, that the server finished starting, and search
+`logs/latest.log` for `StaffCore Discord`. The staff panel's **Discord** button says
+`Bot: not installed` when the jar is not loaded at all.

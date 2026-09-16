@@ -57,7 +57,7 @@ anything. Run `/staff status` — the anti-xray line should say "none installed"
 
 ## Step 1 — Make decoys easy to find
 
-Stop the server. In `config/staffcore.json`, set:
+Stop the server. In `config/staffcore/staffcore.json`, set:
 
 ```jsonc
 "canaryBlocks": true,

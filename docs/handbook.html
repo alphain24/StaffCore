@@ -537,27 +537,48 @@
         <p class="kicker">The hub</p>
         <h2>The panel</h2>
         <p>
-          <code>/staff</code> opens a six-row menu split into three bands, in the order a
-          shift actually runs: what you switch on about yourself, what you do to other
-          people, and what you do to the whole server.
+          <code>/staff</code> opens a six-row menu: the switches about yourself along the top, seven
+          sections in the middle, and your record and the server's status at the bottom. The switches
+          stay on the panel because they are one click each and the most used buttons in the mod; the
+          sections are grouped by what you are trying to do, not by which part of the mod does it.
         </p>
 
         <div class="grid-cards">
           <div class="card">
             <h4>You</h4>
-            <p>Staff Mode · Vanish · Staff Chat · Alerts · Command Spy · Return</p>
+            <p>Staff Mode · Vanish · Staff Chat · Alerts · Command Spy · Movement · Return</p>
           </div>
           <div class="card">
-            <h4>People</h4>
-            <p>Players · Reports · Punish · Inventories · Notes · History · Security Check</p>
+            <h4>Players</h4>
+            <p>Player list · Inventories · Notes · Punishment history · Teleport · Freeze · Session replay</p>
+          </div>
+          <div class="card">
+            <h4>Punishments</h4>
+            <p>Punish a player · Reports · Appeals · History · Banned players · Punishments by staff</p>
+          </div>
+          <div class="card">
+            <h4>Security</h4>
+            <p>Check a player · Sweep everyone · Contraband vault · Cases · Contraband rules · Linked accounts</p>
+          </div>
+          <div class="card">
+            <h4>X-ray &amp; cheats</h4>
+            <p>Prevention · X-ray report · Decoy blocks · Threshold evidence</p>
+          </div>
+          <div class="card">
+            <h4>World</h4>
+            <p>Grief log · Restore points · Owed items · Inspect mode · Test the mass-grief alert</p>
           </div>
           <div class="card">
             <h4>Server</h4>
-            <p>Server Control · Grief Log · Analytics · Item Scanner · Discord status</p>
+            <p>Control · Analytics · Server status</p>
+          </div>
+          <div class="card">
+            <h4>Discord</h4>
+            <p>Bot status · Your link · Channels · Linked staff · Webhook · What goes to Discord · Setup guide</p>
           </div>
           <div class="card">
             <h4>Info</h4>
-            <p>Your record · Live server status · A help card listing the equivalent commands</p>
+            <p>Your record · Server status · How this works, with the equivalent commands</p>
           </div>
         </div>
 
@@ -578,10 +599,12 @@
  │                ├─ Inventory        live, read-only or editable
  │                ├─ Snapshots ────── Snapshot view
  │                └─ Security check   paged findings
- ├─ Reports ─────────── claim / resolve / teleport
- ├─ Server control ──── chat lock · clear · broadcast · maintenance · TPS
- ├─ Grief log ───────── paged block history ─── Rollback (preview → confirm)
- └─ Analytics ───────── staff leaderboard</code></pre>
+ ├─ Punishments ─────── punish · reports (claim / resolve) · appeals · history · bans
+ ├─ Security ────────── checks · sweep · vault · cases · contraband rules · alts
+ ├─ X-ray &amp; cheats ──── prevention · x-ray report · decoys · threshold evidence
+ ├─ World ───────────── grief log ─── rollback (preview → confirm) · restore points · owed
+ ├─ Server ──────────── control · analytics · status
+ └─ Discord ─────────── bot · your link · channels · linked staff · webhook · guide</code></pre>
         </div>
         <p>
           The player list is the junction. Whichever door you came in through — Punish,
@@ -967,7 +990,7 @@
         </div>
         <p>
           Offences, their ladders, their icons and their descriptions all come from
-          <code>config/staffcore.json</code>. Add an offence there and a new button appears;
+          <code>config/staffcore/staffcore.json</code>. Add an offence there and a new button appears;
           change a duration and every staff member's next punishment follows it.
         </p>
         <p>
@@ -1212,7 +1235,7 @@
         <div class="note">
           <p>
             <span class="pill">The config updates itself</span>
-            New settings are added to <code>config/staffcore.json</code> on the first boot after
+            New settings are added to <code>config/staffcore/staffcore.json</code> on the first boot after
             an upgrade, with their defaults, and the server log names each one. Anything you
             have set is left exactly as it is &mdash; there is never a reason to delete the file
             to pick up new options, and deleting it would reset every choice you have made.
@@ -2488,10 +2511,23 @@
           buttons to decide them; runs the <code>/staff</code> commands for looking players up and punishing
           them; and bridges staff chat both ways.
         </p>
+        <h3>In the staff panel</h3>
+        <p>
+          <code>/staff</code> &rarr; <strong>Discord</strong> is open to every staff member, because everybody
+          links their own account there, and the panel button says whether the bot is running. The
+          <strong>Bot</strong> entry shows running, connecting, off, not set up, not working, stopped or not
+          installed, who it is connected as and the ping; owners see what is wrong and everybody else sees
+          that something is. <strong>Your link</strong> shows your linked Discord account, or gives you a
+          link code. Behind <code>staff.reload</code> are <strong>Channels</strong> (each channel and whether
+          posts reach it), <strong>Linked staff</strong> (who is linked, each with an unlink suggestion) and
+          <strong>Webhook</strong>. <strong>What goes to Discord</strong> and a link to the
+          <strong>Setup guide</strong> are there for everybody. Nothing on the screen changes the bot: its
+          settings are in the file and read at the next start.
+        </p>
         <h3>Setting it up</h3>
         <ol>
           <li>Create a bot in the Discord developer portal and invite it to your server with the link in the installation guide. It needs no privileged intents unless you bridge staff chat, which needs Message Content Intent. It needs to view, send messages, embed links, read message history, create public threads and send messages in threads, plus Manage Channels and Manage Roles to make its own private channels — those two can be removed once it has.</li>
-          <li>Put both jars in <code>mods/</code> and start the server once. It writes <code>config/staffcore-discord.json</code> and an empty <code>config/staffcore-discord.token</code> (readable only by the server's account, on Linux).</li>
+          <li>Put both jars in <code>mods/</code> and start the server once. It writes <code>config/staffcore/discord.json</code> and an empty <code>config/staffcore/discord.token</code> (readable only by the server's account, on Linux).</li>
           <li>Paste the token, and nothing else, into the token file, fill in the settings, and restart. <code>/staff status</code> shows whether the bot is off, connecting, connected, or what stopped it.</li>
         </ol>
         <p>
@@ -2748,7 +2784,7 @@
               <tr><td class="mono">&lt;n&gt;</td>
                 <td class="wrap">A plain count &mdash; how many rows to show or act on.</td></tr>
               <tr><td class="mono">&lt;name&gt;<br>&lt;group&gt;</td>
-                <td class="wrap">A permission group name as written in <code>staffcore-permissions.json</code>. Tab-completes from the groups you actually have.</td></tr>
+                <td class="wrap">A permission group name as written in <code>config/staffcore/permissions.json</code>. Tab-completes from the groups you actually have.</td></tr>
               <tr><td class="mono">[confirm]</td>
                 <td class="wrap">The literal word <code>confirm</code>. Without it the command previews what it would do and changes nothing. This is the only safety net on the destructive commands, and it is opt-in on purpose &mdash; typing a word is cheap next to undoing a purge.</td></tr>
               <tr><td class="mono">[list]</td>
@@ -2780,7 +2816,7 @@
           answer, and it wins outright wherever it is present.
         </p>
         <p>
-          Without one, <code>config/staffcore-permissions.json</code> answers instead. It is
+          Without one, <code>config/staffcore/permissions.json</code> answers instead. It is
           written with the starter groups below on first run, and holds node lists — with
           <code>@other</code> to inherit from another group and <code>staff.*</code> wildcards —
           plus a map of players to groups. Assign somebody with
@@ -2864,7 +2900,7 @@
               <tr><td>Item Scanner</td><td class="mono">Hopper</td><td>Server status</td><td class="mono">Beacon</td></tr>
               <tr><td>Grief Log</td><td class="mono">TNT</td><td>Analytics</td><td class="mono">Map</td></tr>
               <tr><td>Broke a block</td><td class="mono">Iron Pickaxe</td><td>Placed a block</td><td class="mono">Bricks</td></tr>
-              <tr><td>Discord</td><td class="mono">Amethyst Shard</td><td>Help</td><td class="mono">Knowledge Book</td></tr>
+              <tr><td>Discord</td><td class="mono">Eye of Ender</td><td>Help</td><td class="mono">Knowledge Book</td></tr>
               <tr><td>Confirm / Cancel</td><td class="mono">Lime / Red Concrete</td><td>Locked</td><td class="mono">Iron Bars</td></tr>
             </tbody>
           </table>
@@ -2916,7 +2952,7 @@
         <p class="kicker">Setup</p>
         <h2>Config</h2>
         <p>
-          Written with defaults on first run to <code>config/staffcore.json</code>. The file
+          Written with defaults on first run to <code>config/staffcore/staffcore.json</code>. The file
           carries a <code>configVersion</code>: when a default changes in a way existing
           servers should inherit, the value is moved only if it still holds the old default,
           so anything you deliberately set is left alone and every change is logged.
@@ -3154,7 +3190,7 @@
         <p class="kicker">Reference</p>
         <h2>Every module</h2>
         <p class="lede">
-          StaffCore is nineteen modules behind one panel. Each owns one job, keeps its own
+          StaffCore is twenty-one modules behind one panel. Each owns one job, keeps its own
           data, and can be switched off without taking anything else with it. This is the
           whole list, in roughly the order a shift uses them.
         </p>
@@ -3196,9 +3232,13 @@
               <tr><td><strong>Staff Chat</strong><br><span class="mono">staff_chat</span></td>
                 <td class="wrap">A private channel for staff, on <code>/sc</code> because it is typed dozens of times a shift.</td></tr>
               <tr><td><strong>Alerts</strong><br><span class="mono">alerts</span></td>
-                <td class="wrap">The one place every notification goes through &mdash; punishments, reports, security findings, suspicious mining, performance, staff actions &mdash; so routing and rate-limiting live in one place instead of nineteen.</td></tr>
+                <td class="wrap">The one place every notification goes through &mdash; punishments, reports, security findings, suspicious mining, performance, staff actions &mdash; so routing and rate-limiting live in one place instead of twenty-one.</td></tr>
               <tr><td><strong>Analytics</strong><br><span class="mono">analytics</span></td>
                 <td class="wrap">The staff leaderboard, and a per-person record: total actions, what kind, follow-through, overturn rate, response time, tools used and recent activity.</td></tr>
+              <tr><td><strong>Cases</strong><br><span class="mono">cases</span></td>
+                <td class="wrap">Collects what the detectors, reports and staff find about one player into a case: its signals, evidence, notes, assignee and the punishment it ended in. <code>/staff cases</code>, <code>/staff case &lt;id&gt;</code>.</td></tr>
+              <tr><td><strong>Accountability</strong><br><span class="mono">accountability</span></td>
+                <td class="wrap">The staff audit log, the rate limits on punishments and other destructive actions, two-person approval for IP bans, and the rank guard that stops staff punishing sideways or upwards.</td></tr>
               <tr><td><strong>Discord</strong><br><span class="mono">discord</span></td>
                 <td class="wrap">Outbound webhook for punishments, reports and alerts. One direction only &mdash; see <a href="#limits">Known limits</a>.</td></tr>
             </tbody>
@@ -3208,7 +3248,7 @@
         <div class="note">
           <h4>Switching one off</h4>
           <p>
-            Every module has an enable flag in <code>config/staffcore.json</code>. A disabled
+            Every module has an enable flag in <code>config/staffcore/staffcore.json</code>. A disabled
             module stops running, stops recording and disappears from the panel; what it
             already wrote stays in the database. Nothing else changes &mdash; modules reach
             each other through the registry and handle a missing neighbour rather than
@@ -3442,7 +3482,7 @@
               <tr><td class="wrap">Ender chests were described as swept but were not</td><td class="wrap">They are now, behind <code>scanEnderChests</code></td></tr>
               <tr><td class="wrap">The rules screen refused to edit past forty-five entries</td><td class="wrap">It pages</td></tr>
               <tr><td class="wrap">Vanished players always loaded chunks</td><td class="wrap"><code>vanishLoadsChunks</code>, defaulting to the old behaviour</td></tr>
-              <tr><td class="wrap">Every node fell back to op level without a permissions mod</td><td class="wrap"><code>staffcore-permissions.json</code> &mdash; real groups, and <code>/staff perms</code></td></tr>
+              <tr><td class="wrap">Every node fell back to op level without a permissions mod</td><td class="wrap"><code>config/staffcore/permissions.json</code> &mdash; real groups, and <code>/staff perms</code></td></tr>
               <tr><td class="wrap">Ledger parity: no search, no purge, no inspect toggle</td><td class="wrap"><code>/staff search</code>, <code>/staff purge</code>, <code>/staff inspect</code></td></tr>
               <tr><td class="wrap">Rolling back a double chest restored only the half you clicked</td><td class="wrap">Both halves resolve as the one container they are, from either block</td></tr>
               <tr><td class="wrap">Shift-clicking a stack in the inventory view did nothing useful</td><td class="wrap">It moves stacks between the target's inventory and your own, the way a chest does</td></tr>

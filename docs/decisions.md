@@ -972,14 +972,15 @@ Almost all of it is absorbed by [`compat/Mc.java`](src/main/java/io/github/alpha
 
 ## The panel
 
-`/staff` opens the root screen. Three bands, in the order a shift actually runs.
+`/staff` opens the root screen: your own switches, seven sections, and the information row.
+It was twenty-five buttons in three bands until the sections replaced them; why is in the
+`StaffSections` javadoc.
 
 ```
                         ┌─ StaffCore ─┐
-  you      ▸  Staff Mode · Vanish · Staff Chat · Alerts · Command Spy · Return
-  people   ▸  Players · Reports · Punish · Inventories · Notes · History · Security
-  server   ▸  Server Control · Grief Log · Analytics · Item Scanner · Appeals · Discord
-  info     ▸  Your Record · Server Status · Help
+  you       ▸  Staff Mode · Vanish · Staff Chat · Alerts · Command Spy · Movement · Return
+  sections  ▸  Players · Punishments · Security · X-ray & cheats · World · Server · Discord
+  info      ▸  Your Record · Server Status · How this works
 ```
 
 Anything you lack permission for is drawn as an **iron-bars "Locked"** bar naming the node,
@@ -1004,12 +1005,14 @@ is broken.
  │                ├─ Linked Accounts  (same-IP alts)
  │                ├─ Appeals          (their side of it)
  │                └─ Security Check   (paged findings)
- ├─ Reports ─────────── claim / resolve / teleport
- ├─ Appeals ─────────── accept (lifts the punishment) / reject
- ├─ Server Control ──── chat lock · clear · broadcast · maintenance · TPS
- ├─ Grief Log ───────── paged block history ─┬─ Rollback (ghost preview, then confirm)
- │                                            └─ Rollback History (undo a rollback)
- └─ Analytics ───────── staff leaderboard
+ ├─ Punishments ─────── Punish · Reports (claim / resolve) · Appeals (accept lifts the
+ │                      appealed punishment) · History · Banned players · By staff
+ ├─ Security ────────── Check · Sweep · Vault · Cases · Contraband rules · Linked accounts
+ ├─ X-ray & cheats ──── Prevention · X-ray report · Decoy blocks · Threshold evidence
+ ├─ World ───────────── Grief Log ─┬─ Rollback (ghost preview, then confirm)
+ │                                 └─ Restore Points (undo a rollback) · Owed · Inspect
+ ├─ Server ──────────── Control (chat lock · clear · broadcast · maintenance) · Analytics · Status
+ └─ Discord ─────────── Bot · Your link · Channels · Linked staff · Webhook · Guide
 ```
 
 Nothing irreversible happens without a **Confirm** screen, and confirm and cancel sit five
@@ -2076,6 +2079,63 @@ Discord, naming the Discord account.
 
 ---
 
+## One folder for configuration, and the bot on the panel
+
+**Date:** 2026-09-16
+
+Before the 1.1.0 release: every file an owner edits moves into `config/staffcore/`, the staff panel's
+Discord section says whether the bot is running, and two things that kept CI red are fixed.
+
+**`config/staffcore/`, with the old files moved in.** Four files sharing a prefix, loose among every
+other mod's, is a folder that had not been made. The settings keep the name `staffcore.json`, which
+the documentation and the brief both use; the others drop the prefix the folder now carries:
+`permissions.json`, `discord.json`, `discord.token`. A server upgrading has the old files moved on
+the first start and the log says so. A move and not a copy, so the token is never in two places, and
+a rename keeps the token file's permissions. When both exist the folder's copy is used and the old
+one is left alone with a warning, because it is somebody's file and may differ. When the move fails —
+a read-only folder, a file where the folder should be — the old file is used where it is, so the
+owner loses a tidy layout rather than their settings. The world's data stays beside the world: it
+belongs to the world, not to the server's configuration.
+
+The companion does its own move, with the same rules, rather than calling into StaffCore's internals:
+`ApiBoundaryTest` keeps it to the published API, which gains `configFolder()` for where the folder is.
+
+**The panel shows what the bot says about itself.** The companion is a separate mod, so the panel
+cannot look at the bot; the bot reports a `DiscordBotStatus` through the API, and `/staff status` now
+prints the same record, so the two cannot disagree. It carries a phase, the one-line summary, the
+problems, each channel and the ping, and nothing else: no token, no address, and no message a library
+wrote. A report that throws is shown as "not working" with the exception's class and never its
+message, as status lines already were. "Off" and "not set up" are different phases, because a bot the
+owner switched off and a bot that cannot start look the same in a log and need opposite responses.
+
+The section used to be for `staff.reload` only. Linking is for every staff member, so the section is
+now open at `staff.gui`, and what only an owner acts on — channels, who is linked, the webhook, and the
+detail of what is wrong — is locked inside it, the way every other section shows what somebody lacks.
+Everybody sees whether the bot runs and that something is wrong; only an owner sees what. Linking from
+the panel runs `/staff discord link` as the player, so it is the same permission check and audit row.
+
+**API version 4.** `DiscordBotStatus`, `reportDiscordBot`, `configFolder`, and the 5.5 calls on
+`DiscordAccess`, which were added without a bump.
+
+**The boot check had failed on every push for weeks, on an em dash.** CI's boot check fails when
+StaffCore writes a non-ASCII console line, because a Windows console on a legacy code page shows it as
+mojibake. The anti-xray startup line — "does not prevent it — an obfuscating mod…" — broke that on
+every boot, and the red build became background. The hook names, printed only when a hook breaks,
+carried dashes too, and no clean boot could have shown them. `ConsoleTextTest` reads the source
+instead: every literal inside a logger call, and every literal in the files whose sentences are handed
+to one. It fails with the dash put back. The companion has the same test.
+
+**A grief log read could repaint the screen inside the click that asked for it.** The log's
+background reads hand their result back with `server.execute`, which on the server thread runs at
+once. A read quick enough to finish before its callback was attached therefore ran the callback inside
+the caller: a click that drew "nothing left to roll back" on a row, then asked for a fresh page, had
+the fresh page — without that row — drawn over it in the same handler. CI met this now and then as a
+failing game test. Making every read finish at once reproduced it every time; with the hand-back always
+queued, the same forced run passes. The warning is also no longer followed by an immediate re-read,
+which would have taken the row away before anybody could read it; the two-second refresh does that.
+
+---
+
 ---
 
 <a id="testing-layers"></a>
@@ -2243,7 +2303,7 @@ Things that used to be on this list, and what replaced them:
 | Ender chests were documented as swept but were not | They are now, behind `scanEnderChests` |
 | The contraband rules screen refused to edit past 45 entries | It pages |
 | Vanished players always loaded chunks | `vanishLoadsChunks`, defaulting to the old behaviour |
-| Every node fell back to op level without a permissions mod | `config/staffcore-permissions.json` — real groups, `/staff perms` |
+| Every node fell back to op level without a permissions mod | `config/staffcore/permissions.json` — real groups, `/staff perms` |
 | Ledger parity: no search, no purge, no inspect toggle | `/staff search`, `/staff purge`, `/staff inspect` |
 | Rollback of a double chest restored only half of it | Both halves resolve as one container, from either block |
 | Shift-clicking in the inventory view did nothing useful | It moves stacks between the target and your own inventory |
@@ -2282,6 +2342,10 @@ Things that used to be on this list, and what replaced them:
 | Mining visible ore in a cave was flagged as x-ray | A vein touching open space is not hidden; the sweep leaves cave air and cave-wall ore out of its odds |
 | X-ray judged only what was found, never how the player dug | Each tunnel leg is weighed against the directions not taken, and an alert from ore needs the two to agree |
 | Rate-limit refusals printed "%d %s(s) a minute" with nothing filled in | The message is formatted as a whole; a test reads it |
+| The CI boot check failed on every push, on an em dash in a startup line | Console lines are ASCII, and a test reads every logged literal |
+| A grief log row could lose its "nothing left" warning in the same click | Background reads always report back on a later task |
+| Config files sat loose in `config/` | `config/staffcore/`, older files moved in on first start |
+| The panel's Discord section said the bridge was one-way, and only owners could open it | It shows whether the bot runs, and every staff member can link from it |
 
 ---
 

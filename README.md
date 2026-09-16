@@ -27,7 +27,7 @@ short version.
 
 ## What it does
 
-Nineteen modules behind one `/staff` command:
+Twenty-one modules behind one `/staff` command:
 
 - **Moderation** — warn, mute, kick, temp-ban and ban, from a preset offence ladder or by
   hand. Reports from players, appeals from the punished, notes for the next person on shift.
@@ -52,14 +52,43 @@ Everything it records goes in a SQLite file next to your world, backed up on eve
 
 1. Install **Fabric Loader 0.19.3 or newer** for Minecraft 26.2.
 2. Drop **[Fabric API](https://modrinth.com/mod/fabric-api)** into `mods/`.
-3. Drop `staffcore-<version>.jar` into `mods/`.
+3. Drop `staffcore-<version>.jar` into `mods/`. For the Discord bot, add
+   `staffcore-discord-<version>.jar` from the same release too — see
+   [the Discord companion](#discord-companion--staffcore-discord).
 4. Start the server.
+
+Both jars are on the [releases page](https://github.com/alphain24/StaffCore/releases).
 
 SQLite is bundled inside the jar (~12 MB, mostly native libraries), so there is nothing else
 to install and no database to set up. The mod is server-side: players connect with a vanilla
 client.
 
 Requires **Java 25**.
+
+### Where the files are
+
+Everything you edit is in one folder, `config/staffcore/`, written on first start:
+
+```
+your-server/
+├── mods/
+│   ├── staffcore-1.1.0.jar
+│   └── staffcore-discord-1.0.0.jar      (optional: the Discord bot)
+├── config/
+│   └── staffcore/
+│       ├── staffcore.json               settings
+│       ├── permissions.json             groups, when there is no permissions mod
+│       ├── discord.json                 the bot's settings (with the Discord jar)
+│       └── discord.token                the bot's token, alone (with the Discord jar)
+└── world/
+    ├── staffcore.db                     everything StaffCore records
+    └── staffcore-backups/
+```
+
+A server that ran an earlier build had these loose in `config/` as `staffcore.json`,
+`staffcore-permissions.json`, `staffcore-discord.json` and `staffcore-discord.token`. They are
+moved into the folder on the first start, settings and all, and the log says so. If a file is in
+both places, the folder's copy is used and the old one is left for you to delete.
 
 ### First five minutes
 
@@ -78,7 +107,7 @@ That opens the panel, and everything is reachable from there. A few worth knowin
 | `/staff selftest` | Check the mod is working after an update |
 
 By default **operators have every permission**. Once you have staff to assign, set
-`operatorsBypass` to false in `config/staffcore-permissions.json` and put people in groups —
+`operatorsBypass` to false in `config/staffcore/permissions.json` and put people in groups —
 see [Permissions](#permissions).
 
 ### Checking it works
@@ -86,7 +115,7 @@ see [Permissions](#permissions).
 The boot log ends with a line like:
 
 ```
-[StaffCore] Health check: 19/19 hooks present, 15 verified applied.
+[StaffCore] Health check: 22/22 hooks present, 19 verified applied.
 ```
 
 If those numbers do not match, the log names which feature is affected. `/staff selftest`
@@ -243,7 +272,7 @@ Install [fabric-permissions-api](https://github.com/lucko/fabric-permissions-api
 LuckPerms) and StaffCore picks it up automatically — the lookup is reflective and done
 once at class-load. That remains the best answer and wins outright wherever it is present.
 
-**Without one, `config/staffcore-permissions.json` answers instead.** It is written with
+**Without one, `config/staffcore/permissions.json` answers instead.** It is written with
 starter groups on first run and holds groups (node lists, with `@other` to inherit and
 `staff.*` wildcards) plus a player-to-group map. Assign people with
 `/staff perms set <player> <group>`; the file is re-read by `/staff reload`.
@@ -280,7 +309,7 @@ admin-only.
 
 ---
 
-## Config — `config/staffcore.json`
+## Config — `config/staffcore/staffcore.json`
 
 Written with defaults on first run; `/staff reload` re-reads it.
 
@@ -460,13 +489,32 @@ and inviting the bot, filling in the settings, linking accounts, appeals and tro
    embed links, read message history, create public threads and send messages in threads — and
    Manage Channels and Manage Roles to make its own private channels, which can be taken away again
    once it has.
-2. Put both jars in `mods/` and start the server once. It writes `config/staffcore-discord.json`
-   and an empty `config/staffcore-discord.token` (readable only by the server's account, on Linux).
+2. Put both jars in `mods/` and start the server once. It writes `config/staffcore/discord.json`
+   and an empty `config/staffcore/discord.token` (readable only by the server's account, on Linux).
 3. Paste the bot token, and nothing else, into the token file; fill in the settings; restart.
 
-`/staff status` shows whether the bot is off, connecting, connected, or what stopped it.
+`/staff status` shows whether the bot is off, connecting, connected, or what stopped it, and so
+does the staff panel.
 
-### `config/staffcore-discord.json`
+### In the staff panel
+
+`/staff` → **Discord** is open to every staff member (`staff.gui`), because everybody links their
+own account there. The panel button itself says whether the bot is running.
+
+| Entry | Who | Shows |
+|---|---|---|
+| **Bot** | everyone | Running, connecting, off, not set up, not working, stopped or not installed; who it is connected as and the ping. Owners see what is wrong; others see that something is. Click to refresh, with the full report in chat. |
+| **Your link** | everyone | The Discord account yours is linked to, or a click that gives you a link code |
+| **Channels** | `staff.reload` | Each channel and whether posts reach it |
+| **Linked staff** | `staff.reload` | How many accounts are linked; click to list them, each with an unlink suggestion |
+| **Webhook** | `staff.reload` | Whether `discordWebhookUrl` is set, and whether the bot has quieted it |
+| **What goes to Discord** | everyone | What is posted and what can be done from there |
+| **Setup guide** | everyone | A link to [the installation guide](docs/discord-setup.md) |
+
+The panel shows what the bot reports; its settings are changed in the file and read at the next
+start.
+
+### `config/staffcore/discord.json`
 
 Every key is checked at startup, and each problem is logged naming the key and what the
 companion is doing instead.
@@ -551,7 +599,7 @@ Each runs through the same services as its in-game command: the permission (in g
 `roleNodes`), the punishment rate limit, and the guard against punishing somebody who outranks you,
 whose refusal is shown rather than lost. Everything that changes something from Discord — commands and
 buttons alike, staff chat excepted — also counts against **`discordActionsPerMinute`** in
-`config/staffcore.json` (default 20; 0 disables): several of these have no limit in game, where doing
+`config/staffcore/staffcore.json` (default 20; 0 disables): several of these have no limit in game, where doing
 forty of them means standing in the server doing them. Lookups are recorded in the audit log, as they
 are in game. IP bans, rollbacks and inventory edits have no command and are refused to Discord by the
 services that run them.

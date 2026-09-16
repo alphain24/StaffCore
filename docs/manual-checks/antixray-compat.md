@@ -41,7 +41,7 @@ There is no way to answer it from the server side. Both mods believe they sent w
 
 ## Step 1 — Turn the override on, and understand what it is
 
-Stop the server. In `config/staffcore.json`:
+Stop the server. In `config/staffcore/staffcore.json`:
 
 ```jsonc
 "canaryForceWithBulkAntiXray": true,   // normally false — NOT a supported mode

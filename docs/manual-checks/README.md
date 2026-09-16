@@ -48,7 +48,7 @@ session measures nothing.
 
 ### Config — set these once, put them back at the end
 
-Stop the server. In `config/staffcore.json`:
+Stop the server. In `config/staffcore/staffcore.json`:
 
 | Key | Set to | Normally | Why |
 |---|---|---|---|

@@ -48,7 +48,7 @@ between the server being right and a staff member seeing something true:
 
 ## Step 1 — Turn position tracking on
 
-Stop the server. In `config/staffcore.json`:
+Stop the server. In `config/staffcore/staffcore.json`:
 
 ```jsonc
 "positionTracking": true,     // normally false
