@@ -1,11 +1,19 @@
 # Changelog
 
-## 1.2.0 — unreleased
+## 1.2.0 — 2026-09-17
 
-In progress. Ships with `staffcore-discord-1.1.0.jar`; install both jars from the same build.
+Discord extras, a permissions fix for servers without LuckPerms, and the last of the Discord brief:
+posts that wait for the bot and Gate 5. Ships with `staffcore-discord-1.1.0.jar`; install both jars
+from the same release.
 
 ### Upgrading from 1.1.0
 
+- **If `/staff` was missing for everybody**, operators included, and the log said
+  `permissions.json is ignored`: that is the permissions fix below. Update, restart, and
+  `config/staffcore/permissions.json` is written.
+- **With LuckPerms**, operators now hold the StaffCore permissions LuckPerms leaves unset, as most
+  Fabric mods do. To stop that, set `"operatorsBypass": false` in `config/staffcore/permissions.json`,
+  or set those permissions to false in LuckPerms.
 - The database gains three migrations (30–32): appeal codes are copied into their own table as they
   are, bans already over are marked so they are not announced as returns, and two tables for Discord
   evidence are added. Nothing is deleted.

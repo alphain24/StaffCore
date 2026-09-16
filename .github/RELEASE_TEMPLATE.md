@@ -57,5 +57,4 @@ and runs the game tests against real players, mobs and blocks. A tag cannot skip
 Read [Known limits](https://github.com/alphain24/StaffCore#known-limits) before deploying. The
 short version: alt detection is a lead and never a verdict, the x-ray check is a heuristic
 tuned against generated mining patterns rather than real player data, nothing here bans anybody
-automatically, and a Discord post made while the bot is disconnected is dropped rather than
-queued.
+automatically, and Discord posts still waiting for the bot when the server stops are lost.
