@@ -13,7 +13,9 @@ public sealed interface Outbound {
 
 	/** Which of the configured channels. */
 	enum Channel {
-		PUNISHMENTS, REPORTS, ALERTS, APPEALS, STAFF_LOG, STAFF_CHAT
+		PUNISHMENTS, REPORTS, ALERTS, APPEALS, STAFF_LOG, STAFF_CHAT,
+		/** Not posted to: the punishment panel's private channel. */
+		PUNISH_PANEL
 	}
 
 	/** A button on a message. Its id tells the gateway what was clicked. */

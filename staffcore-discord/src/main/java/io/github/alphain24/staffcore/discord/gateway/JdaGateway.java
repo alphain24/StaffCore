@@ -95,6 +95,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	private volatile String intakeProblem;
 	/** The appeal panel's message id, once it is posted or found; null until then. */
 	private volatile String intakePanel;
+	/** The punishment panel's message id, likewise. */
+	private volatile String punishPanelMessage;
 	/** True once Discord refused the message content intent and the bot connected without it. */
 	private volatile boolean contentIntentMissing;
 	/** When a typed staff chat line was last answered with how to use /staffchat instead. */
@@ -216,6 +218,9 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			} else if (!channelsChecked) {
 				out.add(new DiscordBotStatus.Channel(name, false, settings.toCreate(channel)
 						? "made when the bot connects" : "checked when the bot connects"));
+			} else if (channel == Outbound.Channel.PUNISH_PANEL) {
+				out.add(new DiscordBotStatus.Channel(name, punishPanelMessage != null,
+						punishPanelMessage != null ? "panel posted" : "no panel; /staff punish only"));
 			} else if (channel == Outbound.Channel.STAFF_CHAT) {
 				out.add(new DiscordBotStatus.Channel(name, true, contentIntentMissing
 						? "bridged; staff reply with /staffchat (Message Content Intent is off)" : "bridged"));
@@ -297,6 +302,7 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			setUpChannels(guild);
 			checkChannels(guild);
 			appealPanel(guild);
+			punishPanel(guild);
 			channelsChecked = true;
 			// Only now: a bot that never connects must not have silenced the webhook that works, or told
 			// banned players to use an /appeal nobody is answering.
@@ -363,47 +369,73 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		if (settings.appealsChannelId.isEmpty() || !SNOWFLAKE.matcher(settings.appealIntakeChannelId).matches()) return;
 		TextChannel channel = guild.getTextChannelById(settings.appealIntakeChannelId);
 		if (channel == null) return;
-		Outbound.Message panel = io.github.alphain24.staffcore.discord.channels.AppealPanel.message();
-		String key = io.github.alphain24.staffcore.discord.channels.AppealPanel.KEY;
 		try {
-			String messageId = null;
-			ThreadBook.Entry known = book.get(key);
-			if (known != null && channel.getId().equals(known.channelId())) messageId = known.messageId();
-			if (messageId == null) {
-				for (Message recent : channel.getHistory().retrievePast(50).complete()) {
-					boolean ours = recent.getAuthor().getIdLong() == guild.getSelfMember().getIdLong()
-							&& recent.getComponentTree().find(net.dv8tion.jda.api.components.buttons.Button.class,
-									b -> io.github.alphain24.staffcore.discord.channels.AppealPanel.BUTTON_ID
-											.equals(b.getCustomId())).isPresent();
-					if (ours) {
-						messageId = recent.getId();
-						break;
-					}
-				}
-			}
-			if (messageId != null) {
-				try {
-					channel.editMessageById(messageId, edit(panel)).complete();
-				} catch (ErrorResponseException gone) {
-					messageId = null;
-				}
-			}
-			if (messageId == null) {
-				Message posted = channel.sendMessage(create(panel)).complete();
-				messageId = posted.getId();
-				try {
-					posted.pin().complete();
-				} catch (RuntimeException ignored) {
-					// Pinning needs Pin Messages, which the bot is not asked for; the panel works unpinned.
-				}
-			}
-			// Remembered afresh at every start, so it is never forgotten as old.
-			book.put(key, new ThreadBook.Entry(channel.getId(), messageId, null, System.currentTimeMillis(), panel));
-			intakePanel = messageId;
+			intakePanel = keepPanel(guild, channel, io.github.alphain24.staffcore.discord.channels.AppealPanel.KEY,
+					io.github.alphain24.staffcore.discord.channels.AppealPanel.message(),
+					io.github.alphain24.staffcore.discord.channels.AppealPanel.BUTTON_ID);
 		} catch (RuntimeException e) {
 			setupProblems.add("the Appeal button could not be posted in #" + channel.getName() + " (" + describe(e)
 					+ "); players can still use /appeal there");
 		}
+	}
+
+	/** The punishment panel's message, as {@link #appealPanel} does for appeals. */
+	private void punishPanel(Guild guild) {
+		punishPanelMessage = null;
+		if (!SNOWFLAKE.matcher(settings.punishPanelChannelId).matches()) return;
+		TextChannel channel = guild.getTextChannelById(settings.punishPanelChannelId);
+		if (channel == null) return;
+		try {
+			punishPanelMessage = keepPanel(guild, channel, io.github.alphain24.staffcore.discord.channels.PunishPanel.KEY,
+					io.github.alphain24.staffcore.discord.channels.PunishPanel.message(),
+					io.github.alphain24.staffcore.discord.channels.PunishPanel.OPEN);
+		} catch (RuntimeException e) {
+			setupProblems.add("the punishment panel could not be posted in #" + channel.getName() + " (" + describe(e)
+					+ "); /staff punish still works");
+		}
+	}
+
+	/**
+	 * A panel message: edited if it is there, posted if it is not. Found by the key it is remembered
+	 * under, or among the channel's recent messages by its button when that memory was lost, so a
+	 * restart never posts a second one.
+	 *
+	 * @return the message's id
+	 */
+	private String keepPanel(Guild guild, TextChannel channel, String key, Outbound.Message panel, String buttonId) {
+		String messageId = null;
+		ThreadBook.Entry known = book.get(key);
+		if (known != null && channel.getId().equals(known.channelId())) messageId = known.messageId();
+		if (messageId == null) {
+			for (Message recent : channel.getHistory().retrievePast(50).complete()) {
+				boolean ours = recent.getAuthor().getIdLong() == guild.getSelfMember().getIdLong()
+						&& recent.getComponentTree().find(net.dv8tion.jda.api.components.buttons.Button.class,
+								b -> buttonId.equals(b.getCustomId())).isPresent();
+				if (ours) {
+					messageId = recent.getId();
+					break;
+				}
+			}
+		}
+		if (messageId != null) {
+			try {
+				channel.editMessageById(messageId, edit(panel)).complete();
+			} catch (ErrorResponseException gone) {
+				messageId = null;
+			}
+		}
+		if (messageId == null) {
+			Message posted = channel.sendMessage(create(panel)).complete();
+			messageId = posted.getId();
+			try {
+				posted.pin().complete();
+			} catch (RuntimeException ignored) {
+				// Pinning needs Pin Messages, which the bot is not asked for; the panel works unpinned.
+			}
+		}
+		// Remembered afresh at every start, so it is never forgotten as old.
+		book.put(key, new ThreadBook.Entry(channel.getId(), messageId, null, System.currentTimeMillis(), panel));
+		return messageId;
 	}
 
 	/** Every configured channel has to be a text channel in the guild. Said once, at connect. */
@@ -660,6 +692,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					evidenceItem(event, user, caseTyped, item);
 				}
 			}
+			case "punish" -> punishCommand(event, user, player,
+					event.getOption("offence", "", OptionMapping::getAsString));
 			case "evidence-add" -> {
 				Message.Attachment file = event.getOption("file", null, OptionMapping::getAsAttachment);
 				fileEvidence(event, user, event.getOption("case", "", OptionMapping::getAsString),
@@ -682,6 +716,191 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					event.getOption("text", "", OptionMapping::getAsString)).thenApply(DiscordResult::message));
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
+	}
+
+	// ------------------------------------------------------------------ the punishment panel
+
+	/** How long a confirmation stays usable. */
+	private static final long CONFIRM_MILLIS = 5 * 60_000L;
+
+	/** A punishment somebody has been shown and not yet confirmed. Only they can confirm it. */
+	private record PendingPunishment(String userId, String playerId, String playerName, String offenceId, int priors,
+			long expiresAt) {}
+
+	private final Map<String, PendingPunishment> pendingPunishments = new ConcurrentHashMap<>();
+	private final java.security.SecureRandom tokens = new java.security.SecureRandom();
+
+	private void panelButton(ButtonInteractionEvent event, DiscordUser user) {
+		String id = event.getComponentId();
+		if (id.equals(io.github.alphain24.staffcore.discord.channels.PunishPanel.OPEN)) {
+			event.replyModal(Modal.create(io.github.alphain24.staffcore.discord.channels.PunishPanel.PLAYER_FORM, "Punish a player")
+					.addComponents(Label.of("Minecraft name", TextInput.create("player", TextInputStyle.SHORT)
+							.setRequired(true).setMinLength(1).setMaxLength(16)
+							.setPlaceholder("Their exact name, or the start of it if nobody else shares it")
+							.build()))
+					.build()).queue();
+			return;
+		}
+		boolean confirm = id.startsWith(io.github.alphain24.staffcore.discord.channels.PunishPanel.CONFIRM);
+		boolean cancel = id.startsWith(io.github.alphain24.staffcore.discord.channels.PunishPanel.CANCEL);
+		if (!confirm && !cancel) {
+			event.reply("Unknown button.").setEphemeral(true).queue();
+			return;
+		}
+		String confirmToken = id.substring(id.lastIndexOf(':') + 1);
+		PendingPunishment pending = pendingPunishments.get(confirmToken);
+		if (pending == null || !pending.userId().equals(event.getUser().getId())) {
+			event.editMessage(new MessageEditBuilder().setContent("That confirmation has expired. Open the panel again.")
+					.setEmbeds(List.of()).setComponents(List.of()).build()).queue();
+			return;
+		}
+		pendingPunishments.remove(confirmToken);
+		if (cancel || pending.expiresAt() < System.currentTimeMillis()) {
+			event.editMessage(new MessageEditBuilder().setContent(cancel ? "Cancelled. Nothing was issued."
+					: "That confirmation has expired. Nothing was issued.")
+					.setEmbeds(List.of()).setComponents(List.of()).build()).queue();
+			return;
+		}
+		event.deferEdit().queue();
+		InteractionHook hook = event.getHook();
+		DiscordAccess.punishByOffence(user, pending.playerId(), pending.offenceId(), pending.priors())
+				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+				.whenCompleteAsync((result, failure) -> {
+					String text = failure != null ? Replies.failure(failure) : result.message();
+					hook.editOriginal(new MessageEditBuilder().setContent(Text.clip(token.redact(text), 2000))
+							.setEmbeds(List.of()).setComponents(List.of())
+							.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)).build())
+							.queue(ok -> { }, ignored -> { });
+				}, worker);
+	}
+
+	/** A player named in the panel's form: their record, and a menu of offences. */
+	private void panelPlayer(IReplyCallback event, DiscordUser user, String player) {
+		event.deferReply(true).queue();
+		InteractionHook hook = event.getHook();
+		DiscordAccess.ladder(user, player)
+				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+				.whenCompleteAsync((answer, failure) -> {
+					if (failure != null || !answer.answered()) {
+						hook.sendMessage(Text.clip(token.redact(failure != null ? Replies.failure(failure) : answer.refusal()),
+								2000)).queue(ok -> { }, ignored -> { });
+						return;
+					}
+					var ladder = answer.value();
+					var menu = net.dv8tion.jda.api.components.selections.StringSelectMenu.create(
+							io.github.alphain24.staffcore.discord.channels.PunishPanel.PICK + ladder.playerId())
+							.setPlaceholder("What did they do?");
+					int options = 0;
+					for (var rung : ladder.rungs()) {
+						if (!rung.allowed() || options == 25) continue;
+						menu.addOption(Text.clip(rung.label(), 100),
+								io.github.alphain24.staffcore.discord.channels.PunishPanel.optionValue(rung),
+								Text.clip(rung.applies() + (rung.priors() == 0 ? ", first time" : ", " + rung.priors() + " before"), 100));
+						options++;
+					}
+					MessageCreateBuilder reply = new MessageCreateBuilder()
+							.setEmbeds(List.of(embed(io.github.alphain24.staffcore.discord.channels.PunishPanel.ladder(ladder))))
+							.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class));
+					if (options == 0) {
+						reply.setContent("None of the offences' punishments are yours to give from Discord.");
+					} else {
+						reply.setComponents(List.of(ActionRow.of(menu.build())));
+					}
+					hook.sendMessage(reply.build()).queue(ok -> { }, ignored -> { });
+				}, worker);
+	}
+
+	/** An offence picked from the panel's menu: what it would issue, with Confirm and Cancel. */
+	@Override
+	public void onStringSelectInteraction(net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent event) {
+		String id = event.getComponentId();
+		if (!id.startsWith(io.github.alphain24.staffcore.discord.channels.PunishPanel.PICK)) return;
+		if (!inGuild(event.getGuild()) || event.getValues().isEmpty()) return;
+		String playerId = id.substring(io.github.alphain24.staffcore.discord.channels.PunishPanel.PICK.length());
+		String[] picked = event.getValues().get(0).split("\\|", 2);
+		DiscordUser user = userOf(event.getMember(), event.getUser());
+		event.deferEdit().queue();
+		InteractionHook hook = event.getHook();
+		// Read again rather than trusted from the menu: the record may have moved since it was drawn.
+		DiscordAccess.ladder(user, playerId)
+				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+				.whenCompleteAsync((answer, failure) -> {
+					if (failure != null || !answer.answered()) {
+						hook.editOriginal(new MessageEditBuilder().setContent(Text.clip(token.redact(failure != null
+								? Replies.failure(failure) : answer.refusal()), 2000)).setEmbeds(List.of())
+								.setComponents(List.of()).build()).queue(ok -> { }, ignored -> { });
+						return;
+					}
+					var ladder = answer.value();
+					var rung = ladder.rungs().stream().filter(r -> r.offenceId().equals(picked[0])).findFirst().orElse(null);
+					if (rung == null || !rung.allowed()) {
+						hook.editOriginal(new MessageEditBuilder().setContent("That offence is not one you can give from here.")
+								.setEmbeds(List.of()).setComponents(List.of()).build()).queue(ok -> { }, ignored -> { });
+						return;
+					}
+					String confirmToken = newToken();
+					pendingPunishments.put(confirmToken, new PendingPunishment(event.getUser().getId(), playerId,
+							ladder.playerName(), rung.offenceId(), rung.priors(), System.currentTimeMillis() + CONFIRM_MILLIS));
+					hook.editOriginal(confirmMessage(ladder.playerName(), rung, confirmToken)).queue(ok -> { }, ignored -> { });
+				}, worker);
+	}
+
+	/** {@code /staff punish <player> <offence>}: straight to the confirmation. */
+	private void punishCommand(SlashCommandInteractionEvent event, DiscordUser user, String player, String offenceId) {
+		event.deferReply(true).queue();
+		InteractionHook hook = event.getHook();
+		String userId = event.getUser().getId();
+		DiscordAccess.ladder(user, player)
+				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+				.whenCompleteAsync((answer, failure) -> {
+					if (failure != null || !answer.answered()) {
+						hook.sendMessage(Text.clip(token.redact(failure != null ? Replies.failure(failure) : answer.refusal()),
+								2000)).queue(ok -> { }, ignored -> { });
+						return;
+					}
+					var ladder = answer.value();
+					var rung = ladder.rungs().stream().filter(r -> r.offenceId().equalsIgnoreCase(offenceId.strip()))
+							.findFirst().orElse(null);
+					if (rung == null) {
+						hook.sendMessage("There is no offence \"" + Text.safe(offenceId, 40) + "\". Pick one from the list.")
+								.queue(ok -> { }, ignored -> { });
+						return;
+					}
+					if (!rung.allowed()) {
+						hook.sendMessage("That offence would issue a " + Text.safe(rung.applies(), 40)
+								+ ", which is not yours to give from Discord.").queue(ok -> { }, ignored -> { });
+						return;
+					}
+					String confirmToken = newToken();
+					pendingPunishments.put(confirmToken, new PendingPunishment(userId, ladder.playerId().toString(),
+							ladder.playerName(), rung.offenceId(), rung.priors(), System.currentTimeMillis() + CONFIRM_MILLIS));
+					var edit = confirmMessage(ladder.playerName(), rung, confirmToken);
+					hook.sendMessage(new MessageCreateBuilder().applyEditData(edit).build()).queue(ok -> { }, ignored -> { });
+				}, worker);
+	}
+
+	private net.dv8tion.jda.api.utils.messages.MessageEditData confirmMessage(String playerName,
+			io.github.alphain24.staffcore.api.DiscordLadder.Rung rung, String confirmToken) {
+		Outbound.Message message = Outbound.Message.of(
+				io.github.alphain24.staffcore.discord.channels.PunishPanel.confirmation(playerName, rung))
+				.withRows(List.of(List.of(
+						new Outbound.Button(io.github.alphain24.staffcore.discord.channels.PunishPanel.CONFIRM + confirmToken,
+								"Confirm: " + Text.clip(rung.applies(), 60), Outbound.Button.Style.DANGER, false),
+						new Outbound.Button(io.github.alphain24.staffcore.discord.channels.PunishPanel.CANCEL + confirmToken,
+								"Cancel", Outbound.Button.Style.SECONDARY, false))));
+		return edit(message);
+	}
+
+	/** A confirmation's id: unguessable, and dropped when used or old. */
+	private String newToken() {
+		long now = System.currentTimeMillis();
+		pendingPunishments.values().removeIf(p -> p.expiresAt() < now);
+		while (pendingPunishments.size() >= 500) {
+			pendingPunishments.remove(pendingPunishments.keySet().iterator().next());
+		}
+		byte[] bytes = new byte[12];
+		tokens.nextBytes(bytes);
+		return java.util.HexFormat.of().formatHex(bytes);
 	}
 
 	// ------------------------------------------------------------------ the evidence locker
@@ -892,6 +1111,16 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		if (!"staff".equals(event.getName()) || !inGuild(event.getGuild())) return;
 		String option = event.getFocusedOption().getName();
 		DiscordUser user = userOf(event.getMember(), event.getUser());
+		if (option.equals("offence")) {
+			DiscordAccess.suggestOffences(user, event.getFocusedOption().getValue())
+					.completeOnTimeout(List.of(), 2, TimeUnit.SECONDS)
+					.whenCompleteAsync((found, failure) -> event.replyChoices(
+							failure != null || found == null ? List.of() : found.stream().limit(25)
+									.map(s -> new net.dv8tion.jda.api.interactions.commands.Command.Choice(s.label(), s.value()))
+									.toList())
+							.queue(ok -> { }, ignored -> { }), worker);
+			return;
+		}
 		if (option.equals("case")) {
 			DiscordAccess.suggestCases(user, event.getFocusedOption().getValue())
 					.completeOnTimeout(List.of(), 2, TimeUnit.SECONDS)
@@ -964,6 +1193,14 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 
 	@Override
 	public void onButtonInteraction(ButtonInteractionEvent event) {
+		if (event.getComponentId().startsWith(io.github.alphain24.staffcore.discord.channels.PunishPanel.PREFIX)) {
+			if (!inGuild(event.getGuild())) {
+				event.reply("This bot only answers in its own server.").setEphemeral(true).queue();
+				return;
+			}
+			panelButton(event, userOf(event.getMember(), event.getUser()));
+			return;
+		}
 		Clicked clicked = Clicked.parse(event.getComponentId());
 		if (clicked == null) return;
 		if (!inGuild(event.getGuild())) {
@@ -1020,6 +1257,10 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		if (modalId.equals(io.github.alphain24.staffcore.discord.channels.AppealPanel.FORM_ID)) {
 			answer(event, DiscordAccess.fileAppeal(user, value(event, "code").replaceAll("[^A-Za-z0-9]", ""),
 					value(event, "reason")).thenApply(DiscordResult::message));
+			return;
+		}
+		if (modalId.equals(io.github.alphain24.staffcore.discord.channels.PunishPanel.PLAYER_FORM)) {
+			panelPlayer(event, user, value(event, "player"));
 			return;
 		}
 		if (modalId.startsWith("sc:evmsg:")) {

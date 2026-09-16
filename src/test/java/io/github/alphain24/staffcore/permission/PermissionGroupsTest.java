@@ -187,4 +187,40 @@ class PermissionGroupsTest {
 		assertFalse(g.check(null, "h", Nodes.NOTES),
 				"staff.notes was put back after the owner deliberately removed it");
 	}
+
+	/** A v1 file: helper as v1 wrote it, admin as every build before v2 wrote it. */
+	private static PermissionGroups writtenBeforeV2() {
+		PermissionGroups g = new PermissionGroups();
+		g.configVersion = 1;
+		g.groups.put("admin", new java.util.ArrayList<>(List.of(
+				"@moderator", "staff.punish.revoke", "staff.history.clear", "security.invsee.edit",
+				"grief.rollback", "grief.purge", "control.*", "analytics.stats",
+				"staff.reload", "security.*", "staff.appeals", "staff.perms", "staff.replay")));
+		g.players.put("a", "admin");
+		g.players.put("m", "moderator");
+		return g;
+	}
+
+	@Test
+	@DisplayName("the Discord punishment panel is the admin group's, and a starter moderator does not get it")
+	void punishPanelIsForAdmins() {
+		PermissionGroups fresh = new PermissionGroups();
+		fresh.players.put("a", "admin");
+		fresh.players.put("m", "moderator");
+		assertTrue(fresh.check(null, "a", Nodes.DISCORD_PUNISH_PANEL), "a new admin group cannot use the panel");
+		assertFalse(fresh.check(null, "m", Nodes.DISCORD_PUNISH_PANEL),
+				"staff.punish.* reached the panel; it has to stay outside that wildcard");
+
+		PermissionGroups old = writtenBeforeV2();
+		assertFalse(old.check(null, "a", Nodes.DISCORD_PUNISH_PANEL));
+		assertTrue(old.migrate());
+		assertTrue(old.check(null, "a", Nodes.DISCORD_PUNISH_PANEL), "an untouched admin group was not upgraded");
+		assertEquals(fresh.groups.get("admin"), old.groups.get("admin"));
+
+		PermissionGroups edited = writtenBeforeV2();
+		edited.groups.get("admin").remove("staff.replay");
+		List<String> chosen = List.copyOf(edited.groups.get("admin"));
+		edited.migrate();
+		assertEquals(chosen, edited.groups.get("admin"), "an edited admin group was rewritten");
+	}
 }

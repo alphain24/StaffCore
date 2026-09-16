@@ -111,4 +111,13 @@ public final class Nodes {
 	 * the permissive one for this.
 	 */
 	public static final String REPLAY          = "staff.replay";
+
+	/**
+	 * The punishment panel in Discord: punishing by offence ladder from a private channel.
+	 * <p>
+	 * Its own node outside {@code staff.punish.*}, so the starter moderator group, which holds that
+	 * wildcard, does not get it: the panel is for admins unless an owner decides otherwise. The
+	 * punishment a ladder picks still needs its own node as well.
+	 */
+	public static final String DISCORD_PUNISH_PANEL = "discord.punishpanel";
 }

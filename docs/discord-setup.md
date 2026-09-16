@@ -178,7 +178,8 @@ Open the file the server wrote and fill it in. A complete example — your ids w
   "guildId": "111111111111111111",
   "roleNodes": {
     "222222222222222222": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat"],
-    "333333333333333333": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat", "staff.appeals", "staff.punish.warn", "staff.punish.mute", "staff.punish.ban", "staff.punish.revoke", "staff.audit", "analytics.stats"]
+    "333333333333333333": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat", "staff.appeals", "staff.punish.warn", "staff.punish.mute", "staff.punish.ban", "staff.punish.revoke", "staff.audit", "analytics.stats"],
+    "444444444444444444": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat", "staff.appeals", "staff.punish.warn", "staff.punish.mute", "staff.punish.ban", "staff.punish.revoke", "staff.audit", "analytics.stats", "discord.punishpanel"]
   },
   "requestTimeoutSeconds": 10,
   "punishmentsChannelId": "create",
@@ -188,6 +189,7 @@ Open the file the server wrote and fill it in. A complete example — your ids w
   "appealIntakeChannelId": "create",
   "staffLogChannelId": "create",
   "staffChatChannelId": "create",
+  "punishPanelChannelId": "create",
   "discordAlertSeverity": 70,
   "serverName": "",
   "evidenceMaxMegabytes": 25,
@@ -221,12 +223,13 @@ When the bot connects, it makes a **StaffCore** category and puts every staff ch
 | `#appeals` | `appealsChannelId` | Appeals, with buttons |
 | `#staff-log` | `staffLogChannelId` | Every staff command — busy |
 | `#staff-chat` | `staffChatChannelId` | Staff chat, both ways |
+| `#punish` | `punishPanelChannelId` | The punishment panel — only for roles with `discord.punishpanel` |
 
 **All of them are private.** Nobody can see the category or its channels except:
 
 - the bot,
 - the staff roles listed in `roleNodes` — they can read everything, reply in threads, and type in
-  `#staff-chat`,
+  `#staff-chat`; `#punish` only for the roles whose list has `discord.punishpanel`,
 - anybody with Administrator, as always in Discord.
 
 Threads are as private as their channel, so every report, appeal and case thread is private too.
@@ -262,7 +265,8 @@ what it may do is a list:
 ```json
 "roleNodes": {
   "111111111111111111": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat"],
-  "222222222222222222": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat", "staff.appeals", "staff.punish.warn", "staff.punish.mute", "staff.punish.ban", "staff.punish.revoke", "staff.audit", "analytics.stats"]
+  "222222222222222222": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat", "staff.appeals", "staff.punish.warn", "staff.punish.mute", "staff.punish.ban", "staff.punish.revoke", "staff.audit", "analytics.stats"],
+  "333333333333333333": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat", "staff.appeals", "staff.punish.warn", "staff.punish.mute", "staff.punish.ban", "staff.punish.revoke", "staff.audit", "analytics.stats", "discord.punishpanel"]
 }
 ```
 
@@ -303,6 +307,7 @@ The permissions the bot uses:
 | `staff.punish.revoke` | `/staff unmute`, `/staff unban` |
 | `staff.audit` | `/staff staff-history` |
 | `analytics.stats` | `/staff analytics` |
+| `discord.punishpanel` | The punishment panel in `#punish`, and `/staff punish`. Only for admin roles: the roles that list it are the ones that can see `#punish` |
 
 Keep the file valid JSON: quotes around every id, commas between entries, none after the last. If
 it cannot be read, the bot stays off and the log says so — the file is not replaced.
@@ -390,6 +395,13 @@ A command from Discord meets the same checks as in game — the permission, the 
 the rule against punishing somebody who outranks you — and on top of that everything you change from
 Discord counts against `discordActionsPerMinute` in `config/staffcore/staffcore.json` (20 a minute
 unless changed). IP bans, rollbacks and inventory edits are not available from Discord at all.
+
+### The punishment panel (admins)
+
+In `#punish`, press **Punish**, type the player's name, pick what they did, and press **Confirm**. The
+server's offence ladders decide the punishment from the player's record, the same as the punish screen
+in game. `/staff punish <player> <offence>` does the same from any channel. You need
+`discord.punishpanel` (the starter admin group has it) and the permission for the punishment itself.
 
 ### Filing evidence
 

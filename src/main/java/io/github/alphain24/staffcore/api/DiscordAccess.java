@@ -243,6 +243,37 @@ public final class DiscordAccess {
 		return DiscordGate.analytics(user, staffName);
 	}
 
+	/** The permission the punishment panel needs, for deciding which roles see its channel. */
+	public static final String PUNISH_PANEL_NODE = io.github.alphain24.staffcore.permission.Nodes.DISCORD_PUNISH_PANEL;
+
+	/**
+	 * Offence ids for autocomplete, with what each is called. Only for a linked account allowed to use the
+	 * punishment panel.
+	 */
+	public static CompletableFuture<List<DiscordSuggestion>> suggestOffences(DiscordUser user, String prefix) {
+		return DiscordGate.suggestOffences(user, prefix);
+	}
+
+	/**
+	 * A player's standing on every offence ladder, for the punishment panel. Behind
+	 * {@code discord.punishpanel} on both sides, and audited as a lookup.
+	 */
+	public static CompletableFuture<DiscordAnswer<DiscordLadder>> ladder(DiscordUser user, String player) {
+		return DiscordGate.ladder(user, player);
+	}
+
+	/**
+	 * Punishes a player by an offence's ladder, as the punish screen in game does: the rung their record
+	 * reaches, with the offence as the reason. {@code expectedPriors} is the record the person was shown;
+	 * if it has changed since, nothing is issued and they are asked to look again.
+	 *
+	 * @param player the player's id as {@link DiscordLadder#playerId()} gave it, or a name
+	 */
+	public static CompletableFuture<DiscordResult> punishByOffence(DiscordUser user, String player, String offenceId,
+			int expectedPriors) {
+		return DiscordGate.punishByOffence(user, player, offenceId, expectedPriors);
+	}
+
 	/**
 	 * The folder files kept as evidence go in, beside the world; null before the server has started. A
 	 * companion writes a file there before filing it, named as {@link DiscordEvidenceFile#storedPath} says.

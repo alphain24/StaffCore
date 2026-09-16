@@ -129,7 +129,8 @@ class DiscordSettingsTest {
 				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.ALERTS,
 				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.APPEALS,
 				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.STAFF_LOG,
-				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.STAFF_CHAT)) {
+				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.STAFF_CHAT,
+				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.PUNISH_PANEL)) {
 			assertTrue(s.toCreate(channel), channel + " is not made by default");
 		}
 		// The players' channel is made too, as a public one.

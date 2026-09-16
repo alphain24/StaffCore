@@ -63,6 +63,7 @@ public final class ChannelSetup {
 			case APPEALS -> "appeals";
 			case STAFF_LOG -> "staff-log";
 			case STAFF_CHAT -> "staff-chat";
+			case PUNISH_PANEL -> "punish";
 		};
 	}
 
@@ -71,6 +72,8 @@ public final class ChannelSetup {
 	 * appeals and cases are discussed; only staff chat is a channel people type into.
 	 */
 	static Set<Permission> staff(Channel channel) {
+		// The panel is one message and a button; there is nothing to reply to.
+		if (channel == Channel.PUNISH_PANEL) return EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_HISTORY);
 		Set<Permission> allowed = EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_HISTORY,
 				Permission.MESSAGE_SEND_IN_THREADS);
 		if (channel == Channel.STAFF_CHAT) allowed.add(Permission.MESSAGE_SEND);
@@ -104,13 +107,15 @@ public final class ChannelSetup {
 		}
 
 		List<Role> staffRoles = new ArrayList<>();
-		for (String roleId : settings.roleNodes.keySet()) {
-			Role role = guild.getRoleById(roleId);
+		List<Role> panelRoles = new ArrayList<>();
+		for (var mapping : settings.roleNodes.entrySet()) {
+			Role role = guild.getRoleById(mapping.getKey());
 			if (role == null) {
-				problems.add("role " + roleId + " in roleNodes is not in " + guild.getName()
+				problems.add("role " + mapping.getKey() + " in roleNodes is not in " + guild.getName()
 						+ ", so it was not given access to the new channels");
 			} else {
 				staffRoles.add(role);
+				if (mapping.getValue().contains(PANEL_NODE)) panelRoles.add(role);
 			}
 		}
 		if (staffRoles.isEmpty()) {
@@ -125,7 +130,8 @@ public final class ChannelSetup {
 				TextChannel text = existing(category, name(channel));
 				if (text == null) {
 					ChannelAction<TextChannel> action = guild.createTextChannel(name(channel), category);
-					text = privately(action, guild, staffRoles, staff(channel)).complete();
+					text = privately(action, guild, channel == Channel.PUNISH_PANEL ? panelRoles : staffRoles,
+							staff(channel)).complete();
 					StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Made private channel #{} in {}.", text.getName(),
 							CATEGORY);
 				} else {
@@ -149,6 +155,9 @@ public final class ChannelSetup {
 		for (Channel channel : Channel.values()) names.add(name(channel));
 		return names;
 	}
+
+	/** The permission whose roles see the punishment panel's channel. */
+	static final String PANEL_NODE = io.github.alphain24.staffcore.api.DiscordAccess.PUNISH_PANEL_NODE;
 
 	/** The name the players' appeal channel is made with. */
 	static final String INTAKE = "appeal";

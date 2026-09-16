@@ -9,11 +9,14 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`.
 - **Staff are told when a banned player comes back**: the first join after a ban ran out or was
   lifted is announced in game, in the Discord alerts channel and in the ban's case, once per ban.
   `notifyReturningPlayers` (on). Bans already over when you upgrade are not announced.
-
 - **`/staffchat <message>`** in the Discord staff chat channel.
 - **A public `#appeal` channel** in Discord with an **Appeal** button that opens the appeal form (code
   and reason); `/appeal` works there too. `appealIntakeChannelId` accepts `create` and is `create` in
   new settings files.
+- **A punishment panel in Discord, for admins**: a private `#punish` channel with a Punish button, and
+  `/staff punish <player> <offence>`, both punishing by the server's offence ladders with a confirmation
+  that issues nothing if the player's record changed. Needs the new `discord.punishpanel` permission,
+  which the starter admin group gets (permissions file v2) and moderators do not.
 - **An evidence locker in Discord**: `/staff evidence-add` files a file or note on a case, and a message's
   *Add to case evidence* menu files the message with its files. Files are downloaded and kept beside the
   world, named by SHA-256, up to `evidenceMaxMegabytes` (25); the filing is posted in the case's thread,

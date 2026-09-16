@@ -590,6 +590,113 @@ public final class DiscordGate {
 		return out;
 	}
 
+	// ------------------------------------------------------------------ the punishment panel
+
+	/** A player named by id, as the panel hands it back, or by name as anything else is. */
+	private static Named namedOrId(MinecraftServer server, String typed) {
+		if (typed != null) {
+			try {
+				UUID id = UUID.fromString(typed.strip());
+				String name = io.github.alphain24.staffcore.util.PlayerLookup.nameOf(server, id, null);
+				if (name != null) return new Named(new NameAndId(id, name), null);
+				return new Named(null, "That player is not known to this server any more.");
+			} catch (IllegalArgumentException notAnId) {
+				// A name, then.
+			}
+		}
+		return named(server, typed);
+	}
+
+	private static io.github.alphain24.staffcore.modules.punish.Offence offence(String id) {
+		for (var offence : io.github.alphain24.staffcore.config.StaffConfig.get().offences) {
+			if (offence.id.equalsIgnoreCase(id == null ? "" : id.strip())) return offence;
+		}
+		return null;
+	}
+
+	public static CompletableFuture<List<io.github.alphain24.staffcore.api.DiscordSuggestion>> suggestOffences(
+			DiscordUser user, String prefix) {
+		return onServer(server -> {
+			var standing = resolve(server, user).standing();
+			if (!standing.linked() || !standing.holds(DiscordOperation.PUNISH_PANEL.node())) {
+				return List.<io.github.alphain24.staffcore.api.DiscordSuggestion>of();
+			}
+			String typed = prefix == null ? "" : prefix.strip().toLowerCase(java.util.Locale.ROOT);
+			List<io.github.alphain24.staffcore.api.DiscordSuggestion> out = new ArrayList<>();
+			for (var offence : io.github.alphain24.staffcore.config.StaffConfig.get().offences) {
+				if (!offence.id.toLowerCase(java.util.Locale.ROOT).startsWith(typed)
+						&& !offence.label.toLowerCase(java.util.Locale.ROOT).contains(typed)) continue;
+				out.add(new io.github.alphain24.staffcore.api.DiscordSuggestion(offence.label, offence.id));
+				if (out.size() == 25) break;
+			}
+			return out;
+		}, List.of());
+	}
+
+	public static CompletableFuture<DiscordAnswer<io.github.alphain24.staffcore.api.DiscordLadder>> ladder(
+			DiscordUser user, String player) {
+		return read(user, DiscordOperation.PUNISH_PANEL, (server, resolved) -> {
+			Named named = namedOrId(server, player);
+			if (named.player() == null) return DiscordAnswer.no(named.refusal());
+			UUID id = named.player().id();
+			var punish = Mods.punish();
+			List<io.github.alphain24.staffcore.api.DiscordLadder.Rung> rungs = new ArrayList<>();
+			for (var offence : io.github.alphain24.staffcore.config.StaffConfig.get().offences) {
+				int priors = punish.countForOffence(id, offence.id);
+				var step = offence.stepFor(priors);
+				rungs.add(new io.github.alphain24.staffcore.api.DiscordLadder.Rung(offence.id, offence.label,
+						offence.description, priors, step.describe(), step.baseType().name(),
+						offence.escalatesFurther(priors) ? offence.stepFor(priors + 1).describe() : null,
+						resolved.standing().holds(step.baseType().node())));
+			}
+			var ban = punish.activeBan(id);
+			var mute = punish.activeMute(id);
+			audit(resolved, user, "punish panel " + named.player().name(), null);
+			return DiscordAnswer.of(new io.github.alphain24.staffcore.api.DiscordLadder(id, named.player().name(),
+					punish.history(id).size(),
+					ban == null ? null : ban.type().label() + ", " + ban.remaining() + ": " + ban.reasonOr("no reason"),
+					mute == null ? null : mute.type().label() + ", " + mute.remaining() + ": " + mute.reasonOr("no reason"),
+					rungs));
+		});
+	}
+
+	public static CompletableFuture<DiscordResult> punishByOffence(DiscordUser user, String player, String offenceId,
+			int expectedPriors) {
+		return act(user, DiscordOperation.PUNISH_PANEL, (server, resolved) -> {
+			Named named = namedOrId(server, player);
+			if (named.player() == null) return DiscordResult.no(named.refusal());
+			var offence = offence(offenceId);
+			if (offence == null) return DiscordResult.no("There is no offence \"" + offenceId + "\" on this server.");
+
+			int priors = Mods.punish().countForOffence(named.player().id(), offence.id);
+			if (priors != expectedPriors) {
+				return DiscordResult.no(named.player().name() + "'s record for " + offence.label + " has changed since "
+						+ "you looked (" + expectedPriors + " before, " + priors + " now). Open the panel again.");
+			}
+			var step = offence.stepFor(priors);
+			var base = step.baseType();
+			// The ladder picks the punishment; the person still needs to be allowed to give that one, on
+			// both sides, as they would to give it by name.
+			if (!resolved.standing().holds(base.node())) {
+				return DiscordResult.no("This rung is a " + base.label().toLowerCase(java.util.Locale.ROOT)
+						+ ", which needs " + base.node() + " in game and in your Discord role.");
+			}
+			Long durationMs = step.durationMs();
+			String staffName = resolved.standing().minecraftName();
+			String[] refusal = new String[1];
+			var issued = Mods.punish().apply(server, named.player(), staffName, base, durationMs, offence.label,
+					offence.id, null, resolved.actor(), why -> refusal[0] = why);
+			audit(resolved, user, "punish " + named.player().name() + " for " + offence.id + " (" + step.describe()
+					+ (issued == null ? ", refused" : "") + ")", issued == null ? null : issued.caseId());
+			if (issued == null) {
+				return DiscordResult.no(refusal[0] != null ? refusal[0] : "The punishment was not issued.");
+			}
+			return new DiscordResult(true, io.github.alphain24.staffcore.modules.cases.CaseClosing.label(issued) + " "
+					+ named.player().name() + " for " + offence.label + " (" + step.describe() + ", "
+					+ (priors == 0 ? "first time" : priors + " before") + ").");
+		});
+	}
+
 	// ------------------------------------------------------------------ evidence from Discord
 
 	public static java.nio.file.Path evidenceFolder() {

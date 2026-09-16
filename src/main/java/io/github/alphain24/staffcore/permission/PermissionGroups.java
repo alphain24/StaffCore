@@ -46,7 +46,7 @@ public final class PermissionGroups {
 	public int configVersion = 0;
 
 	/** The version this build writes. Raise it when a starter group changes and should propagate. */
-	private static final int CURRENT_VERSION = 1;
+	private static final int CURRENT_VERSION = 2;
 
 	/** Groups, in the shape the handbook has always suggested setting them up. */
 	public Map<String, List<String>> groups = defaultGroups();
@@ -85,7 +85,8 @@ public final class PermissionGroups {
 		out.put("admin", new ArrayList<>(List.of(
 				"@moderator", Nodes.UNPUNISH, Nodes.HISTORY_CLEAR, Nodes.INVSEE_EDIT,
 				Nodes.ROLLBACK, Nodes.GRIEF_PURGE, "control.*", Nodes.ANALYTICS,
-				Nodes.RELOAD, "security.*", Nodes.APPEALS, Nodes.PERMS_ADMIN, Nodes.REPLAY)));
+				Nodes.RELOAD, "security.*", Nodes.APPEALS, Nodes.PERMS_ADMIN, Nodes.REPLAY,
+				Nodes.DISCORD_PUNISH_PANEL)));
 		return out;
 	}
 
@@ -96,6 +97,12 @@ public final class PermissionGroups {
 	 * disk on servers that ran an older build, and it has to keep matching those files even if
 	 * a constant is renamed later.
 	 */
+	/** The admin group exactly as every build before v2 wrote it. Literals, for the reason above. */
+	private static final List<String> ADMIN_BEFORE_V2 = List.of(
+			"@moderator", "staff.punish.revoke", "staff.history.clear", "security.invsee.edit",
+			"grief.rollback", "grief.purge", "control.*", "analytics.stats",
+			"staff.reload", "security.*", "staff.appeals", "staff.perms", "staff.replay");
+
 	private static final List<String> HELPER_BEFORE_V1 = List.of(
 			"staff.gui", "staff.mode", "staff.vanish", "staff.freeze", "staff.tp",
 			"staff.chat", "staff.alerts", "staff.notes.*", "staff.history",
@@ -135,6 +142,22 @@ public final class PermissionGroups {
 						+ "edited, so it was left as it is. It does not grant staff.notes, which "
 						+ "/staff note needs - add \"staff.notes\" to it in "
 						+ "config/staffcore/permissions.json if helpers should write notes.");
+			}
+		}
+
+		// v2: admin gained discord.punishpanel, the Discord punishment panel.
+		if (from < 2 && groups != null && groups.containsKey("admin")) {
+			List<String> admin = groups.get("admin");
+			if (ADMIN_BEFORE_V2.equals(admin)) {
+				List<String> upgraded = new ArrayList<>(admin);
+				upgraded.add(Nodes.DISCORD_PUNISH_PANEL);
+				groups.put("admin", upgraded);
+				StaffCore.LOGGER.info("[StaffCore] Permissions upgrade: added discord.punishpanel to the "
+						+ "admin group, for the punishment panel in Discord.");
+			} else if (!holds("admin", Nodes.DISCORD_PUNISH_PANEL)) {
+				StaffCore.LOGGER.info("[StaffCore] Permissions upgrade: the admin group has been edited, so "
+						+ "it was left as it is. Add \"discord.punishpanel\" to whichever group should use "
+						+ "the punishment panel in Discord.");
 			}
 		}
 

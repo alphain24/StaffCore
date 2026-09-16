@@ -29,6 +29,9 @@ final class StaffCommands {
 								.addOptions(caseId(), new OptionData(OptionType.INTEGER, "item",
 										"One piece of evidence, by its number, with any files kept", false)
 										.setMinValue(1)),
+						sub("punish", "Punish a player by an offence ladder (the punishment panel's permission)")
+								.addOptions(player(), new OptionData(OptionType.STRING, "offence", "What they did", true, true)
+										.setMaxLength(64)),
 						sub("evidence-add", "File a note or a file as evidence on a case")
 								.addOptions(caseId(),
 										new OptionData(OptionType.ATTACHMENT, "file", "A screenshot, video or log", false),

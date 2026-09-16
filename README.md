@@ -533,6 +533,7 @@ companion is doing instead.
 | `appealsChannelId` | `create` | Where appeals are posted for staff, each with a thread and buttons. Setting it offers `/appeal` to players and has the bot read direct messages sent to it, which is where players answer questions and hear verdicts. Empty takes no appeals from Discord. |
 | `appealIntakeChannelId` | `create` | The players' appeal channel: `/appeal` is answered only there, and the bot keeps a message in it with an **Appeal** button that opens the form. `create` makes a public `#appeal` that everybody can read and only the bot can write in. Empty answers `/appeal` anywhere in the server and posts no button. |
 | `staffLogChannelId` | `create` | Where every audited staff action is posted — one post per command on a busy server. Empty posts none. |
+| `punishPanelChannelId` | `create` | The punishment panel's channel — see below. `create` makes it private to the bot and to the roles whose `roleNodes` list `discord.punishpanel`, not to every staff role. Empty posts no panel. |
 | `staffChatChannelId` | `create` | A channel bridged with staff chat both ways. Typing there needs Message Content Intent switched on for the bot; without it the bot connects anyway, game lines still arrive, and staff answer with `/staffchat`, which `/staff status` and the panel point out. Empty bridges nothing. |
 | `discordAlertSeverity` | `70` | The lowest signal confidence (0–100) posted to the alerts channel on its own. A signal that opens a case is always posted, because the case needs its thread. |
 | `serverName` | empty | Shown on report posts, for a network sharing one Discord. Empty shows nothing. |
@@ -594,6 +595,7 @@ answer private to whoever asked:
 | `/staff profile <player>` | `staff.gui` | Their standing: punishments, points, notes, what is in force, open cases |
 | `/staff case <id>` | `staff.gui` | A case and the latest of its history |
 | `/staff evidence <case> [item]` | `staff.gui` | The evidence filed on a case; with `item`, one piece in full with its kept files |
+| `/staff punish <player> <offence>` | `discord.punishpanel` | Punish by offence ladder, with a confirmation — see below |
 | `/staff evidence-add <case> [file] [note]` | `staff.gui` | File a file or a note as evidence — see below |
 | `/staff staff-history <staff> [days]` | `staff.audit` | What a staff member did — never where from |
 | `/staff analytics [staff]` | `analytics.stats` | Server totals, and one staff member's or the busiest staff's numbers |
@@ -633,6 +635,22 @@ The filing, with its kept files, is posted in the case's thread. `/staff evidenc
 piece with its number; **`/staff evidence <case> item:<n>`** shows one piece in full and attaches its
 kept files, privately. In game the evidence reads as *From Discord* on the case screen, and opening it
 prints the message, the files with their hashes, and a link to the message.
+
+### The punishment panel
+
+A private `#punish` channel holds a message with a **Punish** button. Press it, name the player, pick
+what they did from the server's offences, and confirm: the player's record picks the rung, exactly as
+the punish screen in game does, and the offence is the reason. `/staff punish <player> <offence>` goes
+straight to the same confirmation. Everything is private to whoever pressed it.
+
+- It needs **`discord.punishpanel`** in game and in the role's `roleNodes`. The starter **admin** group
+  has it; the starter moderator group does not, even though it holds `staff.punish.*`.
+- The punishment the ladder picks needs its own permission too — a ban needs `staff.punish.ban` — and
+  an offence whose rung is not yours to give is shown and cannot be picked.
+- If the player's record changes between the confirmation being drawn and pressed, nothing is issued
+  and you are asked to look again. A confirmation lasts five minutes and only works for whoever drew it.
+- `punishPanelChannelId` (`create`) makes the channel visible only to the roles whose `roleNodes`
+  list `discord.punishpanel`.
 
 ### Appeals
 

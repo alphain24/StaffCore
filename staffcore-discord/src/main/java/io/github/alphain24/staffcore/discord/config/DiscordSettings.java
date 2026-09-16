@@ -148,6 +148,15 @@ public final class DiscordSettings {
 	public volatile String staffChatChannelId = CREATE;
 
 	/**
+	 * The punishment panel's channel: a message with a Punish button that punishes by the server's
+	 * offence ladders. {@code "create"} makes it private to the bot and to the roles in
+	 * {@link #roleNodes} that list {@code discord.punishpanel} — the admin roles, as a new server sets it
+	 * up — rather than to every staff role. Using the panel needs that permission in game too, and the
+	 * permission for whatever the ladder picks. Empty posts no panel.
+	 */
+	public volatile String punishPanelChannelId = CREATE;
+
+	/**
 	 * The lowest signal confidence, 0 to 100, posted to the alerts channel on its own.
 	 * <p>
 	 * Signals are scored like cases are: StaffCore opens a case at 70 by default. Lower posts more of
@@ -186,6 +195,7 @@ public final class DiscordSettings {
 			case APPEALS -> appealsChannelId;
 			case STAFF_LOG -> staffLogChannelId;
 			case STAFF_CHAT -> staffChatChannelId;
+			case PUNISH_PANEL -> punishPanelChannelId;
 		};
 		return id == null ? "" : id;
 	}
@@ -204,6 +214,7 @@ public final class DiscordSettings {
 			case APPEALS -> "appealsChannelId";
 			case STAFF_LOG -> "staffLogChannelId";
 			case STAFF_CHAT -> "staffChatChannelId";
+			case PUNISH_PANEL -> "punishPanelChannelId";
 		};
 	}
 
@@ -241,6 +252,7 @@ public final class DiscordSettings {
 				case APPEALS -> appealsChannelId = id;
 				case STAFF_LOG -> staffLogChannelId = id;
 				case STAFF_CHAT -> staffChatChannelId = id;
+				case PUNISH_PANEL -> punishPanelChannelId = id;
 			}
 		});
 		Map<String, String> byKey = new LinkedHashMap<>();
@@ -387,6 +399,7 @@ public final class DiscordSettings {
 		appealsChannelId = channel("appealsChannelId", appealsChannelId, true, problems);
 		staffLogChannelId = channel("staffLogChannelId", staffLogChannelId, true, problems);
 		staffChatChannelId = channel("staffChatChannelId", staffChatChannelId, true, problems);
+		punishPanelChannelId = channel("punishPanelChannelId", punishPanelChannelId, true, problems);
 		appealIntakeChannelId = channel("appealIntakeChannelId", appealIntakeChannelId, true, problems);
 		if (!appealIntakeChannelId.isEmpty() && appealsChannelId.isEmpty()) {
 			problems.add("appealIntakeChannelId is set but appealsChannelId is not, so there is nowhere to post "

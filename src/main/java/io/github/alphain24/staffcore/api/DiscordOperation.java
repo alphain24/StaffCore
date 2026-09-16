@@ -33,6 +33,11 @@ public enum DiscordOperation {
 	FREEZE(Nodes.FREEZE, true),
 	UNFREEZE(Nodes.FREEZE, true),
 	NOTE(Nodes.NOTES, true),
+	/**
+	 * The punishment panel: reading a player's ladder, and punishing by offence. The punishment the ladder
+	 * picks is checked against its own node as well, when it is issued.
+	 */
+	PUNISH_PANEL(Nodes.DISCORD_PUNISH_PANEL, true),
 	/** Filing evidence on a case, as {@code /staff case <id> evidence} does in game. */
 	ADD_EVIDENCE(Nodes.STAFF_GUI, true),
 

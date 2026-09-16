@@ -2581,6 +2581,7 @@
               <tr><td class="mono">staffChatChannelId</td><td class="mono">create</td><td class="wrap">Staff chat both ways; lines from Discord are marked <code>[Discord]</code> in game. Typing there needs Message Content Intent switched on for the bot; without it the bot connects anyway and staff talk with <code>/staffchat</code>.</td></tr>
               <tr><td class="mono">discordAlertSeverity</td><td class="mono">70</td><td class="wrap">The lowest signal confidence (0&ndash;100) posted to alerts on its own. A signal that opens a case is always posted.</td></tr>
               <tr><td class="mono">serverName</td><td class="mono">empty</td><td class="wrap">Shown on report posts, for a network sharing one Discord.</td></tr>
+              <tr><td class="mono">punishPanelChannelId</td><td class="mono">create</td><td class="wrap">The punishment panel's channel, private to the roles whose <code>roleNodes</code> list <code>discord.punishpanel</code>. Empty posts no panel.</td></tr>
               <tr><td class="mono">evidenceMaxMegabytes</td><td class="mono">25</td><td class="wrap">The largest file kept when Discord material is filed as evidence (0&ndash;500). A larger one is recorded without being kept; 0 keeps none.</td></tr>
               <tr><td class="mono">playerHeadUrl</td><td class="mono">https://mc-heads.net/avatar/{uuid}/64</td><td class="wrap">The head picture on posts. Discord fetches it, so the service sees player ids only. Empty shows none.</td></tr>
             </tbody>
@@ -2614,6 +2615,15 @@
           refusal says why. Everything that changes something from Discord also counts against
           <code>discordActionsPerMinute</code> (20 a minute by default, staff chat not counted). IP bans,
           rollbacks and inventory edits have no command.
+        </p>
+        <h3>The punishment panel</h3>
+        <p>
+          A private <code>#punish</code> channel holds a <strong>Punish</strong> button: name the player, pick the
+          offence, confirm, and the player's record picks the rung, as the punish screen in game does.
+          <code>/staff punish &lt;player&gt; &lt;offence&gt;</code> goes straight to the confirmation. It needs
+          <code>discord.punishpanel</code> in game and in the role mapping &mdash; the starter admin group has it,
+          the starter moderator group does not &mdash; and the permission for whatever the ladder picks. A
+          confirmation drawn before the player's record changed issues nothing.
         </p>
         <h3>Evidence from Discord</h3>
         <p>
@@ -2882,7 +2892,7 @@
           </div>
           <div class="card">
             <h4>Admin</h4>
-            <p>Moderator, plus <span class="mono">staff.punish.revoke · staff.history.clear · security.invsee.edit · grief.rollback · grief.purge · control.* · security.* · analytics.stats · staff.reload · staff.appeals · staff.perms · staff.replay</span></p>
+            <p>Moderator, plus <span class="mono">staff.punish.revoke · staff.history.clear · security.invsee.edit · grief.rollback · grief.purge · control.* · security.* · analytics.stats · staff.reload · staff.appeals · staff.perms · staff.replay · discord.punishpanel</span></p>
           </div>
         </div>
         <div class="note">

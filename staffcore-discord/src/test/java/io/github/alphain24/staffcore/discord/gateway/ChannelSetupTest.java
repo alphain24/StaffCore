@@ -35,10 +35,22 @@ class ChannelSetupTest {
 		for (Channel channel : Channel.values()) {
 			Set<Permission> allowed = ChannelSetup.staff(channel);
 			assertTrue(allowed.contains(Permission.VIEW_CHANNEL), channel + " is hidden from staff");
+			if (channel == Channel.PUNISH_PANEL) {
+				assertEquals(Set.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_HISTORY), allowed,
+						"the punishment panel is a button to press, nothing more");
+				continue;
+			}
 			assertTrue(allowed.contains(Permission.MESSAGE_SEND_IN_THREADS), channel + " threads cannot be answered");
 			assertEquals(channel == Channel.STAFF_CHAT, allowed.contains(Permission.MESSAGE_SEND), channel.toString());
 			assertFalse(allowed.stream().anyMatch(p -> p.name().startsWith("MANAGE")), channel + " gives staff a manage permission");
 		}
+	}
+
+	@Test
+	@DisplayName("the punishment panel's channel is for the roles that hold its permission")
+	void panelNode() {
+		assertEquals("discord.punishpanel", ChannelSetup.PANEL_NODE);
+		assertEquals("punish", ChannelSetup.name(Channel.PUNISH_PANEL));
 	}
 
 	@Test

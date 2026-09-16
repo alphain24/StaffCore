@@ -2079,6 +2079,37 @@ Discord, naming the Discord account.
 
 ---
 
+## A punishment panel for admins
+
+**Date:** 2026-09-17
+
+Phase 6.7, "a separate punishment panel that uses StaffCore punishment ladders in Discord, only admin can
+use".
+
+**"Admin" is a permission, not a Discord role.** The brief rules out implicit admin, and a Discord role
+must not become Minecraft authority. So the panel has its own node, `discord.punishpanel`, needed in game
+and in `roleNodes` like every other Discord operation. It sits outside `staff.punish.*` on purpose: the
+starter moderator group holds that wildcard, and would otherwise have the panel. The starter admin group
+has it; permissions file v2 adds it to an admin group still exactly as shipped and leaves an edited one
+alone, saying so. The punishment a rung picks still needs its own node, so the panel never issues
+anything its user could not issue by name.
+
+**The same ladder as the game.** The rung comes from `countForOffence`, the reason is the offence's label,
+and the offence id is recorded, as the punish screen does. The menu only offers offences whose rung the
+person may give; the rest are listed as not theirs.
+
+**A confirmation is tied to what it showed.** It carries the prior count it was drawn with, and the
+punishment is issued only if the count is still that when Confirm is pressed — a second moderator acting
+in between, or a stale menu, issues nothing. Confirmations are random twelve-byte tokens held for five
+minutes, only for the Discord account that drew them, and dropped when used. The menu choice is read
+again from the server rather than trusted from the menu.
+
+**The channel is the admins'.** Made private to the roles whose mapping lists the panel node, not to every
+staff role, so moderators do not look at a button that will refuse them. With no such role, only the bot
+and server administrators see it.
+
+---
+
 ## An evidence locker in Discord
 
 **Date:** 2026-09-16
