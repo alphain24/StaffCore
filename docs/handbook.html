@@ -2511,7 +2511,7 @@
 
         <h3>The Discord companion</h3>
         <p>
-          <code>staffcore-discord-1.0.0.jar</code> is a second jar, installed beside StaffCore, that
+          <code>staffcore-discord</code> is a second jar, installed beside StaffCore, that
           runs a Discord bot inside the server process. It is separate because the Discord library
           and what it needs come to about 11&nbsp;MB, and a server that does not want Discord should
           not carry them.
@@ -2538,7 +2538,7 @@
         </p>
         <h3>Setting it up</h3>
         <ol>
-          <li>Create a bot in the Discord developer portal and invite it to your server with the link in the installation guide. Switch on Message Content Intent so staff can type in the staff chat channel; without it the bot still connects and staff use <code>/staffchat</code> there. It needs to view, send messages, embed links, read message history, create public threads and send messages in threads, plus Manage Channels and Manage Roles to make its own private channels — those two can be removed once it has.</li>
+          <li>Create a bot in the Discord developer portal and invite it to your server with the link in the installation guide. Switch on Message Content Intent so staff can type in the staff chat channel; without it the bot still connects and staff use <code>/staffchat</code> there. It needs to view, send messages, embed links, read message history, create public threads, send messages in threads and attach files, plus Manage Channels and Manage Roles to make its own private channels — those two can be removed once it has.</li>
           <li>Put both jars in <code>mods/</code> and start the server once. It writes <code>config/staffcore/discord.json</code> and an empty <code>config/staffcore/discord.token</code> (readable only by the server's account, on Linux).</li>
           <li>Paste the token, and nothing else, into the token file, fill in the settings, and restart. <code>/staff status</code> shows whether the bot is off, connecting, connected, or what stopped it.</li>
         </ol>

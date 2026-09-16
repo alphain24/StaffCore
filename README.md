@@ -72,8 +72,8 @@ Everything you edit is in one folder, `config/staffcore/`, written on first star
 ```
 your-server/
 ├── mods/
-│   ├── staffcore-1.1.0.jar
-│   └── staffcore-discord-1.0.0.jar      (optional: the Discord bot)
+│   ├── staffcore-1.2.0.jar
+│   └── staffcore-discord-1.1.0.jar      (optional: the Discord bot)
 ├── config/
 │   └── staffcore/
 │       ├── staffcore.json               settings
@@ -467,7 +467,7 @@ defensible in an appeal.
 
 ## Discord companion — `staffcore-discord`
 
-A second jar, `staffcore-discord-1.0.0.jar`, installed beside StaffCore. It runs a Discord bot
+A second jar, `staffcore-discord-<version>.jar`, installed beside StaffCore. It runs a Discord bot
 inside the server process, so there is nothing else to host. It is its own jar because the
 Discord library and what it needs come to about 11 MB, and a server that does not want Discord
 should not carry them.
@@ -488,7 +488,7 @@ and inviting the bot, filling in the settings, linking accounts, appeals and tro
    server with the link in the guide. Switch on **Message Content Intent** for the bot so staff can
    type in the staff chat channel; without it the bot still connects and staff use `/staffchat` there
    instead. It needs to view, send messages,
-   embed links, read message history, create public threads and send messages in threads — and
+   embed links, read message history, create public threads, send messages in threads and attach files — and
    Manage Channels and Manage Roles to make its own private channels, which can be taken away again
    once it has.
 2. Put both jars in `mods/` and start the server once. It writes `config/staffcore/discord.json`

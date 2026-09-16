@@ -46,10 +46,16 @@ public final class ChannelSetup {
 	/** The category the channels go under. */
 	public static final String CATEGORY = "StaffCore";
 
-	/** What the bot is given on each channel it makes: what it needs to post and keep threads going. */
+	/**
+	 * What the bot is given on each channel it makes: what it needs to post, keep threads going, and post the
+	 * files filed as evidence into a case's thread.
+	 */
 	static final Set<Permission> BOT = EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_SEND,
 			Permission.MESSAGE_EMBED_LINKS, Permission.MESSAGE_HISTORY, Permission.CREATE_PUBLIC_THREADS,
-			Permission.MESSAGE_SEND_IN_THREADS);
+			Permission.MESSAGE_SEND_IN_THREADS, Permission.MESSAGE_ATTACH_FILES);
+
+	/** The permissions the setup guide's invite link asks for: {@link #BOT} and {@link #TO_CREATE}. */
+	static final long INVITE_PERMISSIONS = 309506198544L;
 
 	/** What it needs to make channels like that at all. */
 	static final Set<Permission> TO_CREATE = EnumSet.of(Permission.MANAGE_CHANNEL, Permission.MANAGE_ROLES);

@@ -23,7 +23,7 @@ wrong. For what every setting does in detail, see the
 
 - A Fabric server for **Minecraft 26.2**, with **Fabric Loader 0.19.3** or newer, **Java 25**, and
   **Fabric API**.
-- **Both jars from the same build**: `staffcore-1.1.0.jar` and `staffcore-discord-1.0.0.jar`. The
+- **Both jars from the same build**: `staffcore-1.2.0.jar` and `staffcore-discord-1.1.0.jar`. The
   bot will not start with a StaffCore from a different build.
 - A Discord server where you can manage the server (to invite a bot and give it permissions).
 - A host that lets the Minecraft server connect out to Discord. Nearly all do; nothing has to be
@@ -43,8 +43,8 @@ your-server/
 ├── server.properties
 ├── mods/
 │   ├── fabric-api-….jar
-│   ├── staffcore-1.1.0.jar
-│   └── staffcore-discord-1.0.0.jar          ← put it here
+│   ├── staffcore-1.2.0.jar
+│   └── staffcore-discord-1.1.0.jar          ← put it here
 ├── config/
 │   └── staffcore/
 │       ├── staffcore.json
@@ -127,7 +127,7 @@ Open this link in a browser, with your Application ID in place of `APPLICATION_I
 server:
 
 ```
-https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=309506165776
+https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=309506198544
 ```
 
 That asks for exactly these permissions and nothing more:
@@ -140,6 +140,7 @@ That asks for exactly these permissions and nothing more:
 | Read Message History | To find a thread again once Discord has archived it |
 | Create Public Threads | Every report, appeal and case gets a thread |
 | Send Messages in Threads | To say what happened in each thread |
+| Attach Files | To post files filed as evidence into a case's thread |
 | Manage Channels | To make its private channels |
 | Manage Roles | To make those channels private — hidden from everyone except staff |
 
@@ -451,7 +452,17 @@ accepted or rejected, its code stops working; a rejected player gets a new code 
 ## Updating
 
 Replace **both** jars together, from the same build, then restart. Your settings, token, channels
-and links are kept. If only one is replaced, the log says
+and links are kept.
+
+**From 1.1.0 to 1.2.0:**
+
+- Open the invite link from [step 4](#4-invite-the-bot-to-your-server) again and pick your server: it adds
+  **Attach Files**, which posting evidence files needs. Nothing else changes.
+- The bot makes the new `#punish` channel on its next start. Your settings file keeps `""` for
+  `appealIntakeChannelId` and `staffChatChannelId`; set them to `"create"` if you want `#appeal` and
+  `#staff-chat` made too. Making channels needs **Manage Channels** and **Manage Roles**; give them back
+  first if you took them away.
+- Add `"discord.punishpanel"` to your admin role in `roleNodes` for the punishment panel. If only one is replaced, the log says
 `This companion was built for StaffCore API version …` and the bot does not start.
 
 To switch the bot off without removing it, set `"enabled": false` and restart. Links and channels
@@ -507,7 +518,7 @@ you are online, so join the server and try again.
 **A button says you need a permission.** It needs that permission both in `roleNodes` for one of your
 roles and in game for your linked account.
 
-**The files never appeared.** Look in `config/staffcore/`. Check that `staffcore-discord-1.0.0.jar`
-is in `mods/` beside `staffcore-1.1.0.jar`, that the server finished starting, and search
+**The files never appeared.** Look in `config/staffcore/`. Check that `staffcore-discord-1.1.0.jar`
+is in `mods/` beside `staffcore-1.2.0.jar`, that the server finished starting, and search
 `logs/latest.log` for `StaffCore Discord`. The staff panel's **Discord** button says
 `Bot: not installed` when the jar is not loaded at all.

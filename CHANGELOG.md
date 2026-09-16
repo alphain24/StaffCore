@@ -2,7 +2,17 @@
 
 ## 1.2.0 — unreleased
 
-In progress. Ships with `staffcore-discord-1.1.0.jar`.
+In progress. Ships with `staffcore-discord-1.1.0.jar`; install both jars from the same build.
+
+### Upgrading from 1.1.0
+
+- The database gains three migrations (30–32): appeal codes are copied into their own table as they
+  are, bans already over are marked so they are not announced as returns, and two tables for Discord
+  evidence are added. Nothing is deleted.
+- The permissions file goes to v2: an admin group still exactly as shipped gains `discord.punishpanel`.
+- **Discord:** open the invite link from the setup guide again, which adds **Attach Files**. The bot
+  makes `#punish` on its next start (Manage Channels and Manage Roles needed for that). Existing settings
+  files keep `""` for the staff chat and appeal channels; set them to `"create"` to have them made.
 
 ### Added
 

@@ -21,11 +21,26 @@ class ChannelSetupTest {
 	@DisplayName("the bot is given exactly what it posts with, and nothing that manages anything")
 	void botPermissions() {
 		assertEquals(Set.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_SEND, Permission.MESSAGE_EMBED_LINKS,
-				Permission.MESSAGE_HISTORY, Permission.CREATE_PUBLIC_THREADS, Permission.MESSAGE_SEND_IN_THREADS),
-				ChannelSetup.BOT);
+				Permission.MESSAGE_HISTORY, Permission.CREATE_PUBLIC_THREADS, Permission.MESSAGE_SEND_IN_THREADS,
+				Permission.MESSAGE_ATTACH_FILES), ChannelSetup.BOT);
+
+		// The invite link in the setup guide asks for exactly these and the two that make channels.
+		java.util.EnumSet<Permission> invited = java.util.EnumSet.copyOf(ChannelSetup.BOT);
+		invited.addAll(ChannelSetup.TO_CREATE);
+		assertEquals(Permission.getRaw(invited), ChannelSetup.INVITE_PERMISSIONS);
+		assertTrue(readGuide().contains("permissions=" + ChannelSetup.INVITE_PERMISSIONS),
+				"the setup guide's invite link asks for different permissions than the bot uses");
 		for (Permission permission : ChannelSetup.BOT) {
 			assertFalse(permission.name().startsWith("MANAGE") || permission == Permission.ADMINISTRATOR,
 					permission + " is more than posting needs");
+		}
+	}
+
+	private static String readGuide() {
+		try {
+			return java.nio.file.Files.readString(java.nio.file.Path.of("..", "docs", "discord-setup.md"));
+		} catch (java.io.IOException e) {
+			throw new AssertionError("the setup guide could not be read from the companion's tests", e);
 		}
 	}
 
