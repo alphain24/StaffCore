@@ -69,10 +69,14 @@ class EvidenceLockerTest {
 
 	@Test
 	@DisplayName("nothing is written for a case id that is not one, so no path can leave the folder")
-	void badCase() {
-		DiscordEvidenceFile file = EvidenceLocker.keep(folder, "../../etc", "a.txt", "text/plain", bytes("x"), 1024);
+	void badCase() throws IOException {
+		String escape = "../escaped-" + System.nanoTime();
+		DiscordEvidenceFile file = EvidenceLocker.keep(folder, escape, "a.txt", "text/plain", bytes("x"), 1024);
 		assertNull(file.storedPath());
-		assertFalse(Files.exists(folder.resolve("../../etc")));
+		assertFalse(Files.exists(folder.resolve(escape)), "a folder was made outside the evidence folder");
+		try (Stream<Path> inside = Files.list(folder)) {
+			assertEquals(0, inside.count(), "something was written for a case id that is not one");
+		}
 	}
 
 	@Test

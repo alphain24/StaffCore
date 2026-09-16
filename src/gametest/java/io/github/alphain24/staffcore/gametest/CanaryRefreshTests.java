@@ -93,8 +93,14 @@ public class CanaryRefreshTests {
 
 		Harness.checkEquals(helper, 0, Canaries.hitsFor(player.getUUID()),
 				"the maintenance pass was recorded as the player finding a decoy");
-		Harness.checkEquals(helper, 1, Canaries.liveFor(player.getUUID()),
-				"repeated maintenance changed how many decoys exist");
+		// The decoy that was there is still there, once. Not a count of every decoy the player has:
+		// maintenance also tops decoys up wherever there is sealed rock near the player, and the tests
+		// running beside this one build some, so that count moves for reasons that are not this test's.
+		Harness.checkEquals(helper, 1L, Canaries.all().stream()
+						.filter(c -> c.owner().equals(player.getUUID()) && c.pos().equals(pos)).count(),
+				"repeated maintenance retired or duplicated the decoy that was there");
+		Harness.check(helper, Canaries.liveFor(player.getUUID()) >= 1,
+				"repeated maintenance left the player with no decoys");
 
 		helper.succeed();
 	}
