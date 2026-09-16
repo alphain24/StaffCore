@@ -350,12 +350,13 @@ public final class StaffConfig {
 	public boolean allowInGameAppeals = true;
 
 	/**
-	 * Days after an appeal is rejected before the same punishment can be appealed again.
+	 * The wait a rejected appeal sets unless the staff member rejecting it chooses another: days
+	 * before the punishment can be appealed again, with the new code its ban screen then shows.
 	 * <p>
 	 * Without a wait, a rejected appeal is filed again the same minute, and again, and the queue
 	 * fills with one person. Longer protects staff time; shorter is kinder to somebody with
 	 * something genuinely new to say, who can always ask a staff member directly. 0 lets a rejected
-	 * appeal be filed again at once. Only the punishment that was appealed is affected.
+	 * appeal be filed again at once. 0 to 365. Only the punishment that was appealed is affected.
 	 */
 	public int appealCooldownDays = 7;
 
@@ -1092,6 +1093,12 @@ public final class StaffConfig {
 				case "discordActionsPerMinute" -> cfg.discordActionsPerMinute = 0;
 				default -> cfg.appealAttemptsPerHour = 0;
 			}
+		}
+
+		if (cfg.appealCooldownDays > io.github.alphain24.staffcore.modules.appeal.AppealModule.MAX_WAIT_DAYS) {
+			problems.add("appealCooldownDays is " + cfg.appealCooldownDays + ", which is more than a year. Using "
+					+ io.github.alphain24.staffcore.modules.appeal.AppealModule.MAX_WAIT_DAYS + ".");
+			cfg.appealCooldownDays = io.github.alphain24.staffcore.modules.appeal.AppealModule.MAX_WAIT_DAYS;
 		}
 
 		if (cfg.canaryDensity < 0 || cfg.canaryDensity > 64) {

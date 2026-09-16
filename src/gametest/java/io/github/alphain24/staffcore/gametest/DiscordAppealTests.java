@@ -8,6 +8,8 @@ import io.github.alphain24.staffcore.api.StaffCoreEvent;
 import io.github.alphain24.staffcore.api.StaffCoreListener;
 import io.github.alphain24.staffcore.api.internal.EventBus;
 import io.github.alphain24.staffcore.module.Mods;
+import io.github.alphain24.staffcore.modules.appeal.AppealCode;
+import io.github.alphain24.staffcore.modules.appeal.AppealCodes;
 import io.github.alphain24.staffcore.modules.appeal.AppealModule;
 import io.github.alphain24.staffcore.modules.cases.CaseCategory;
 import io.github.alphain24.staffcore.modules.punish.Punishment;
@@ -181,7 +183,8 @@ public class DiscordAppealTests {
 	}
 
 	@GameTest
-	public void aRejectionMakesThePlayerWaitAndClosingDoesNot(GameTestHelper helper) {
+	public void aDecisionEndsTheCodeAndARejectionIssuesANewOneAfterTheWaitStaffChose(GameTestHelper helper)
+			throws Exception {
 		NameAndId player = offlinePlayer();
 		Punishment ban = punish(helper, player, PunishmentType.BAN, null);
 		ServerPlayer mod = Harness.namedPlayer(helper);
@@ -198,19 +201,99 @@ public class DiscordAppealTests {
 			Harness.check(helper, Mods.punish().byId(ban.id()).active(), "closing lifted the ban");
 
 			Harness.check(helper, DiscordAccess.fileAppeal(filer, ban.appealCode(), "second").join().done(),
-					"a closed appeal left a wait behind it");
+					"a closed appeal left a wait behind it, or ended the code");
 			long secondId = openAppeal(helper, ban).id();
-			List<StaffCoreEvent> events = capture(() ->
-					Harness.check(helper, DiscordAccess.rejectAppeal(user, secondId).join().done(), "rejecting failed"));
-			Harness.check(helper, events.stream().anyMatch(e -> e instanceof StaffCoreEvent.AppealDecided d
-					&& d.id() == secondId && d.mayAppealAgainAt() != null), "the rejection did not say when they may try again");
 
-			var third = DiscordAccess.fileAppeal(filer, ban.appealCode(), "third").join();
-			Harness.check(helper, !third.done() && third.message().contains("again"),
-					"a rejected punishment was appealed again straight away: " + third.message());
+			// A wait outside what a rejection can set is refused, and the appeal stays open.
+			Harness.check(helper, !DiscordAccess.rejectAppeal(user, secondId, 400).join().done(),
+					"a rejection set a wait of more than a year");
+			Harness.check(helper, Mods.appeals().byId(secondId).isOpen(), "the refused rejection closed the appeal");
+
+			long before = System.currentTimeMillis();
+			List<StaffCoreEvent> events = capture(() ->
+					Harness.check(helper, DiscordAccess.rejectAppeal(user, secondId, 3).join().done(), "rejecting failed"));
+			var decided = events.stream().filter(e -> e instanceof StaffCoreEvent.AppealDecided d && d.id() == secondId)
+					.map(e -> (StaffCoreEvent.AppealDecided) e).findFirst().orElse(null);
+			Harness.check(helper, decided != null && decided.mayAppealAgainAt() != null
+							&& Math.abs(decided.mayAppealAgainAt() - before - 3L * 86_400_000L) < 60_000L,
+					"the rejection did not carry the three days staff chose: " + decided);
+
+			// The code the appeal was filed with no longer works.
+			var old = DiscordAccess.fileAppeal(filer, ban.appealCode(), "third").join();
+			Harness.check(helper, !old.done() && old.message().contains("no longer works"),
+					"the code of a decided appeal still worked: " + old.message());
+
+			// A new one does, once the wait is over, and it is what the ban screen shows.
+			AppealCodes.Code next = Mods.appeals().codes().current(ban.id());
+			Harness.check(helper, next != null && !next.code().equals(ban.appealCode()), "no new code was issued");
+			Harness.checkEquals(helper, AppealCodes.State.WAITING, next.state(System.currentTimeMillis()),
+					"the new code before the wait is over");
+			String screen = Mods.punish().disconnectScreen(Mods.punish().byId(ban.id())).getString();
+			Harness.check(helper, screen.contains(AppealCode.display(next.code())) && screen.contains("appeal again from")
+							&& !screen.contains(AppealCode.display(ban.appealCode())),
+					"the ban screen does not show the new code and its date: " + screen);
+			// Each account may try a few times an hour, so the rest of the attempts come from others.
+			DiscordUser second = stranger("p2");
+			DiscordUser third = stranger("p3");
+			var early = DiscordAccess.fileAppeal(second, next.code(), "early").join();
+			Harness.check(helper, !early.done() && early.message().contains("starts working"),
+					"the new code worked before the wait was over: " + early.message());
+
+			try (PreparedStatement ps = StaffCore.storage().conn().prepareStatement(
+					"UPDATE appeal_codes SET usable_from=? WHERE code=?")) {
+				ps.setLong(1, System.currentTimeMillis() - 1000);
+				ps.setString(2, next.code());
+				ps.executeUpdate();
+			}
+			Harness.check(helper, DiscordAccess.fileAppeal(second, next.code(), "fourth").join().done(),
+					"the new code did not work once the wait was over");
+			long fourthId = openAppeal(helper, ban).id();
+
+			// No wait: a new code that works at once, and the one just used stops.
+			Harness.check(helper, DiscordAccess.rejectAppeal(user, fourthId, 0).join().done(), "rejecting failed");
+			AppealCodes.Code immediate = Mods.appeals().codes().current(ban.id());
+			Harness.check(helper, immediate != null && immediate.state(System.currentTimeMillis()) == AppealCodes.State.USABLE
+					&& !immediate.code().equals(next.code()), "a rejection with no wait did not issue a working code");
+			Harness.check(helper, !DiscordAccess.fileAppeal(third, next.code(), "fifth").join().done(),
+					"the code of the second rejected appeal still worked");
+
+			// Accepting ends the last code, and nothing replaces it.
+			Harness.check(helper, DiscordAccess.fileAppeal(third, immediate.code(), "sixth").join().done(), "filing");
+			Harness.check(helper, DiscordAccess.acceptAppeal(user, openAppeal(helper, ban).id()).join().done(),
+					"accepting failed");
+			Harness.checkEquals(helper, AppealCodes.State.RETIRED,
+					Mods.appeals().codes().lookup(immediate.code()).state(System.currentTimeMillis()), "the accepted appeal's code");
+			Harness.check(helper, Mods.appeals().codes().current(ban.id()) == null, "accepting issued a new code");
+			var afterAccept = DiscordAccess.fileAppeal(third, immediate.code(), "seventh").join();
+			Harness.check(helper, !afterAccept.done() && afterAccept.message().contains("no longer works"),
+					"the accepted appeal's code still answered as a code: " + afterAccept.message());
 		} finally {
 			groups.players.remove(mod.getUUID().toString());
 			Mods.punish().revoke(Harness.server(helper), player.id(), "Console", true, "gametest");
+		}
+		helper.succeed();
+	}
+
+	@GameTest
+	public void aMutedPlayerWaitsTooAndIsShownTheNewCode(GameTestHelper helper) {
+		ServerPlayer muted = Harness.namedPlayer(helper);
+		NameAndId player = new NameAndId(muted.getUUID(), Harness.name(muted));
+		Punishment mute = punish(helper, player, PunishmentType.MUTE, null);
+		try {
+			Harness.checkEquals(helper, AppealModule.Result.OK,
+					Mods.appeals().file(muted.getUUID(), Harness.name(muted), "sorry"), "filing in game");
+			long id = openAppeal(helper, mute).id();
+			var outcome = Mods.appeals().decide(Harness.server(helper), id, AppealModule.Verdict.REJECTED, "Mod", 2);
+			Harness.check(helper, outcome.done(), "rejecting failed: " + outcome.message());
+
+			Harness.checkEquals(helper, AppealModule.Result.COOLDOWN,
+					Mods.appeals().file(muted.getUUID(), Harness.name(muted), "again"), "appealing in game during the wait");
+			var line = Mods.punish().appealCodeLine(Mods.punish().byId(mute.id()));
+			AppealCodes.Code next = Mods.appeals().codes().current(mute.id());
+			Harness.check(helper, line != null && next != null && line.getString().contains(AppealCode.display(next.code()))
+					&& line.getString().contains("works from"), "the muted player is not shown the new code: " + line);
+		} finally {
+			Mods.punish().revoke(Harness.server(helper), player.id(), "Console", false, "gametest");
 		}
 		helper.succeed();
 	}

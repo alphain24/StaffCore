@@ -73,7 +73,7 @@ has **fully started**, not when the jar is loaded, so wait for the usual `Done` 
 In `logs/latest.log` you should see:
 
 ```
-[StaffCore Discord] loaded against StaffCore API v4
+[StaffCore Discord] loaded against StaffCore API v5
 [StaffCore Discord] Created config/staffcore/discord.token, empty. Paste the bot token into it, …
 [StaffCore Discord] Installed and switched off. Set enabled, guildId and the token file to start the bot.
 ```
@@ -404,6 +404,10 @@ With `appealsChannelId` set, banned and muted players can appeal from Discord.
 4. Tell players to allow **direct messages from server members** (*Server name → Privacy Settings*).
    Questions from staff and the verdict reach them by direct message, and they answer by replying
    to the bot. If their direct messages are off, the appeal's thread tells staff they did not hear.
+
+**Deciding.** **Reject** asks how many days the player waits before appealing again. Once an appeal is
+accepted or rejected, its code stops working; a rejected player gets a new code on their ban screen
+(in chat, for a mute), which works from the day you chose.
 
 ---
 

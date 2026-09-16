@@ -1207,6 +1207,19 @@ final class Schema {
 				try (Statement st = conn.createStatement()) {
 					st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_appeals_punishment ON appeals(punishment_id, status)");
 				}
+			},
+
+			// 30 - appeal codes that stop working when an appeal is decided.
+			//
+			//      A code used to last as long as its punishment. Every code issued so far is
+			//      copied in as issued, and from here a decision retires the code and a rejection
+			//      issues a new one that works from the day staff chose. See AppealCodes.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate(io.github.alphain24.staffcore.modules.appeal.AppealCodes.TABLE);
+					st.executeUpdate(io.github.alphain24.staffcore.modules.appeal.AppealCodes.INDEX);
+					st.executeUpdate(io.github.alphain24.staffcore.modules.appeal.AppealCodes.BACKFILL);
+				}
 			}
 	);
 
@@ -1335,6 +1348,10 @@ final class Schema {
 			// Bans on the address a player joins from. See AddressBans.
 			io.github.alphain24.staffcore.modules.punish.AddressBans.TABLE,
 			io.github.alphain24.staffcore.modules.punish.AddressBans.INDEX,
+
+			// Every appeal code a punishment has had. See AppealCodes.
+			io.github.alphain24.staffcore.modules.appeal.AppealCodes.TABLE,
+			io.github.alphain24.staffcore.modules.appeal.AppealCodes.INDEX,
 
 			// Which Discord account belongs to which Minecraft account. See DiscordLinks.
 			io.github.alphain24.staffcore.modules.discord.DiscordLinks.TABLE,

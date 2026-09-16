@@ -121,6 +121,27 @@ public final class DiscordAccess {
 				io.github.alphain24.staffcore.modules.appeal.AppealModule.Verdict.REJECTED);
 	}
 
+	/**
+	 * Rejects an appeal, and sets how many days the player waits before appealing that punishment again
+	 * with the new code their ban screen shows: 0 to {@link #MAX_APPEAL_WAIT_DAYS}.
+	 */
+	public static CompletableFuture<DiscordResult> rejectAppeal(DiscordUser user, long appealId, int waitDays) {
+		return DiscordGate.decideAppeal(user, appealId,
+				io.github.alphain24.staffcore.modules.appeal.AppealModule.Verdict.REJECTED, waitDays);
+	}
+
+	/** The longest wait a rejection can set. */
+	public static final int MAX_APPEAL_WAIT_DAYS = io.github.alphain24.staffcore.modules.appeal.AppealModule.MAX_WAIT_DAYS;
+
+	/**
+	 * The wait a rejection sets unless staff choose another, for filling in the form. Read without going
+	 * to the server thread, because a form has to open within three seconds; a value changed by a reload
+	 * a moment ago is the worst it can be wrong by.
+	 */
+	public static int defaultAppealWaitDays() {
+		return io.github.alphain24.staffcore.config.StaffConfig.get().appealCooldownDays;
+	}
+
 	/** Closes an appeal without a verdict: a duplicate, or one about something already sorted out. */
 	public static CompletableFuture<DiscordResult> closeAppeal(DiscordUser user, long appealId) {
 		return DiscordGate.decideAppeal(user, appealId,

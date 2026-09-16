@@ -1097,12 +1097,15 @@
           it was made against, and only that one</strong> — an appeal that is "accepted" but leaves the
           ban in place is worse than no appeal system at all, and an upheld mute appeal is not a reason
           to lift an unrelated ban. Rejecting closes it with your name attached, so a second appeal
-          arrives carrying the history of the first, and that punishment cannot be appealed again for
-          <code>appealCooldownDays</code>. Only one appeal per punishment is open at a time.
+          arrives carrying the history of the first, and asks how long the player waits before appealing
+          that punishment again &mdash; no wait, a day, three, a week, a fortnight, a month or three months,
+          with <code>appealCooldownDays</code> marked. Either verdict ends the appeal code it was filed with;
+          a rejection gives the punishment a new one, shown on the ban screen with the day it starts working
+          and in chat to a muted player. Only one appeal per punishment is open at a time.
         </p>
         <ul>
           <li><strong>Left-click</strong> — accept, and lift the punishment they appealed</li>
-          <li><strong>Right-click</strong> — reject; the punishment stands</li>
+          <li><strong>Right-click</strong> — reject; choose the wait, and the punishment stands</li>
           <li><strong>Shift-click</strong> — open the player's file first</li>
         </ul>
         <p>A player online when it is decided is told there and then. Appeals can also be taken in Discord; see <a href="#discord">Discord</a>.</p>
@@ -2612,8 +2615,9 @@
           when that is not the punished player.
         </p>
         <ul>
-          <li><strong>Accept</strong> lifts the appealed punishment only, marked reversed with the appeal named; <strong>Reject</strong> leaves it standing and starts <code>appealCooldownDays</code>; <strong>Close</strong> ends it without a verdict. Each is written into the punishment's case, and all need <code>staff.appeals</code>.</li>
+          <li><strong>Accept</strong> lifts the appealed punishment only, marked reversed with the appeal named; <strong>Reject</strong> leaves it standing and asks for the wait before it can be appealed again (0&ndash;365 days, filled in with <code>appealCooldownDays</code>); <strong>Close</strong> ends it without a verdict. Each is written into the punishment's case, and all need <code>staff.appeals</code>.</li>
           <li><strong>Request More Info</strong> sends the player a question without your name. They answer by replying to the bot, and the answer lands in the thread. Only the account that filed can answer, and only once asked.</li>
+          <li>Accepting or rejecting ends the code the appeal was filed with. A rejection issues a new one, shown on the ban screen with the day it starts working; a close or a stale appeal leaves the code working.</li>
           <li>An appeal left unanswered for <code>appealStaleDays</code> after a question is closed as stale. One staff have not got to is never marked stale.</li>
           <li>The verdict reaches the player by direct message, without the decider's name. If their direct messages are off, the thread says they did not hear.</li>
           <li><strong>Punishment</strong>, <strong>Profile</strong> and <strong>Evidence</strong> answer privately; <strong>Staff Note</strong> goes on the player's record, never into the thread.</li>
@@ -2961,7 +2965,7 @@
         <div class="scroller">
 <pre><code>{
   "discordWebhookUrl": "",            // empty = bridge off
-  "appealCooldownDays": 7,             // after a rejection, before that punishment can be appealed again; 0 = no wait
+  "appealCooldownDays": 7,             // the wait a rejection sets unless staff pick another, 0-365; 0 = no wait
   "appealStaleDays": 7,                // an appeal staff asked a question on closes as stale if unanswered this long; 0 = never
   "appealAttemptsPerHour": 5,          // per Discord account, wrong codes included; 0 = no limit
   "requireReason": true,

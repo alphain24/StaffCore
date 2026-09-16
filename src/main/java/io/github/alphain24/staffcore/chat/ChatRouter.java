@@ -34,6 +34,8 @@ public final class ChatRouter {
 			if (mute != null) {
 				sender.sendSystemMessage(Theme.bad("You are muted — " + mute.reason()));
 				sender.sendSystemMessage(Theme.warn("Expires: " + mute.remaining()));
+				var code = Mods.punish().appealCodeLine(mute);
+				if (code != null) sender.sendSystemMessage(code);
 				Sfx.muted(sender);
 				return false;
 			}

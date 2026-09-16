@@ -3,6 +3,7 @@ package io.github.alphain24.staffcore.modules.punish;
 import net.minecraft.server.players.NameAndId;
 import io.github.alphain24.staffcore.StaffCore;
 import io.github.alphain24.staffcore.modules.appeal.AppealCode;
+import io.github.alphain24.staffcore.modules.appeal.AppealCodes;
 import io.github.alphain24.staffcore.module.Mods;
 import io.github.alphain24.staffcore.compat.Mc;
 import io.github.alphain24.staffcore.config.StaffConfig;
@@ -298,12 +299,10 @@ public class PunishmentModule implements Module {
 				// Chat is the one place a link can simply be clicked, unlike the ban screen.
 				online.sendSystemMessage(Theme.info("Or appeal on Discord: ").append(inviteText(invite)));
 			}
-			if (p.isAppealable()) {
-				// And the one place a code can be copied. A player typing it back from memory
-				// is how an appeal ends up quoting somebody else's punishment.
-				online.sendSystemMessage(Theme.info("Your appeal code: ")
-						.append(copyable(AppealCode.display(p.appealCode()))));
-			}
+			// And the one place a code can be copied. A player typing it back from memory
+			// is how an appeal ends up quoting somebody else's punishment.
+			Component code = appealCodeLine(p);
+			if (code != null) online.sendSystemMessage(code);
 			Sfx.muted(online);
 		} else if (p.type() == PunishmentType.WARN) {
 			online.sendSystemMessage(Theme.warn("Warning from " + p.staffName() + " — " + p.reason()));
@@ -431,12 +430,58 @@ public class PunishmentModule implements Module {
 		MutableComponent out = Icon.text("\n", Theme.MUTED);
 		out.append(Icon.text("Reference: #" + p.id() + "\n", Theme.MUTED));
 
-		if (p.isAppealable()) {
-			out.append(Icon.text("Appeal code: ", Theme.MUTED));
-			out.append(Icon.text(AppealCode.display(p.appealCode()) + "\n", Theme.TEXT));
+		AppealCodes.Code code = currentCode(p);
+		if (code != null) {
+			long now = System.currentTimeMillis();
+			if (code.usableFrom() > now) {
+				// A rejected appeal's wait. The new code is shown now, so the photograph taken today
+				// still works on the day.
+				out.append(Icon.text("You can appeal again from " + TimeFormat.stamp(code.usableFrom())
+						+ " (" + TimeFormat.remaining(code.usableFrom()) + ").\n", Theme.WARN));
+				out.append(Icon.text("Appeal code, from then: ", Theme.MUTED));
+			} else {
+				out.append(Icon.text("Appeal code: ", Theme.MUTED));
+			}
+			out.append(Icon.text(AppealCode.display(code.code()) + "\n", Theme.TEXT));
+		} else if (p.isAppealable()) {
+			out.append(Icon.text("This punishment can no longer be appealed.\n", Theme.MUTED));
 		}
 		return out;
 	}
+
+	/**
+	 * "Your appeal code: …" for a player who can read chat — a muted one — with the day it starts
+	 * working when a rejected appeal set a wait; null when the punishment has no code left.
+	 */
+	public Component appealCodeLine(Punishment p) {
+		AppealCodes.Code code = currentCode(p);
+		if (code == null) return null;
+		MutableComponent line = Theme.info("Your appeal code: ").append(copyable(AppealCode.display(code.code())));
+		if (code.usableFrom() > System.currentTimeMillis()) {
+			line.append(Icon.text(" (works from " + TimeFormat.stamp(code.usableFrom()) + ")", Theme.MUTED));
+		}
+		return line;
+	}
+
+	/**
+	 * The code that files an appeal against this punishment now or after a wait, or null when there
+	 * is none: a kick, or a punishment whose last appeal was decided without a new code.
+	 */
+	private static AppealCodes.Code currentCode(Punishment p) {
+		if (!p.isAppealable()) return null;
+		if (!StaffCore.storage().isReady()) {
+			// Nothing to ask; the code the punishment was issued with is the best that can be said.
+			return new AppealCodes.Code(p.appealCode(), p.id(), p.createdAt(), p.createdAt(), null, null, true);
+		}
+		AppealCodes.Code current = CODES.current(p.id());
+		if (current != null) return current;
+		AppealCodes.Code original = CODES.lookup(p.appealCode());
+		return original != null && original.state(System.currentTimeMillis()) != AppealCodes.State.RETIRED
+				? original : null;
+	}
+
+	/** The codes table. Holds no state of its own, so one is shared rather than asked of the appeals module. */
+	private static final AppealCodes CODES = new AppealCodes();
 
 	/** Staff chat line, alert bus, Discord, and the thunderclap for bans. */
 	private void announce(MinecraftServer server, Punishment p) {
@@ -886,6 +931,15 @@ public class PunishmentModule implements Module {
 
 			try (ResultSet keys = ps.getGeneratedKeys()) {
 				long id = keys.next() ? keys.getLong(1) : -1;
+				if (appealCode != null && id > 0) {
+					try {
+						io.github.alphain24.staffcore.modules.appeal.AppealCodes.issue(c, appealCode, id, now, now);
+					} catch (SQLException e) {
+						// The punishment stands either way. Its code still works through the row it is on.
+						StaffCore.LOGGER.warn("[Punish] could not record punishment {}'s appeal code: {}", id,
+								e.getMessage());
+					}
+				}
 				return new Punishment(id, target, targetName, staffName, type, reason, now,
 						expiresAt, true, null, caseId, null, null, appealCode);
 			}
@@ -913,29 +967,6 @@ public class PunishmentModule implements Module {
 			}
 		} catch (SQLException e) {
 			StaffCore.LOGGER.warn("[Punish] could not read punishment {}: {}", id, e.getMessage());
-			return null;
-		}
-	}
-
-	/**
-	 * One punishment by the code printed on its disconnect screen.
-	 * <p>
-	 * The lookup an appeal starts from. Normalised first, so a player who typed {@code O} for
-	 * {@code 0} off a photograph is answered rather than told the code does not exist.
-	 */
-	public Punishment byAppealCode(String code) {
-		String normalised = AppealCode.normalise(code);
-		Connection c = conn();
-		if (normalised == null || c == null) return null;
-
-		try (PreparedStatement ps = c.prepareStatement(
-				"SELECT * FROM punishments WHERE appeal_code=?")) {
-			ps.setString(1, normalised);
-			try (ResultSet rs = ps.executeQuery()) {
-				return rs.next() ? map(rs) : null;
-			}
-		} catch (SQLException e) {
-			StaffCore.LOGGER.warn("[Punish] could not resolve an appeal code: {}", e.getMessage());
 			return null;
 		}
 	}

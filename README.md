@@ -350,7 +350,7 @@ Changing a default in the code alone would never reach a server that has already
   "offences": [ ... ],                 // the punish menu is built from this
   "discordInvite": "",                 // e.g. https://discord.gg/abc123 - shown on the ban screen so people can appeal
   "allowInGameAppeals": true,
-  "appealCooldownDays": 7,             // after a rejection, before that punishment can be appealed again; 0 = no wait
+  "appealCooldownDays": 7,             // the wait a rejection sets unless staff pick another, 0-365; 0 = no wait
   "appealStaleDays": 7,                // an appeal staff asked a question on closes as stale if unanswered this long; 0 = never
   "appealAttemptsPerHour": 5,          // per Discord account, wrong codes included; 0 = no limit
   "detectBanEvasion": true,
@@ -618,11 +618,15 @@ holding a photograph of the ban screen can file; the post shows which Discord ac
 which Minecraft account it is linked to, and says so when that is not the punished player.
 
 - One open appeal per punishment.
-- After a rejection, that punishment cannot be appealed again for `appealCooldownDays`. A close
-  without a decision leaves no wait.
+- **A decision ends the code.** Once an appeal is accepted or rejected, the code it was filed with no
+  longer works, and anybody trying it is told so.
 - **Accept** lifts the punishment the appeal was against, and only that one, marked reversed with
-  the appeal named; **Reject** leaves it standing; **Close** ends the appeal without a verdict. Each
-  is written into the punishment's case. All three need `staff.appeals`, as the appeals screen does.
+  the appeal named. **Reject** leaves it standing and asks how many days the player must wait (0–365,
+  filled in with `appealCooldownDays`); the punishment gets a **new code**, which the ban screen
+  shows along with the day it starts working, and a muted player sees in chat. **Close** ends the
+  appeal without a verdict and leaves the code working. Each is written into the punishment's case.
+  All three need `staff.appeals`, as the appeals screen does. Rejecting from the appeals screen in
+  game asks for the wait too.
 - **Request More Info** sends the player a question without the asking staff member's name. They
   answer by replying to the bot's direct message, and the answer is added to the thread. Replies are
   accepted only from the account that filed, on an appeal staff have asked about.

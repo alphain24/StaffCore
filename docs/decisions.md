@@ -2079,6 +2079,36 @@ Discord, naming the Discord account.
 
 ---
 
+## Appeal codes end with a decision
+
+**Date:** 2026-09-16
+
+Phase 6.1. A code used to last as long as its punishment, so a decided appeal could be filed again with
+the same code once a fixed wait was over.
+
+**A table of codes, not a changing column.** Every code a punishment has had is a row in
+`appeal_codes`, with when it was issued, when it starts working, and — once it stops — when, by whom
+and why. The punishment row keeps the code it was issued with, untouched. Migration 30 copies every
+existing code in as issued, so an upgrade changes nothing a player holds. Accepting retires the code; a
+rejection retires it and issues a new one in the same transaction, so a punishment never has two
+working codes or none by accident. A close or a stale appeal leaves the code alone: nobody decided.
+
+**The wait is chosen by whoever rejects.** "Once the staff tells them to wait a certain period" — so a
+rejection asks, from Discord as a number of days and in game as a choice of seven, with
+`appealCooldownDays` filled in or marked. The wait is carried by the new code's `usable_from`, not
+recomputed from the last rejection, so changing the setting later does not move a wait somebody was
+already given. It is bounded to a year; a longer wait is a punishment of its own.
+
+**The new code is shown at once, with its date.** A banned player's only view is the ban screen, which
+they photograph. Showing the code only once it works would mean coming back to photograph it again, so
+the screen shows it immediately with the day it starts working. A muted player sees the same line when
+chat refuses them, and the rejection message if they are online.
+
+**A code from before the table** that somehow missed the copy still works through the punishment row —
+until the punishment has a code in the table, which means a decision has replaced it.
+
+---
+
 ## One folder for configuration, and the bot on the panel
 
 **Date:** 2026-09-16

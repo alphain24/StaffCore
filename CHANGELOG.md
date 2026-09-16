@@ -4,6 +4,14 @@
 
 In progress. Ships with `staffcore-discord-1.1.0.jar`.
 
+### Changed
+
+- **An appeal code stops working once its appeal is accepted or rejected.** Rejecting asks how many
+  days the player must wait (0–365, `appealCooldownDays` by default), in Discord and in game; the
+  punishment gets a new code, shown on the ban screen with the day it starts working and in chat to a
+  muted player. Closing an appeal without a verdict leaves the code working. Existing codes are kept
+  as they are.
+
 ## 1.1.0 — 2026-09-16
 
 Cases, staff accountability, x-ray rebuilt on ground truth, session replay, and a Discord bot.

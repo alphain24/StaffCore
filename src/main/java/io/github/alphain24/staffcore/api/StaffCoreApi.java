@@ -44,8 +44,10 @@ public final class StaffCoreApi {
 	 * <p>
 	 * 4: the slash command reads and writes on {@link DiscordAccess}, {@link #reportDiscordBot} for the
 	 * staff panel, and {@link #configFolder}.
+	 * <p>
+	 * 5: the 1.2.0 additions — the wait a rejection sets, and what follows in {@link DiscordAccess}.
 	 */
-	public static final int VERSION = 4;
+	public static final int VERSION = 5;
 
 	private static final List<StaffCoreListener> LISTENERS = new CopyOnWriteArrayList<>();
 	private static final Map<String, Supplier<List<String>>> STATUS = new ConcurrentHashMap<>();

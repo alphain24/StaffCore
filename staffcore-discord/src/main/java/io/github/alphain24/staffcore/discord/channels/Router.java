@@ -374,7 +374,9 @@ public final class Router implements StaffCoreListener {
 		String who = Text.safe(e.staffName(), 100);
 		String line = switch (e.verdict()) {
 			case "ACCEPTED" -> "Accepted by **" + who + "**; the punishment is lifted";
-			case "REJECTED" -> "Rejected by **" + who + "**";
+			case "REJECTED" -> "Rejected by **" + who + "**; " + (e.mayAppealAgainAt() == null
+					? "can be appealed again at once with a new code"
+					: "can be appealed again " + Text.relative(e.mayAppealAgainAt()) + " with a new code");
 			case "STALE" -> "Went stale: the player did not answer";
 			default -> "Closed without a decision by **" + who + "**";
 		};
@@ -414,10 +416,15 @@ public final class Router implements StaffCoreListener {
 	 */
 	static String verdictForPlayer(StaffCoreEvent.AppealDecided e) {
 		return switch (e.verdict()) {
-			case "ACCEPTED" -> "Your appeal #" + e.id() + " was accepted, and the punishment it was about has been lifted.";
-			case "REJECTED" -> "Your appeal #" + e.id() + " was reviewed and rejected."
-					+ (e.mayAppealAgainAt() == null ? "" : " You can appeal this punishment again "
-							+ Text.relative(e.mayAppealAgainAt()) + ".");
+			case "ACCEPTED" -> "Your appeal #" + e.id() + " was accepted, and the punishment it was about has been lifted. "
+					+ "Its appeal code no longer works.";
+			case "REJECTED" -> "Your appeal #" + e.id() + " was reviewed and rejected. The code you used no longer "
+					+ "works. " + (e.mayAppealAgainAt() == null
+							? "You can appeal again with the new code the server shows you: on the ban screen, or "
+									+ "in chat if you are muted."
+							: "You can appeal again " + Text.relative(e.mayAppealAgainAt())
+									+ ", with the new code the server shows you: on the ban screen, or in chat if you "
+									+ "are muted.");
 			case "STALE" -> "Your appeal #" + e.id() + " was closed because staff did not hear back from you. You can "
 					+ "appeal again with /appeal.";
 			default -> "Your appeal #" + e.id() + " was closed without a decision. You can appeal again with /appeal.";

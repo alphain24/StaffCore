@@ -613,7 +613,13 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			case "resolve" -> answer(event, DiscordAccess.resolveReport(user, clicked.id()).thenApply(DiscordResult::message));
 			case "escalate" -> answer(event, DiscordAccess.escalateReport(user, clicked.id()).thenApply(DiscordResult::message));
 			case "accept" -> answer(event, DiscordAccess.acceptAppeal(user, clicked.id()).thenApply(DiscordResult::message));
-			case "reject" -> answer(event, DiscordAccess.rejectAppeal(user, clicked.id()).thenApply(DiscordResult::message));
+			case "reject" -> event.replyModal(Modal.create("sc:reject:" + clicked.id(), "Reject appeal #" + clicked.id())
+					.addComponents(Label.of("Days before they can appeal again", TextInput.create("wait", TextInputStyle.SHORT)
+							.setRequired(true).setMinLength(1).setMaxLength(3)
+							.setValue(String.valueOf(DiscordAccess.defaultAppealWaitDays()))
+							.setPlaceholder("0 to " + DiscordAccess.MAX_APPEAL_WAIT_DAYS + "; their ban screen shows a new code")
+							.build()))
+					.build()).queue();
 			case "close" -> answer(event, DiscordAccess.closeAppeal(user, clicked.id()).thenApply(DiscordResult::message));
 			case "punishment" -> answer(event, DiscordAccess.punishment(user, clicked.id()).thenApply(Replies::punishment));
 			case "evidence" -> answer(event, DiscordAccess.evidence(user, clicked.id()).thenApply(Replies::evidence));
@@ -658,8 +664,25 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					.thenApply(DiscordResult::message));
 			case "info" -> answer(event, DiscordAccess.requestAppealInfo(user, clicked.id(), value(event, "question"))
 					.thenApply(DiscordResult::message));
+			case "reject" -> {
+				Integer days = waitDays(value(event, "wait"));
+				if (days == null) {
+					event.reply("The wait is a whole number of days, 0 to " + DiscordAccess.MAX_APPEAL_WAIT_DAYS
+							+ ". The appeal was not rejected.").setEphemeral(true).queue();
+					return;
+				}
+				answer(event, DiscordAccess.rejectAppeal(user, clicked.id(), days).thenApply(DiscordResult::message));
+			}
 			default -> { }
 		}
+	}
+
+	/** A typed number of days, or null when it is not one a rejection can set. */
+	static Integer waitDays(String typed) {
+		String trimmed = typed == null ? "" : typed.strip();
+		if (!trimmed.matches("[0-9]{1,3}")) return null;
+		int days = Integer.parseInt(trimmed);
+		return days <= DiscordAccess.MAX_APPEAL_WAIT_DAYS ? days : null;
 	}
 
 	private static String value(ModalInteractionEvent event, String field) {

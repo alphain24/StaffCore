@@ -35,6 +35,10 @@ import java.util.UUID;
  * came from {@code /appeal} in game, a code typed into Discord, the appeals screen or a button. The
  * rules live there and nowhere else: one open appeal per punishment, a wait after a rejection, and
  * an accepted appeal lifting the punishment it was about.
+ * <p>
+ * A decision also ends the appeal code it was filed with ({@link AppealCodes}). A rejection issues the
+ * punishment a new code that works from the day the deciding staff member chose, and that is the code
+ * the ban screen shows from then on.
  *
  * <h2>States, never deletions</h2>
  * {@code OPEN}, then {@code CLOSED} with a verdict of {@code ACCEPTED}, {@code REJECTED} or
@@ -76,7 +80,7 @@ public class AppealModule implements Module {
 		}
 	}
 
-	public enum Result { OK, ALREADY_OPEN, UNAVAILABLE, NOTHING_TO_APPEAL, NOT_IN_FORCE, COOLDOWN }
+	public enum Result { OK, ALREADY_OPEN, UNAVAILABLE, NOTHING_TO_APPEAL, NOT_IN_FORCE, COOLDOWN, NO_CODE }
 
 	/**
 	 * What filing did.
@@ -102,7 +106,16 @@ public class AppealModule implements Module {
 		}
 	}
 
+	/** The longest wait a rejection can set: a year. Longer is a punishment of its own. */
+	public static final int MAX_WAIT_DAYS = 365;
+
+	private final AppealCodes codes = new AppealCodes();
 	private boolean lifecycleRegistered;
+
+	/** Every appeal code, and whether each still works. */
+	public AppealCodes codes() {
+		return codes;
+	}
 
 	/**
 	 * Marks appeals the player walked away from as stale: at start, and hourly after that.
@@ -158,11 +171,22 @@ public class AppealModule implements Module {
 		if (open != null) return new Filed(Result.ALREADY_OPEN, open, null);
 
 		long now = System.currentTimeMillis();
-		Long rejectedAt = lastRejectedAt(against.id());
-		int cooldownDays = StaffConfig.get().appealCooldownDays;
-		if (rejectedAt != null && cooldownDays > 0) {
-			long until = rejectedAt + cooldownDays * 86_400_000L;
-			if (now < until) return new Filed(Result.COOLDOWN, null, until);
+		AppealCodes.Code current = codes.current(against.id());
+		if (current != null) {
+			// The wait staff set when they rejected the last appeal, carried by the code it issued.
+			if (current.usableFrom() > now) return new Filed(Result.COOLDOWN, null, current.usableFrom());
+		} else if (against.isAppealable() && !codesTracked(against)) {
+			// A punishment whose code predates the codes table: the old rule, a fixed wait after the
+			// last rejection.
+			Long rejectedAt = lastRejectedAt(against.id());
+			int cooldownDays = StaffConfig.get().appealCooldownDays;
+			if (rejectedAt != null && cooldownDays > 0) {
+				long until = rejectedAt + cooldownDays * 86_400_000L;
+				if (now < until) return new Filed(Result.COOLDOWN, null, until);
+			}
+		} else if (against.isAppealable()) {
+			// Every code this punishment had has been retired and none replaced it.
+			return Filed.of(Result.NO_CODE);
 		}
 
 		try (PreparedStatement ps = c.prepareStatement(
@@ -255,6 +279,20 @@ public class AppealModule implements Module {
 	 * case, when it has one, and the player is told if they are online.
 	 */
 	public Outcome decide(MinecraftServer server, long id, Verdict verdict, String staffName) {
+		return decide(server, id, verdict, staffName, null);
+	}
+
+	/**
+	 * As {@link #decide(MinecraftServer, long, Verdict, String)}, with the wait a rejection sets.
+	 *
+	 * @param waitDays for a rejection, how many days before the punishment can be appealed again, 0 to
+	 *                 {@value #MAX_WAIT_DAYS}; null for {@code appealCooldownDays}. Ignored otherwise.
+	 */
+	public Outcome decide(MinecraftServer server, long id, Verdict verdict, String staffName, Integer waitDays) {
+		int wait = waitDays == null ? StaffConfig.get().appealCooldownDays : waitDays;
+		if (verdict == Verdict.REJECTED && (wait < 0 || wait > MAX_WAIT_DAYS)) {
+			return Outcome.no("The wait has to be between 0 and " + MAX_WAIT_DAYS + " days.");
+		}
 		Appeal appeal = byId(id);
 		if (appeal == null) return Outcome.no("There is no appeal #" + id + ".");
 		if (!appeal.isOpen()) return Outcome.no("Appeal #" + id + " has already been decided.");
@@ -273,10 +311,26 @@ public class AppealModule implements Module {
 			}
 		}
 
+		// The code the appeal was filed with stops working either way a decision goes. A rejection
+		// hands the punishment a new one, usable once the wait is over.
+		long now = System.currentTimeMillis();
+		Long again = null;
+		if (appeal.punishmentId() != null) {
+			String why = "appeal #" + id + " " + verdict.name().toLowerCase(java.util.Locale.ROOT);
+			if (verdict == Verdict.ACCEPTED) {
+				codes.retire(appeal.punishmentId(), staffName, why);
+			} else if (verdict == Verdict.REJECTED) {
+				AppealCodes.Code next = codes.rotate(appeal.punishmentId(), staffName, why, now + wait * 86_400_000L);
+				if (next != null && wait > 0) again = next.usableFrom();
+			}
+		}
+
 		Punishment against = appeal.punishmentId() == null ? null : Mods.punish().byId(appeal.punishmentId());
 		if (against != null && against.hasCase()) {
 			Mods.cases().store().note(against.caseId(), staffName, "appeal #" + id + " "
-					+ verdict.name().toLowerCase(java.util.Locale.ROOT));
+					+ verdict.name().toLowerCase(java.util.Locale.ROOT)
+					+ (verdict == Verdict.REJECTED ? "; can be appealed again " + (wait == 0 ? "at once"
+							: "in " + wait + " day(s)") : ""));
 		}
 
 		if (server != null) {
@@ -284,23 +338,29 @@ public class AppealModule implements Module {
 			if (online != null) {
 				online.sendSystemMessage(switch (verdict) {
 					case ACCEPTED -> Theme.good("Your appeal was accepted. Welcome back.");
-					case REJECTED -> Theme.bad("Your appeal was reviewed and rejected.");
+					case REJECTED -> Theme.bad("Your appeal was reviewed and rejected." + (wait == 0 ? ""
+							: " You can appeal again in " + wait + " day(s)."));
 					case CLOSED -> Theme.warn("Your appeal was closed without a decision.");
 				});
+				// A muted player is the one who can read the new code; a banned one sees it on the ban screen.
+				if (verdict == Verdict.REJECTED && against != null && against.active()) {
+					var code = Mods.punish().appealCodeLine(against);
+					if (code != null) online.sendSystemMessage(code);
+				}
 			}
 			Mods.alerts().onStaffAction(server, "%s %s %s's appeal #%d".formatted(staffName,
 					verdict.name().toLowerCase(java.util.Locale.ROOT), appeal.targetName(), id));
 		}
 
-		Long again = verdict == Verdict.REJECTED && StaffConfig.get().appealCooldownDays > 0
-				? System.currentTimeMillis() + StaffConfig.get().appealCooldownDays * 86_400_000L : null;
 		StaffCoreApi.publish(new StaffCoreEvent.AppealDecided(System.currentTimeMillis(), id, verdict.name(),
 				staffName, appeal.discordId(), again));
 
 		return new Outcome(true, switch (verdict) {
 			case ACCEPTED -> "Appeal #" + id + " accepted. " + (lifted > 0
 					? "The punishment is lifted." : "The punishment was no longer in force, so nothing was lifted.");
-			case REJECTED -> "Appeal #" + id + " rejected. The punishment stands.";
+			case REJECTED -> "Appeal #" + id + " rejected. The punishment stands, and " + (wait == 0
+					? "it can be appealed again at once with the new code on their ban screen."
+					: "it can be appealed again in " + wait + " day(s), with the new code on their ban screen.");
 			case CLOSED -> "Appeal #" + id + " closed without a decision.";
 		});
 	}
@@ -460,6 +520,12 @@ public class AppealModule implements Module {
 			StaffCore.LOGGER.warn("[Appeal] could not update appeal {}: {}", id, e.getMessage());
 			return false;
 		}
+	}
+
+	/** Whether the codes table has ever known this punishment's code. */
+	private boolean codesTracked(Punishment against) {
+		AppealCodes.Code original = codes.lookup(against.appealCode());
+		return original != null && !original.legacy();
 	}
 
 	private Long lastRejectedAt(long punishmentId) {

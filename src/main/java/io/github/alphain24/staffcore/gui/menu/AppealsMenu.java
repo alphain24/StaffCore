@@ -130,11 +130,16 @@ public class AppealsMenu extends PagedGui<AppealModule.Appeal> {
 			return;
 		}
 
-		if (click.isRight()) confirmVerdict(appeal, false);
-		else confirmVerdict(appeal, true);
+		if (click.isRight()) {
+			// A rejection sets how long the player waits to appeal again, so that is asked first.
+			AppealWaitMenu.open(viewer, appeal.targetName(), days -> confirmVerdict(appeal, false, days),
+					() -> reopen(viewer, only));
+		} else {
+			confirmVerdict(appeal, true, null);
+		}
 	}
 
-	private void confirmVerdict(AppealModule.Appeal appeal, boolean accept) {
+	private void confirmVerdict(AppealModule.Appeal appeal, boolean accept, Integer waitDays) {
 		ItemStack summary = Icon.of(accept ? Mc.concrete(DyeColor.LIME) : Mc.concrete(DyeColor.RED))
 				.name((accept ? "Accept" : "Reject") + " " + appeal.targetName() + "'s appeal",
 						accept ? Theme.GOOD : Theme.BAD)
@@ -143,21 +148,27 @@ public class AppealsMenu extends PagedGui<AppealModule.Appeal> {
 				.lore(accept
 						? "The punishment they appealed is lifted."
 						: "The punishment stands. They are told the outcome.", Theme.TEXT)
+				.lore(accept
+						? "The appeal code stops working."
+						: waitDays != null && waitDays > 0
+								? "They can appeal again in " + AppealWaitMenu.label(waitDays).toLowerCase(java.util.Locale.ROOT)
+										+ ", with a new code."
+								: "They can appeal again at once, with a new code.", Theme.MUTED)
 				.build();
 
 		ConfirmMenu.open(viewer, accept ? "Accept appeal" : "Reject appeal", summary,
-				() -> decide(appeal, accept),
+				() -> decide(appeal, accept, waitDays),
 				() -> reopen(viewer, only));
 	}
 
-	private void decide(AppealModule.Appeal appeal, boolean accept) {
+	private void decide(AppealModule.Appeal appeal, boolean accept, Integer waitDays) {
 		MinecraftServer server = Mc.server(viewer);
 		if (server == null) return;
 
 		// The same decision Discord's buttons make: lifting the appealed punishment, the case note,
 		// telling the player and staff all happen in AppealModule, so the two cannot differ.
 		var outcome = Mods.appeals().decide(server, appeal.id(),
-				accept ? AppealModule.Verdict.ACCEPTED : AppealModule.Verdict.REJECTED, Mc.name(viewer));
+				accept ? AppealModule.Verdict.ACCEPTED : AppealModule.Verdict.REJECTED, Mc.name(viewer), waitDays);
 		if (!outcome.done()) {
 			viewer.sendSystemMessage(Theme.warn(outcome.message()));
 			Sfx.deny(viewer);

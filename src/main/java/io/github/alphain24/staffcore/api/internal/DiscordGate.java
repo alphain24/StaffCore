@@ -696,11 +696,24 @@ public final class DiscordGate {
 			String clean = cleanText(text, APPEAL_LIMIT);
 			if (clean.isEmpty()) return DiscordResult.no("An appeal needs a reason.");
 
-			Punishment against = Mods.punish().byAppealCode(code);
+			var found = Mods.appeals().codes().lookup(code);
+			Punishment against = found == null ? null : Mods.punish().byId(found.punishmentId());
 			if (against == null) {
 				return DiscordResult.no("That code does not match any ban or mute. It is the twelve characters "
 						+ "on the ban screen, like ABCD-EFGH-JKMN; letters and numbers are easy to mix up in a "
 						+ "photograph.");
+			}
+			switch (found.state(System.currentTimeMillis())) {
+				case RETIRED -> {
+					return DiscordResult.no("That code has already been used for an appeal that was decided, so it "
+							+ "no longer works. If you were told you can appeal again, the ban screen shows a new "
+							+ "code — join the server to see it.");
+				}
+				case WAITING -> {
+					return DiscordResult.no("That code starts working " + discordTime(found.usableFrom())
+							+ ". You can appeal then.");
+				}
+				case USABLE -> { }
 			}
 
 			var filed = Mods.appeals().fileAgainst(against, clean, "DISCORD", filer.id(), filer.name());
@@ -716,6 +729,7 @@ public final class DiscordGate {
 						+ "appeal it again " + discordTime(filed.mayAppealAgain()) + ".");
 				case NOT_IN_FORCE -> DiscordResult.no("That punishment is no longer in force, so there is nothing "
 						+ "to appeal.");
+				case NO_CODE -> DiscordResult.no("That punishment can no longer be appealed.");
 				default -> DiscordResult.no("Appeals are unavailable right now. Try again later.");
 			};
 		}, DiscordResult.no(STOPPED));
@@ -741,8 +755,15 @@ public final class DiscordGate {
 
 	public static CompletableFuture<DiscordResult> decideAppeal(DiscordUser user, long appealId,
 			io.github.alphain24.staffcore.modules.appeal.AppealModule.Verdict verdict) {
+		return decideAppeal(user, appealId, verdict, null);
+	}
+
+	/** @param waitDays for a rejection, the wait it sets; null for the server's usual one */
+	public static CompletableFuture<DiscordResult> decideAppeal(DiscordUser user, long appealId,
+			io.github.alphain24.staffcore.modules.appeal.AppealModule.Verdict verdict, Integer waitDays) {
 		return act(user, DiscordOperation.HANDLE_APPEAL, (server, resolved) -> {
-			var outcome = Mods.appeals().decide(server, appealId, verdict, resolved.standing().minecraftName());
+			var outcome = Mods.appeals().decide(server, appealId, verdict, resolved.standing().minecraftName(),
+					waitDays);
 			if (outcome.done()) {
 				var appeal = Mods.appeals().byId(appealId);
 				audit(resolved, user, verdict.name().toLowerCase(java.util.Locale.ROOT) + " "

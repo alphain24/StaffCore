@@ -750,6 +750,10 @@ public final class StaffCommands {
 				return fail(ctx, "Your last appeal against this mute was rejected. You can appeal it again on "
 						+ io.github.alphain24.staffcore.util.TimeFormat.stamp(filed.mayAppealAgain()) + ".");
 			}
+			case NO_CODE -> {
+				Sfx.deny(player);
+				return fail(ctx, "This mute can no longer be appealed.");
+			}
 			case NOTHING_TO_APPEAL -> {
 				Sfx.deny(player);
 				String invite = StaffConfig.get().discordInvite;

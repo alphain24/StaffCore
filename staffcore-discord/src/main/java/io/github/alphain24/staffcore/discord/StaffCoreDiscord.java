@@ -23,7 +23,7 @@ public final class StaffCoreDiscord implements ModInitializer {
 	public static final Logger LOGGER = LoggerFactory.getLogger("staffcore-discord");
 
 	/** The API version this build of the companion was written against. */
-	static final int API_VERSION = 4;
+	static final int API_VERSION = 5;
 
 	@Override
 	public void onInitialize() {
