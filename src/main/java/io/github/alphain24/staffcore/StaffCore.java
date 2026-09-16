@@ -120,7 +120,7 @@ public class StaffCore implements ModInitializer {
 		LOGGER.info("[StaffCore] Starting up for Minecraft 26.2");
 
 		StaffConfig.load();
-		io.github.alphain24.staffcore.permission.PermissionGroups.load(Permissions.hasProvider());
+		io.github.alphain24.staffcore.permission.PermissionGroups.load();
 		registerModules();
 		registerLifecycle();
 		registerPlayerEvents();

@@ -80,7 +80,7 @@ class DiscordAuthorityTest {
 	void unknownIsNotYes() {
 		var result = grant(new Rank.Held(Set.of(Nodes.BAN), false, false), Nodes.BAN);
 		assertTrue(result.nodes().isEmpty());
-		assertTrue(result.limitation().contains("online"), result.limitation());
+		assertTrue(result.limitation().contains("Try again"), result.limitation());
 	}
 
 	@Test

@@ -68,6 +68,11 @@ dependencies {
 
 	// The gametest source set sees everything the mod sees, and nothing sees it.
 	gametestImplementation sourceSets.main.output
+
+	// The permissions API with no permissions mod behind it, which is what a server gets from any
+	// mod that ships the API in its own jar. Every game test runs that way, so an operator being
+	// refused because the API is present shows up as failures rather than as a missing /staff.
+	gametestImplementation "me.lucko:fabric-permissions-api:${project.permissions_api_version}"
 }
 
 // Let the boot check ask the mod to prove itself: -Pselftest turns on the self test that

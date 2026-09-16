@@ -512,8 +512,8 @@ too, with *Send Messages* as well.
 `/staff discord link` again for a new one.
 
 **`/whoami` says you can use nothing.** Either your role is not in `roleNodes`, or your Minecraft
-account does not hold those permissions in game. With LuckPerms, permissions can only be read while
-you are online, so join the server and try again.
+account does not hold those permissions in game. With LuckPerms, the first try after a restart may
+say your permissions have not loaded yet; try again in a moment, or join the server.
 
 **A button says you need a permission.** It needs that permission both in `roleNodes` for one of your
 roles and in game for your linked account.

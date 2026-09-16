@@ -77,7 +77,7 @@ your-server/
 ├── config/
 │   └── staffcore/
 │       ├── staffcore.json               settings
-│       ├── permissions.json             groups, when there is no permissions mod
+│       ├── permissions.json             staff groups (a permissions mod's own answers win)
 │       ├── discord.json                 the bot's settings (with the Discord jar)
 │       └── discord.token                the bot's token, alone (with the Discord jar)
 └── world/
@@ -236,7 +236,7 @@ has already logged off.
 | `/staff audit <staff> [days]` | `staff.audit` | Everything a staff member did, with case links |
 | `/staff audit <staff> origins` | `staff.audit.addresses` | Where they acted from — admin-only, hashed |
 | `/staff approve [id]` | `staff.approve` | Confirm, and carry out, somebody else's staged IP ban |
-| `/staff perms [list \| set \| unset \| explain]` | `staff.perms` | Built-in groups, when no permissions mod is installed; `explain <player>` prints their resolved nodes |
+| `/staff perms [list \| set \| unset \| explain]` | `staff.perms` | Built-in groups, for whatever a permissions mod leaves unset; `explain <player>` prints their resolved nodes |
 | `/staff backup` | `staff.reload` | Write a database backup now |
 | `/staff export [addresses [confirm]]` | `staff.reload` | Dump every table to CSV; addresses are redacted unless asked for |
 | `/staff selftest` | `staff.reload` | Prove the mod works, not just that it started |
@@ -268,14 +268,20 @@ not silently treated as zero.
 
 ### Permissions
 
-Install [fabric-permissions-api](https://github.com/lucko/fabric-permissions-api) (and
-LuckPerms) and StaffCore picks it up automatically — the lookup is reflective and done
-once at class-load. That remains the best answer and wins outright wherever it is present.
+Install LuckPerms (with [fabric-permissions-api](https://github.com/lucko/fabric-permissions-api))
+and StaffCore picks it up automatically — the lookup is reflective and done once at class-load.
+**A node LuckPerms sets, to true or false, wins outright.**
 
-**Without one, `config/staffcore/permissions.json` answers instead.** It is written with
-starter groups on first run and holds groups (node lists, with `@other` to inherit and
+**Everything it leaves unset is answered by `config/staffcore/permissions.json`**, and then by the
+vanilla operator level — which, on a server with no permissions mod, is every node. The file is
+written with starter groups on first run and holds groups (node lists, with `@other` to inherit and
 `staff.*` wildcards) plus a player-to-group map. Assign people with
 `/staff perms set <player> <group>`; the file is re-read by `/staff reload`.
+
+Many mods ship fabric-permissions-api inside their own jar, so the API being present does not mean a
+permissions mod is. With nothing listening, it has no answer, and StaffCore falls through to the file
+and op level as above. (Before 1.2.0, StaffCore read that as "no". On such a server that locked
+everyone out of StaffCore, operators included, and the file was never written.)
 
 ```jsonc
 {
@@ -745,9 +751,10 @@ what their linked Minecraft account holds in game, read again on every request:
 - An unlinked Discord account holds nothing, whatever its roles.
 - A banned Minecraft account can do nothing from Discord.
 - Being opped in game is not a wildcard here; only permissions the account actually resolves count.
-- With a permissions plugin such as LuckPerms, permissions can only be read while the player is
-  online, so an offline account can do nothing from Discord until they join. Without one, the
-  groups file and the op list answer for offline accounts exactly as the command tree would.
+- An offline account is asked the same question as an online one. With a permissions mod such as
+  LuckPerms, the first request for somebody it has not loaded may be refused with "try again in a
+  moment" while it loads them; nothing waits for it. Where it has no answer, the groups file and the
+  op list answer exactly as the command tree would.
 - **IP bans, rollbacks and inventory edits never run from Discord**, for anybody, and approving a
   staged action counts as running it. This is enforced in the services that do those things, not
   only by leaving them out of the bot.
@@ -802,9 +809,9 @@ known gap — not a bug list.
   unrecoverable by the time anyone notices. **The escape hatch is the console**, which is the
   server owner's own hand and is audited like everything else — without it, two admins who
   had fallen out would leave a server nobody could fix.
-- **An offline staff member cannot be punished when permissions live in a plugin.** A
-  permissions API answers about a connected player, so their rank is unknowable while they
-  are offline and the action is refused rather than guessed at. Waiting is recoverable;
+- **An offline staff member cannot be punished until their permissions mod has loaded them.**
+  Their rank is unknowable until then, so the action is refused rather than guessed at; asking
+  again shortly usually works, because the lookup starts the load. Waiting is recoverable;
   banning the admin is not. With StaffCore's own group file there is no such gap.
 
 **Recovery and evidence**

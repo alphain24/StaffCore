@@ -74,7 +74,7 @@ public final class Nodes {
 	public static final String GRIEF_PURGE     = "grief.purge";
 	/** Leave inspect mode on so any block click reports its history. */
 	public static final String INSPECT_MODE    = "grief.inspect.mode";
-	/** Edit the built-in permission groups used when no permissions mod is installed. */
+	/** Edit the built-in permission groups, which answer what a permissions mod leaves unset. */
 	public static final String PERMS_ADMIN     = "staff.perms";
 	public static final String SPY             = "control.spy";
 	public static final String CHAT_CONTROL    = "control.chat";

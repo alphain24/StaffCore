@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The fallback permission groups, used when no permissions mod is installed.
+ * The built-in permission groups, which answer what a permissions mod leaves unset.
  * <p>
  * Tested against the resolver directly rather than through the file, because the file is the
  * uninteresting half. What matters is that inheritance resolves, wildcards match the right

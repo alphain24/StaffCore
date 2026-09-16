@@ -65,8 +65,8 @@ public final class DiscordAuthority {
 		}
 
 		if (!inGame.complete()) {
-			return new Grant(Set.of(), "Your permissions live in a permissions plugin, which can only "
-					+ "be asked about you while you are online. Join the server and try again.");
+			return new Grant(Set.of(), "Your permissions mod has not loaded your permissions yet. "
+					+ "Try again in a moment, or join the server and try again.");
 		}
 
 		Set<String> granted = new TreeSet<>();

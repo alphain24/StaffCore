@@ -2690,7 +2690,7 @@
           <li>A role can only narrow. A compromised Discord role grants nothing the Minecraft account does not already hold.</li>
           <li>An unlinked Discord account holds nothing, whatever its roles. A banned Minecraft account can do nothing from Discord.</li>
           <li>Being opped is not a wildcard here; only permissions the account actually resolves count.</li>
-          <li>With a permissions plugin such as LuckPerms, permissions can only be read while the player is online, so an offline account can do nothing from Discord until they join. Without one, the groups file and the op list answer exactly as the command tree would.</li>
+          <li>An offline account is asked the same question as an online one. With a permissions mod such as LuckPerms, the first request for somebody it has not loaded may be refused with &ldquo;try again in a moment&rdquo; while it loads them. Where it has no answer, the groups file and the op list answer exactly as the command tree would.</li>
           <li><strong>IP bans, rollbacks and inventory edits never run from Discord</strong>, for anybody, and approving a staged action counts as running it. The services that do those things refuse it themselves.</li>
         </ul>
         <p>
@@ -2772,7 +2772,7 @@
               <tr><td class="mono">/staff search &lt;query…&gt;</td><td class="mono">grief.search</td><td class="wrap">Query both logs — <code>player:</code> <code>action:</code> <code>block:</code> <code>time:</code> <code>radius:</code></td></tr>
               <tr><td class="mono">/staff purge &lt;age&gt; [player] [confirm]</td><td class="mono">grief.purge</td><td class="wrap">Delete log history early — previews unless you confirm</td></tr>
               <tr><td class="mono">/staff inspect</td><td class="mono">grief.inspect.mode</td><td class="wrap">Hold inspect mode; any block click shows its history</td></tr>
-              <tr><td class="mono">/staff perms [list | set | unset]</td><td class="mono">staff.perms</td><td class="wrap">Built-in groups, when no permissions mod is installed</td></tr>
+              <tr><td class="mono">/staff perms [list | set | unset]</td><td class="mono">staff.perms</td><td class="wrap">Built-in groups, for whatever a permissions mod leaves unset</td></tr>
               <tr><td class="mono">/staff stats &lt;player&gt;</td><td class="mono">analytics.stats</td><td class="wrap">One staff member's totals</td></tr>
               <tr><td class="mono">/staff discord &middot; link</td><td class="mono">any staff node</td><td class="wrap">Show your Discord link, or get a one-time code to link &mdash; only while the Discord companion is running</td></tr>
               <tr><td class="mono">/staff discord unlink [player]</td><td class="mono">any staff node; staff.perms for somebody else's</td><td class="wrap">End a Discord link, so nothing can be done as that account from Discord</td></tr>
@@ -2857,12 +2857,15 @@
         <p class="kicker">Reference</p>
         <h2>Permissions</h2>
         <p>
-          Install <a href="https://github.com/lucko/fabric-permissions-api">fabric-permissions-api</a>
-          alongside LuckPerms and StaffCore picks it up automatically. That is still the best
-          answer, and it wins outright wherever it is present.
+          Install LuckPerms (with <a href="https://github.com/lucko/fabric-permissions-api">fabric-permissions-api</a>)
+          and StaffCore picks it up automatically. A node LuckPerms sets, to true or false, wins
+          outright.
         </p>
         <p>
-          Without one, <code>config/staffcore/permissions.json</code> answers instead. It is
+          Everything it leaves unset is answered by <code>config/staffcore/permissions.json</code>,
+          and then by the vanilla operator level. Many mods ship fabric-permissions-api inside their
+          own jar, so its presence does not mean a permissions mod is installed; with nothing
+          listening it has no answer, and the file and op level decide. The file is
           written with the starter groups below on first run, and holds node lists — with
           <code>@other</code> to inherit from another group and <code>staff.*</code> wildcards —
           plus a map of players to groups. Assign somebody with

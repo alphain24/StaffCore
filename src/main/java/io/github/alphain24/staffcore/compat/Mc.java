@@ -275,7 +275,7 @@ public final class Mc {
 	// ---------------------------------------------------------------- permissions
 
 	/**
-	 * The standalone fallback when no permissions plugin is installed.
+	 * The last fallback, when neither a permissions mod nor the groups file has an answer.
 	 * <p>
 	 * 26.2 replaced numeric op levels with named vanilla permissions;
 	 * {@code COMMANDS_MODERATOR} is the modern spelling of what used to be op level 2.

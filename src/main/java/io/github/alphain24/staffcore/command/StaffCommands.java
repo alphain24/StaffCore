@@ -1757,7 +1757,7 @@ public final class StaffCommands {
 					StaffConfig.load();
 					// Group assignments are edited by hand as often as through the command,
 					// so a reload that left them stale would be a trap.
-					PermissionGroups.load(Permissions.hasProvider());
+					PermissionGroups.load();
 					return ok(ctx, "Config and permission groups reloaded from disk.");
 				}));
 
@@ -2518,11 +2518,11 @@ public final class StaffCommands {
 	// ------------------------------------------------------------------ permissions
 
 	/**
-	 * Manages the built-in permission groups, for servers with no permissions mod.
+	 * Manages the built-in permission groups.
 	 * <p>
-	 * Every subcommand refuses outright when a permissions API is installed. Editing a file
-	 * that is not being consulted would appear to work and change nothing, which is a worse
-	 * outcome than being told to go and use LuckPerms.
+	 * They answer whatever a permissions mod leaves unanswered, so they work with or without one.
+	 * Where a permissions mod such as LuckPerms sets a node, its answer wins, and the listing says
+	 * so rather than letting an edit here look as if it overrode one there.
 	 */
 	/**
 	 * The case commands. Chat is the primary surface, so this is where the real work happens.
@@ -3247,9 +3247,10 @@ public final class StaffCommands {
 					opFallback
 							? "  Holds nothing from this file. Being an operator still passes "
 									+ "every check — operatorsBypass is on."
-							: "  Holds nothing, and operatorsBypass is off, so nothing else "
-									+ "will grant it either.",
+							: "  Holds nothing, and operatorsBypass is off, so being an operator "
+									+ "will not grant it either.",
 					Theme.MUTED), false);
+			permsApiNote(ctx);
 			return 1;
 		}
 
@@ -3264,6 +3265,7 @@ public final class StaffCommands {
 					"  operatorsBypass is on, so any operator passes every check regardless "
 							+ "of this list."), false);
 		}
+		permsApiNote(ctx);
 		return 1;
 	}
 
@@ -3303,14 +3305,21 @@ public final class StaffCommands {
 			"Explosion damage log", "Fire damage log", "Item pickup log"
 	};
 
-	/** True when the built-in groups are not the authority, with an explanation. */
+	/** True when the built-in groups could not be read, with an explanation. */
 	private static boolean permsUnavailable(CommandContext<CommandSourceStack> ctx) {
 		if (PermissionGroups.get() != null) return false;
 
-		fail(ctx, Permissions.hasProvider()
-				? "A permissions mod is installed — manage staff there, not here."
-				: "config/staffcore/permissions.json could not be read. See the server log.");
+		fail(ctx, "config/staffcore/permissions.json could not be read. See the server log.");
 		return true;
+	}
+
+	/** Said under the list and the explanation, where a permissions mod could be answering first. */
+	private static void permsApiNote(CommandContext<CommandSourceStack> ctx) {
+		if (!Permissions.apiPresent()) return;
+		ctx.getSource().sendSuccess(() -> Icon.text(
+				"  The permissions API is present: a node set in a permissions mod such as LuckPerms "
+						+ "wins over this file, which decides only what that leaves unset.",
+				Theme.MUTED), false);
 	}
 
 	private static int permsList(CommandContext<CommandSourceStack> ctx) {
@@ -3351,6 +3360,7 @@ public final class StaffCommands {
 					"  Operators currently bypass every group. Set operatorsBypass to false "
 							+ "once your staff are assigned."), false);
 		}
+		permsApiNote(ctx);
 		return 1;
 	}
 

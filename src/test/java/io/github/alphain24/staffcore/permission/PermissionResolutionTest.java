@@ -1,10 +1,12 @@
 package io.github.alphain24.staffcore.permission;
 
+import net.fabricmc.fabric.api.util.TriState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -157,6 +159,52 @@ class PermissionResolutionTest {
 		assertFalse(broken.groupExists());
 		assertTrue(broken.problems().stream().anyMatch(p -> p.contains("moderater")));
 		assertTrue(broken.grants().isEmpty());
+	}
+
+	@Test
+	@DisplayName("a permissions API with nothing to say is not a refusal")
+	void apiDefaultFallsThroughToTheFileAndOperators() {
+		PermissionGroups g = groups();
+		UUID nobody = UUID.fromString("00000000-0000-0000-0000-0000000000a3");
+
+		// The API says DEFAULT about everything when no permissions mod is listening. Reading
+		// that as "no" refused every node to every operator on such a server.
+		assertTrue(Permissions.resolve(TriState.DEFAULT, g, nobody, "op", true, Nodes.RELOAD),
+				"an operator lost a node because the API had no opinion");
+		assertTrue(Permissions.resolve(TriState.DEFAULT, g, TRAINEE, "trainee", false, Nodes.INVSEE),
+				"the groups file stopped answering because the API had no opinion");
+		assertFalse(Permissions.resolve(TriState.DEFAULT, g, nobody, "player", false, Nodes.STAFF_GUI),
+				"an ordinary player was given a node nobody granted");
+		assertTrue(Permissions.resolve(TriState.DEFAULT, null, nobody, "op", true, Nodes.RELOAD),
+				"with the file unreadable, op level is the last resort");
+	}
+
+	@Test
+	@DisplayName("a permissions mod's yes or no wins over the file and over op")
+	void apiAnswerWins() {
+		PermissionGroups g = groups();
+		UUID nobody = UUID.fromString("00000000-0000-0000-0000-0000000000a3");
+
+		assertFalse(Permissions.resolve(TriState.FALSE, g, nobody, "op", true, Nodes.RELOAD),
+				"operatorsBypass overrode a node a permissions mod refused");
+		assertFalse(Permissions.resolve(TriState.FALSE, g, BOSS, "boss", false, Nodes.INVSEE),
+				"the groups file overrode a node a permissions mod refused");
+		assertTrue(Permissions.resolve(TriState.TRUE, g, nobody, "player", false, Nodes.STAFF_GUI),
+				"a node a permissions mod granted was refused");
+
+		g.operatorsBypass = false;
+		assertTrue(Permissions.resolve(TriState.TRUE, g, nobody, "player", false, Nodes.STAFF_GUI),
+				"turning operatorsBypass off undid a node a permissions mod granted");
+	}
+
+	@Test
+	@DisplayName("without the API, an offline account is answered like an online one")
+	void offlineWithoutTheApi() {
+		PermissionGroups g = groups();
+		assertEquals(Optional.of(true), Permissions.checkOffline(g, TRAINEE, "trainee", false, Nodes.INVSEE));
+		assertEquals(Optional.of(false), Permissions.checkOffline(g, TRAINEE, "trainee", false, Nodes.RELOAD));
+		assertEquals(Optional.of(TriState.DEFAULT), Permissions.offlineFromApi(TRAINEE, Nodes.INVSEE),
+				"with no API there is nothing to wait for");
 	}
 
 	@Test

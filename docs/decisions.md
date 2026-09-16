@@ -2079,6 +2079,41 @@ Discord, naming the Discord account.
 
 ---
 
+## The permissions API is a library, not a permissions mod
+
+**Date:** 2026-09-17
+
+Reported from a fresh server: `/staff` missing for an operator, `permissions.json` never written,
+and the log saying the file was ignored because a permissions API was present.
+
+**What was wrong.** StaffCore took fabric-permissions-api being on the classpath to mean a
+permissions mod was in charge, ignored its own groups file, and called the API's two-argument
+`check`, which turns "nobody has an answer" into "no". The API is a library that many mods ship
+inside their own jars. With no LuckPerms behind it, every node was refused to everybody, and the
+`/staff` root, which needs any staff node, was hidden. Fabric API 26.2 has its own permission
+module in a different package, so it was not the cause.
+
+**The order now.** The API's `getPermissionValue` is asked first. `TRUE` or `FALSE` is a
+permissions mod speaking and wins. `DEFAULT` falls through to `permissions.json`, then the operator
+level, exactly as on a server without the API. The file is always loaded and written. This is the
+convention most Fabric mods follow (`check(source, node, level)`), and it changes one thing on a
+LuckPerms server: an operator now holds the StaffCore nodes LuckPerms leaves unset, as
+`operatorsBypass` says. Setting `operatorsBypass` to false in the file closes that, as it always has.
+
+**Offline accounts are asked too.** "Offline with a permissions plugin is refused", under
+[Who a Discord user is allowed to be](#who-a-discord-user-is-allowed-to-be), assumed the API could
+only answer about connected players. In fact the API has an offline check.
+It answers with a future, because a permissions mod may have to load the account first. Nothing
+waits for it. A finished future is an answer. An unfinished one means "cannot say", and the Discord
+gate and the rank guard refuse it, as before. With nothing listening, the future is already finished.
+
+**Why this was not caught.** No test ran with the API on the classpath. The game-test run now
+carries the real fabric-permissions-api 0.7.0 with nothing listening, so every game test runs the
+way the reported server does. `PermissionApiTests` adds a stand-in permissions mod for the
+precedence and offline cases. With the old reading put back, 32 game tests fail.
+
+---
+
 ## Replays as maps in Discord
 
 **Date:** 2026-09-17

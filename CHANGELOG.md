@@ -38,6 +38,19 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`; install both jars from th
 - **Case ids complete as you type** in Discord's `/staff case` and `/staff evidence`, for linked staff
   allowed to look at cases.
 
+### Fixed
+
+- **StaffCore locked everybody out, operators included, when another mod shipped the permissions
+  API.** Many mods ship fabric-permissions-api inside their jar. StaffCore took that to mean a
+  permissions mod was installed. It ignored `permissions.json` and never wrote it, and it read "no
+  answer" as "no", so `/staff` was missing for everyone. Now a node a permissions mod such as
+  LuckPerms sets still wins, and anything it leaves unset goes to `permissions.json`, then op level.
+  On a LuckPerms server, operators now hold the StaffCore nodes LuckPerms leaves unset unless
+  `operatorsBypass` is off.
+- **Offline accounts are now read through the permissions API too.** If LuckPerms has not loaded an
+  account yet, a Discord request or an offline staff punishment is refused with "try again in a
+  moment" instead of "join the server".
+
 ### Changed
 
 - **The Discord staff chat channel is made by default** (`staffChatChannelId` is `create` in new

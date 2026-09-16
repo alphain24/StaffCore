@@ -32,11 +32,12 @@ import java.util.UUID;
  * would be inventing exactly the authority this exists to check.
  *
  * <h2>What this cannot see</h2>
- * With a permissions API installed, an offline player's nodes cannot be read — the API answers
- * about a live player. For an offline target the answer is therefore drawn from StaffCore's
- * own group file and the vanilla operator list, and {@link Ranking#complete} says whether that
- * was the whole picture. A caller that cares should refuse rather than assume; refusing to ban
- * an offline account for a few seconds is recoverable, and banning the admin is not.
+ * A permissions mod can be asked about an offline player, but it may have to load them first,
+ * and nothing here waits for that. Until it has the answer ready, an offline player's nodes are
+ * unknown, and {@link Ranking#complete} says so. A caller that cares should refuse rather than
+ * assume; refusing to ban an offline account for a few seconds is recoverable, and banning the
+ * admin is not. Where no permissions mod has an opinion, StaffCore's own group file and the
+ * vanilla operator list answer, exactly as they do for a player who is online.
  */
 public final class Rank {
 	private Rank() {}
@@ -44,8 +45,8 @@ public final class Rank {
 	/**
 	 * What one person holds, for comparison.
 	 *
-	 * @param complete false when this could not be resolved fully — an offline player on a
-	 *                 server whose permissions live in a plugin we cannot ask about them
+	 * @param complete false when this could not be resolved fully — an offline player whose
+	 *                 permissions mod has not got their permissions ready
 	 */
 	public record Held(Set<String> nodes, boolean operator, boolean complete) {
 
@@ -75,8 +76,7 @@ public final class Rank {
 	 * What a target holds, online or not.
 	 * <p>
 	 * An online target is resolved the same way anybody else is. An offline one is resolved
-	 * from the group file and the operator list, which is everything StaffCore itself knows
-	 * and less than a permissions plugin knows.
+	 * from what a permissions mod has ready to say, then the group file and the operator list.
 	 */
 	public static Held of(MinecraftServer server, UUID id, String name) {
 		if (server == null || id == null) return new Held(Set.of(), false, false);
@@ -86,20 +86,29 @@ public final class Rank {
 
 		boolean operator = isListedOperator(server, id, name);
 		PermissionGroups groups = PermissionGroups.get();
-		if (groups == null) {
-			return new Held(Set.of(), operator, !Permissions.hasProvider());
-		}
 
+		// Counting too much here only refuses a punishment, so an operator counts as holding
+		// whatever nobody has an explicit answer about, whenever the file lets operators past.
 		Set<String> held = new LinkedHashSet<>();
+		boolean complete = true;
 		for (String node : Actor.all()) {
-			Boolean answer = groups.check(id, name, node);
-			if (Boolean.TRUE.equals(answer)) held.add(node);
+			var fromApi = Permissions.offlineFromApi(id, node);
+			if (fromApi.isEmpty()) {
+				complete = false;
+				continue;
+			}
+			boolean has = switch (fromApi.get()) {
+				case TRUE -> true;
+				case FALSE -> false;
+				case DEFAULT -> groups != null && (Boolean.TRUE.equals(groups.check(id, name, node))
+						|| (operator && groups.operatorsBypass));
+			};
+			if (has) held.add(node);
 		}
-		if (operator && groups.operatorsBypass) held.addAll(Actor.all());
 
-		// A permissions plugin is the authority where one exists, and it cannot be asked
-		// about somebody who is not connected. Saying so is the only honest answer.
-		return new Held(Collections.unmodifiableSet(held), operator, !Permissions.hasProvider());
+		// A permissions mod that has not loaded this player yet cannot be asked about them.
+		// Saying so is the only honest answer.
+		return new Held(Collections.unmodifiableSet(held), operator, complete);
 	}
 
 	/**
@@ -124,15 +133,15 @@ public final class Rank {
 			return new Held(actor.nodes(), actor.operator(), true);
 		}
 
-		// A permissions plugin is the authority where one exists, and it answers only about
-		// somebody who is connected.
-		if (Permissions.hasProvider()) return new Held(Set.of(), false, false);
-
 		boolean moderator = isListedModerator(server, id, name);
 		PermissionGroups groups = PermissionGroups.get();
 		Set<String> held = new LinkedHashSet<>();
 		for (String node : Actor.all()) {
-			if (Permissions.withoutProvider(groups, id, name, moderator, node)) held.add(node);
+			var answer = Permissions.checkOffline(groups, id, name, moderator, node);
+			// Half an answer is not given out: a permissions mod that has loaded some of this
+			// account and not the rest would otherwise grant whatever happened to be ready.
+			if (answer.isEmpty()) return new Held(Set.of(), false, false);
+			if (answer.get()) held.add(node);
 		}
 		return new Held(Collections.unmodifiableSet(held), moderator, true);
 	}
@@ -195,9 +204,9 @@ public final class Rank {
 
 		Held mine = of(actor);
 		if (!target.complete()) {
-			return Ranking.no(targetName + " is staff, and their permissions live in a plugin "
-					+ "that cannot be asked about somebody who is offline. Refusing rather than "
-					+ "guessing — wait until they are online, or do it from the console.", false);
+			return Ranking.no(targetName + " is staff, and their permissions mod has not loaded "
+					+ "their permissions while they are offline. Refusing rather than guessing - try "
+					+ "again in a moment, wait until they are online, or do it from the console.", false);
 		}
 		if (outranks(mine, target)) return Ranking.OK;
 

@@ -26,10 +26,15 @@ import java.util.UUID;
  * testing misleading, since an opped alt passes every check and so looks like it is seeing
  * through vanish when the feature is working perfectly.
  * <p>
- * Installing LuckPerms is still the better answer and nothing here competes with it — this
- * file is consulted only when no permissions API is present, and is ignored entirely the
- * moment one is. What it buys is that "I have not set up LuckPerms yet" stops meaning
- * "everybody who is op is an admin".
+ * Installing LuckPerms is still the better answer and nothing here competes with it: whatever a
+ * permissions mod says about a node wins, and this file answers only what it leaves unsaid. What
+ * it buys is that "I have not set up LuckPerms yet" stops meaning "everybody who is op is an
+ * admin".
+ * <p>
+ * It used to be ignored whenever the permissions API was on the classpath. The API is a library
+ * that other mods ship inside their jars, so its presence says nothing about a permissions mod
+ * being installed, and a server with one such mod and no LuckPerms got neither this file nor
+ * any staff powers at all. See {@link Permissions}.
  * <p>
  * Players are keyed by UUID or by name; names are convenient and UUIDs are correct, so both
  * work and a UUID wins where an account has been renamed.
@@ -360,7 +365,7 @@ public final class PermissionGroups {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static PermissionGroups instance;
 
-	/** Null until {@link #load()} has run, and whenever a permissions API is in charge. */
+	/** Null until {@link #load()} has run, and when the file could not be read. */
 	public static PermissionGroups get() {
 		return instance;
 	}
@@ -372,16 +377,15 @@ public final class PermissionGroups {
 	/**
 	 * Reads the file, writing defaults on first run.
 	 * <p>
-	 * Skipped entirely when a permissions API is present. Two systems both answering the
-	 * same question is how a server ends up with a permission that works in one place and
-	 * not another, and the API is the one people expect to win.
+	 * Read whether or not the permissions API is present. Where a permissions mod answers, its
+	 * answer wins before this file is asked, so the two never disagree about the same node; the
+	 * file only fills in what nothing else has an answer for.
 	 */
-	public static void load(boolean permissionsApiPresent) {
-		if (permissionsApiPresent) {
-			instance = null;
-			StaffCore.LOGGER.info(
-					"[StaffCore] A permissions API is present - config/staffcore/permissions.json is ignored.");
-			return;
+	public static void load() {
+		if (Permissions.apiPresent()) {
+			StaffCore.LOGGER.info("[StaffCore] The permissions API is present: a permissions mod such as "
+					+ "LuckPerms decides the nodes it has an answer for, and config/staffcore/permissions.json "
+					+ "decides the rest.");
 		}
 
 		Path file = path();
@@ -389,9 +393,9 @@ public final class PermissionGroups {
 			instance = new PermissionGroups();
 			instance.configVersion = CURRENT_VERSION;
 			save();
-			StaffCore.LOGGER.info("[StaffCore] No permissions mod found - wrote starter groups to {}",
-					file);
-			StaffCore.LOGGER.info("[StaffCore] Assign staff with /staff perms set <player> <group>.");
+			StaffCore.LOGGER.info("[StaffCore] Wrote starter permission groups to {}", file);
+			StaffCore.LOGGER.info("[StaffCore] Assign staff with /staff perms set <player> <group>. "
+					+ "Operators pass every check until operatorsBypass is turned off.");
 			return;
 		}
 
