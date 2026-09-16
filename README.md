@@ -594,7 +594,8 @@ answer private to whoever asked:
 | `/staff notes <player>` | `staff.notes.view` | Their notes, retracted ones marked |
 | `/staff profile <player>` | `staff.gui` | Their standing: punishments, points, notes, what is in force, open cases |
 | `/staff case <id>` | `staff.gui` | A case and the latest of its history |
-| `/staff evidence <case> [item]` | `staff.gui` | The evidence filed on a case; with `item`, one piece in full with its kept files |
+| `/staff evidence <case> [item]` | `staff.gui` | The evidence filed on a case; with `item`, one piece in full with its kept files, and a map for replay evidence (with `staff.replay`) |
+| `/staff replay-map <player> [minutes] [started] [case]` | `staff.replay` | A map of where they went and what they broke — see below |
 | `/staff punish <player> <offence>` | `discord.punishpanel` | Punish by offence ladder, with a confirmation — see below |
 | `/staff evidence-add <case> [file] [note]` | `staff.gui` | File a file or a note as evidence — see below |
 | `/staff staff-history <staff> [days]` | `staff.audit` | What a staff member did — never where from |
@@ -635,6 +636,22 @@ The filing, with its kept files, is posted in the case's thread. `/staff evidenc
 piece with its number; **`/staff evidence <case> item:<n>`** shows one piece in full and attaches its
 kept files, privately. In game the evidence reads as *From Discord* on the case screen, and opening it
 prints the message, the files with their hashes, and a link to the message.
+
+### Replays as maps
+
+A replay is watched from inside it in game; Discord can only show a picture, so **`/staff replay-map
+<player> [minutes] [started] [case]`** draws one: the player's path from above, north up, running from
+blue through purple to yellow over time, with a green dot where it began, a red dot where it ended, red
+squares for blocks broken, green for blocks placed and cyan diamonds for ore broken. The message with it
+gives the window, the coordinates, the scale and the counts. The path is not joined across gaps longer
+than ten seconds or jumps longer than sixteen blocks, and time spent in another dimension is left out
+and said to be.
+
+It needs **`staff.replay`** on both sides, as the replay in game does, and `positionTracking` on — it
+draws from the same recorded history. With `case`, the window is also filed on that case as replay
+evidence, which is a pointer to the history, as in game. **The picture is never kept**: it is drawn
+when asked for and sent only to whoever asked, so it cannot outlive `positionRetentionDays`.
+`/staff evidence <case> item:<n>` draws replay and dig evidence the same way.
 
 ### The punishment panel
 

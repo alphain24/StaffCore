@@ -13,6 +13,10 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`.
 - **A public `#appeal` channel** in Discord with an **Appeal** button that opens the appeal form (code
   and reason); `/appeal` works there too. `appealIntakeChannelId` accepts `create` and is `create` in
   new settings files.
+- **Replays as maps in Discord**: `/staff replay-map <player>` draws where a player went and what they broke
+  and placed as a picture, with the window and counts in the message; `/staff evidence <case> item:<n>`
+  draws replay evidence the same way. Needs `staff.replay` and `positionTracking`; the picture is never
+  kept, so it cannot outlive the position history's retention.
 - **A punishment panel in Discord, for admins**: a private `#punish` channel with a Punish button, and
   `/staff punish <player> <offence>`, both punishing by the server's offence ladders with a confirmation
   that issues nothing if the player's record changed. Needs the new `discord.punishpanel` permission,

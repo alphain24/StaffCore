@@ -50,7 +50,8 @@
 			"io.github.alphain24.staffcore.gametest.DiscordPanelTests",
 			"io.github.alphain24.staffcore.gametest.ReturnWatchTests",
 			"io.github.alphain24.staffcore.gametest.DiscordEvidenceTests",
-			"io.github.alphain24.staffcore.gametest.DiscordPunishPanelTests"
+			"io.github.alphain24.staffcore.gametest.DiscordPunishPanelTests",
+			"io.github.alphain24.staffcore.gametest.DiscordReplayTests"
 		]
 	},
 	"depends": {

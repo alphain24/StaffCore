@@ -692,6 +692,11 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					evidenceItem(event, user, caseTyped, item);
 				}
 			}
+			case "replay-map" -> {
+				int minutes = event.getOption("minutes", 30, OptionMapping::getAsInt);
+				int started = event.getOption("started", minutes, OptionMapping::getAsInt);
+				replayMap(event, user, player, minutes, started, event.getOption("case", "", OptionMapping::getAsString));
+			}
 			case "punish" -> punishCommand(event, user, player,
 					event.getOption("offence", "", OptionMapping::getAsString));
 			case "evidence-add" -> {
@@ -1066,30 +1071,101 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	private void evidenceItem(SlashCommandInteractionEvent event, DiscordUser user, String caseTyped, int item) {
 		event.deferReply(true).queue();
 		InteractionHook hook = event.getHook();
-		DiscordAccess.evidenceItem(user, caseTyped, item)
-				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
-				.whenCompleteAsync((answer, failure) -> {
-					if (failure != null || !answer.answered()) {
-						hook.sendMessage(Text.clip(token.redact(failure != null ? Replies.failure(failure) : answer.refusal()),
-								2000)).queue(ok -> { }, ignored -> { });
-						return;
+		long limit = event.getGuild() == null ? 8L * 1024 * 1024 : event.getGuild().getMaxFileSize();
+		worker.execute(() -> {
+			try {
+				var answer = DiscordAccess.evidenceItem(user, caseTyped, item).get(settings.requestTimeoutSeconds, TimeUnit.SECONDS);
+				if (!answer.answered()) {
+					hook.sendMessage(Text.clip(token.redact(answer.refusal()), 2000)).queue(ok -> { }, ignored -> { });
+					return;
+				}
+				var detail = answer.value();
+				List<net.dv8tion.jda.api.utils.FileUpload> uploads = new ArrayList<>();
+				long total = 0;
+				for (var file : detail.files()) {
+					java.nio.file.Path path = DiscordAccess.keptFile(file);
+					if (path != null && java.nio.file.Files.isRegularFile(path) && total + file.sizeBytes() <= limit) {
+						total += file.sizeBytes();
+						uploads.add(net.dv8tion.jda.api.utils.FileUpload.fromData(path, safeName(file)));
 					}
-					var detail = answer.value();
-					List<net.dv8tion.jda.api.utils.FileUpload> uploads = new ArrayList<>();
-					long limit = event.getGuild() == null ? 8L * 1024 * 1024 : event.getGuild().getMaxFileSize();
-					long total = 0;
-					for (var file : detail.files()) {
-						java.nio.file.Path path = DiscordAccess.keptFile(file);
-						if (path != null && java.nio.file.Files.isRegularFile(path) && total + file.sizeBytes() <= limit) {
-							total += file.sizeBytes();
-							uploads.add(net.dv8tion.jda.api.utils.FileUpload.fromData(path, safeName(file)));
-						}
+				}
+				String text = Replies.evidenceDetail(detail, uploads.size());
+				if (detail.replay()) {
+					// A replay is a window of recorded movement: drawn now, from the history as it stands.
+					var track = DiscordAccess.replayForEvidence(user, caseTyped, item)
+							.get(settings.requestTimeoutSeconds + 20L, TimeUnit.SECONDS);
+					if (!track.answered()) {
+						text += "\n\nNo map: " + track.refusal();
+					} else {
+						MapResult map = drawMap(track.value());
+						if (map.png() != null) uploads.add(net.dv8tion.jda.api.utils.FileUpload.fromData(map.png(),
+								io.github.alphain24.staffcore.discord.evidence.ReplayMap.fileName(track.value())));
+						text += "\n\n" + map.text();
 					}
-					hook.sendMessage(Text.clip(token.redact(Replies.evidenceDetail(detail, uploads.size())), 2000))
-							.addFiles(uploads)
-							.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class))
-							.queue(ok -> { }, ignored -> { });
-				}, worker);
+				}
+				hook.sendMessage(Text.clip(token.redact(text), 2000))
+						.addFiles(uploads)
+						.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class))
+						.queue(ok -> { }, ignored -> { });
+			} catch (Exception e) {
+				hook.sendMessage(Text.clip(token.redact(Replies.failure(e)), 2000)).queue(ok -> { }, ignored -> { });
+			}
+		});
+	}
+
+	/** A drawn map, or why there is none, with the words that go with it. */
+	private record MapResult(byte[] png, String text) {}
+
+	private static MapResult drawMap(io.github.alphain24.staffcore.api.DiscordReplayTrack track) {
+		try {
+			var drawn = io.github.alphain24.staffcore.discord.evidence.ReplayMap.render(track);
+			return new MapResult(drawn.png(), io.github.alphain24.staffcore.discord.evidence.ReplayMap.summary(track, drawn));
+		} catch (java.io.IOException | LinkageError | InternalError | RuntimeException e) {
+			StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] A replay map could not be drawn ({})", describe(e));
+			return new MapResult(null, "The map could not be drawn on this server (" + describe(e) + "); the Java it "
+					+ "runs on may have no graphics support.");
+		}
+	}
+
+	/**
+	 * {@code /staff replay-map}: where a player went and what they changed, drawn, privately. With a case,
+	 * the window is filed on it as replay evidence first — a pointer to the history, as in game, so the
+	 * picture is never kept anywhere and the evidence stops drawing once the history is past retention.
+	 */
+	private void replayMap(SlashCommandInteractionEvent event, DiscordUser user, String player, int minutes, int started,
+			String caseTyped) {
+		event.deferReply(true).queue();
+		InteractionHook hook = event.getHook();
+		long now = System.currentTimeMillis();
+		long from = now - Math.max(started, 1) * 60_000L;
+		long to = Math.min(now, from + minutes * 60_000L);
+		worker.execute(() -> {
+			try {
+				StringBuilder text = new StringBuilder();
+				if (caseTyped != null && !caseTyped.isBlank()) {
+					var filed = DiscordAccess.fileReplayEvidence(user, caseTyped, from, to)
+							.get(settings.requestTimeoutSeconds, TimeUnit.SECONDS);
+					text.append(filed.message()).append("\n\n");
+				}
+				var track = DiscordAccess.replayTrack(user, player, from, to).get(settings.requestTimeoutSeconds + 20L,
+						TimeUnit.SECONDS);
+				if (!track.answered()) {
+					hook.sendMessage(Text.clip(token.redact(text + track.refusal()), 2000)).queue(ok -> { }, ignored -> { });
+					return;
+				}
+				MapResult map = drawMap(track.value());
+				text.append(map.text());
+				var reply = hook.sendMessage(Text.clip(token.redact(text.toString()), 2000))
+						.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class));
+				if (map.png() != null) {
+					reply = reply.addFiles(net.dv8tion.jda.api.utils.FileUpload.fromData(map.png(),
+							io.github.alphain24.staffcore.discord.evidence.ReplayMap.fileName(track.value())));
+				}
+				reply.queue(ok -> { }, ignored -> { });
+			} catch (Exception e) {
+				hook.sendMessage(Text.clip(token.redact(Replies.failure(e)), 2000)).queue(ok -> { }, ignored -> { });
+			}
+		});
 	}
 
 	/** What a kept file is called when posted: its own name, stripped to letters, digits and a few marks. */

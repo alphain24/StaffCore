@@ -2616,6 +2616,17 @@
           <code>discordActionsPerMinute</code> (20 a minute by default, staff chat not counted). IP bans,
           rollbacks and inventory edits have no command.
         </p>
+        <h3>Replays as maps</h3>
+        <p>
+          <code>/staff replay-map &lt;player&gt; [minutes] [started] [case]</code> draws a replay as a map from
+          above: the path from blue through purple to yellow over time, a green dot at the start and a red one at
+          the end, red squares for blocks broken, green for placed and cyan diamonds for ore, with the window,
+          coordinates, scale and counts in the message. It needs <code>staff.replay</code> on both sides and
+          <code>positionTracking</code>; with <code>case</code> the window is also filed as replay evidence, a
+          pointer to the history. The picture is drawn on request, sent only to whoever asked, and never kept, so
+          it cannot outlive <code>positionRetentionDays</code>. <code>/staff evidence &lt;case&gt; item:&lt;n&gt;</code>
+          draws replay and dig evidence the same way.
+        </p>
         <h3>The punishment panel</h3>
         <p>
           A private <code>#punish</code> channel holds a <strong>Punish</strong> button: name the player, pick the

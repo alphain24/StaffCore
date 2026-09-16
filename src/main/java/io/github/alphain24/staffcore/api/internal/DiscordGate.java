@@ -590,6 +590,164 @@ public final class DiscordGate {
 		return out;
 	}
 
+	// ------------------------------------------------------------------ replays as maps
+
+	private static boolean replayable(io.github.alphain24.staffcore.modules.cases.CaseEvidence.Item item) {
+		return item.subjectId() != null && (item.kind() == io.github.alphain24.staffcore.modules.cases.CaseEvidence.Kind.REPLAY
+				|| item.kind() == io.github.alphain24.staffcore.modules.cases.CaseEvidence.Kind.XRAY_DIG);
+	}
+
+	/** Who and when a track is for, once the gate has said yes. */
+	private record TrackTarget(UUID playerId, String playerName, long from, long to, MinecraftServer server) {}
+
+	private static String trackingOff() {
+		return "Position tracking is off on this server, so there is no movement to draw. It is "
+				+ "positionTracking in config/staffcore/staffcore.json, and records only from when it is on.";
+	}
+
+	public static CompletableFuture<DiscordAnswer<io.github.alphain24.staffcore.api.DiscordReplayTrack>> replayTrack(
+			DiscordUser user, String player, long from, long to) {
+		CompletableFuture<DiscordAnswer<TrackTarget>> checked = read(user, DiscordOperation.VIEW_REPLAY,
+				(server, resolved) -> {
+					if (!io.github.alphain24.staffcore.config.StaffConfig.get().positionTracking) {
+						return DiscordAnswer.no(trackingOff());
+					}
+					if (to <= from || to - from > io.github.alphain24.staffcore.api.DiscordAccess.MAX_REPLAY_WINDOW_MS) {
+						return DiscordAnswer.no("A map covers between a minute and six hours.");
+					}
+					Named named = namedOrId(server, player);
+					if (named.player() == null) return DiscordAnswer.no(named.refusal());
+					audit(resolved, user, "replay map " + named.player().name() + " "
+							+ io.github.alphain24.staffcore.util.TimeFormat.utcStamp(from) + " for "
+							+ io.github.alphain24.staffcore.util.TimeFormat.length(to - from), null);
+					return DiscordAnswer.of(new TrackTarget(named.player().id(), named.player().name(), from, to, server));
+				});
+		return track(checked);
+	}
+
+	public static CompletableFuture<DiscordAnswer<io.github.alphain24.staffcore.api.DiscordReplayTrack>> replayForEvidence(
+			DiscordUser user, String caseId, long evidenceId) {
+		CompletableFuture<DiscordAnswer<TrackTarget>> checked = read(user, DiscordOperation.VIEW_REPLAY,
+				(server, resolved) -> {
+					if (!resolved.standing().holds(DiscordOperation.VIEW_EVIDENCE.node())) {
+						return DiscordAnswer.no("Looking at a case's evidence needs " + DiscordOperation.VIEW_EVIDENCE.node()
+								+ " in game and in your Discord role.");
+					}
+					if (!io.github.alphain24.staffcore.config.StaffConfig.get().positionTracking) {
+						return DiscordAnswer.no(trackingOff());
+					}
+					var found = caseFor(caseId);
+					if (found == null) return DiscordAnswer.no("There is no case " + (caseId == null ? "" : caseId.strip()) + ".");
+					var item = Mods.cases().evidence().byId(evidenceId).filter(i -> i.caseId().equals(found.id())).orElse(null);
+					if (item == null || !replayable(item)) {
+						return DiscordAnswer.no("Case " + found.id() + " has no replay evidence #" + evidenceId + ".");
+					}
+					audit(resolved, user, "replay map of evidence #" + evidenceId + " case " + found.id(), found.id());
+					return DiscordAnswer.of(new TrackTarget(item.subjectId(), item.subjectName(), item.from(), item.to(), server));
+				});
+		return track(checked);
+	}
+
+	/** Reads the track for a target the gate allowed, on the grief log's worker, never on the tick. */
+	private static CompletableFuture<DiscordAnswer<io.github.alphain24.staffcore.api.DiscordReplayTrack>> track(
+			CompletableFuture<DiscordAnswer<TrackTarget>> checked) {
+		return checked.thenCompose(answer -> {
+			if (!answer.answered()) {
+				return CompletableFuture.completedFuture(
+						DiscordAnswer.<io.github.alphain24.staffcore.api.DiscordReplayTrack>no(answer.refusal()));
+			}
+			TrackTarget target = answer.value();
+			return CompletableFuture.supplyAsync(() -> readTrack(target), java.util.concurrent.ForkJoinPool.commonPool());
+		});
+	}
+
+	private static DiscordAnswer<io.github.alphain24.staffcore.api.DiscordReplayTrack> readTrack(TrackTarget target) {
+		var track = io.github.alphain24.staffcore.modules.replay.PositionLog.reconstruct(target.playerId(),
+				target.playerName(), target.from(), target.to());
+		if (track.isEmpty()) {
+			int days = io.github.alphain24.staffcore.config.StaffConfig.get().positionRetentionDays;
+			return DiscordAnswer.no(target.playerName() + " has no recorded movement in that window. They may not have "
+					+ "been online, or it may be past the " + (days == 0 ? "retention window" : days
+					+ "-day retention window") + ".");
+		}
+		List<io.github.alphain24.staffcore.api.DiscordReplayTrack.Change> changes = new ArrayList<>();
+		boolean more = false;
+		if (io.github.alphain24.staffcore.StaffCore.storage().isReady()) {
+			try (var ps = io.github.alphain24.staffcore.StaffCore.storage().conn().prepareStatement(
+					"SELECT world, x, y, z, action, block, created_at FROM block_log WHERE player_name = ? "
+							+ "AND created_at BETWEEN ? AND ? AND action IN ('BREAK', 'PLACE') ORDER BY created_at LIMIT ?")) {
+				ps.setString(1, target.playerName());
+				ps.setLong(2, target.from());
+				ps.setLong(3, target.to());
+				ps.setInt(4, io.github.alphain24.staffcore.api.DiscordReplayTrack.MAX_CHANGES + 1);
+				try (var rs = ps.executeQuery()) {
+					while (rs.next()) {
+						if (changes.size() == io.github.alphain24.staffcore.api.DiscordReplayTrack.MAX_CHANGES) {
+							more = true;
+							break;
+						}
+						changes.add(new io.github.alphain24.staffcore.api.DiscordReplayTrack.Change(rs.getLong("created_at"),
+								rs.getString("world"), rs.getInt("x"), rs.getInt("y"), rs.getInt("z"),
+								"BREAK".equals(rs.getString("action")), rs.getString("block")));
+					}
+				}
+			} catch (java.sql.SQLException e) {
+				io.github.alphain24.staffcore.StaffCore.LOGGER.warn("[Replay] could not read block changes for a map: {}",
+						e.getMessage());
+			}
+		}
+		return DiscordAnswer.of(assemble(target.playerId(), target.playerName(), target.from(), target.to(), track,
+				changes, more));
+	}
+
+	/**
+	 * A reconstructed window as a track for drawing: every frame when there are few, evenly thinned to at
+	 * most {@link io.github.alphain24.staffcore.api.DiscordReplayTrack#MAX_POINTS} when there are many, and
+	 * always the last, so the map ends where the player did.
+	 */
+	static io.github.alphain24.staffcore.api.DiscordReplayTrack assemble(UUID playerId, String playerName, long from,
+			long to, io.github.alphain24.staffcore.modules.replay.PositionLog.Track track,
+			List<io.github.alphain24.staffcore.api.DiscordReplayTrack.Change> changes, boolean moreChanges) {
+		List<io.github.alphain24.staffcore.api.DiscordReplayTrack.Point> points = new ArrayList<>();
+		var frames = track.frames();
+		int max = io.github.alphain24.staffcore.api.DiscordReplayTrack.MAX_POINTS;
+		// One place is kept for the last frame.
+		int step = frames.size() <= max ? 1 : (int) Math.ceil(frames.size() / (double) (max - 1));
+		for (int i = 0; i < frames.size(); i += step) {
+			var frame = frames.get(i);
+			points.add(new io.github.alphain24.staffcore.api.DiscordReplayTrack.Point(frame.at(), frame.world(),
+					frame.x(), frame.y(), frame.z()));
+		}
+		if (!frames.isEmpty()) {
+			var last = frames.get(frames.size() - 1);
+			if (points.get(points.size() - 1).at() != last.at()) {
+				points.add(new io.github.alphain24.staffcore.api.DiscordReplayTrack.Point(last.at(), last.world(),
+						last.x(), last.y(), last.z()));
+			}
+		}
+		return new io.github.alphain24.staffcore.api.DiscordReplayTrack(playerId, playerName, from, to, points, changes,
+				track.runs(), track.truncated(), moreChanges);
+	}
+
+	public static CompletableFuture<DiscordResult> fileReplayEvidence(DiscordUser user, String caseId, long from, long to) {
+		return act(user, DiscordOperation.ADD_EVIDENCE, (server, resolved) -> {
+			var found = caseFor(caseId);
+			if (found == null) return DiscordResult.no("There is no case " + (caseId == null ? "" : caseId.strip()) + ".");
+			if (to <= from || to - from > io.github.alphain24.staffcore.api.DiscordAccess.MAX_REPLAY_WINDOW_MS) {
+				return DiscordResult.no("A replay covers between a minute and six hours.");
+			}
+			long id = Mods.cases().evidence().add(found.id(),
+					io.github.alphain24.staffcore.modules.cases.CaseEvidence.Draft.replay(found.subjectId(),
+							found.subjectName(), null, null, from, to,
+							"filed by " + resolved.standing().minecraftName() + " from Discord"),
+					resolved.standing().minecraftName());
+			if (id < 0) return DiscordResult.no("The evidence could not be saved. Try again.");
+			audit(resolved, user, "evidence replay #" + id + " on case " + found.id(), found.id());
+			return new DiscordResult(true, "Filed as replay evidence #" + id + " on case " + found.id() + " ("
+					+ found.subjectName() + ", " + io.github.alphain24.staffcore.util.TimeFormat.length(to - from) + ").");
+		});
+	}
+
 	// ------------------------------------------------------------------ the punishment panel
 
 	/** A player named by id, as the panel hands it back, or by name as anything else is. */
@@ -805,7 +963,8 @@ public final class DiscordGate {
 			return DiscordAnswer.of(new io.github.alphain24.staffcore.api.DiscordEvidenceDetail(item.id(), item.caseId(),
 					item.kind().label(), item.describe(), item.addedBy(), item.addedAt(),
 					message == null ? null : message.messageUrl(), message == null ? null : message.authorName(),
-					message == null ? null : message.postedAt(), message == null ? null : message.content(), files));
+					message == null ? null : message.postedAt(), message == null ? null : message.content(), files,
+					replayable(item)));
 		});
 	}
 

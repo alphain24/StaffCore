@@ -32,6 +32,14 @@ final class StaffCommands {
 						sub("punish", "Punish a player by an offence ladder (the punishment panel's permission)")
 								.addOptions(player(), new OptionData(OptionType.STRING, "offence", "What they did", true, true)
 										.setMaxLength(64)),
+						sub("replay-map", "A map of where a player went and what they broke (staff.replay)")
+								.addOptions(player(),
+										new OptionData(OptionType.INTEGER, "minutes", "How long the window is (30 if left out)", false)
+												.setRequiredRange(1, 360),
+										new OptionData(OptionType.INTEGER, "started", "How many minutes ago it starts (the last so-many minutes if left out)", false)
+												.setRequiredRange(1, 43_200),
+										new OptionData(OptionType.STRING, "case", "Also file the window as replay evidence on this case", false)
+												.setMaxLength(16).setAutoComplete(true)),
 						sub("evidence-add", "File a note or a file as evidence on a case")
 								.addOptions(caseId(),
 										new OptionData(OptionType.ATTACHMENT, "file", "A screenshot, video or log", false),

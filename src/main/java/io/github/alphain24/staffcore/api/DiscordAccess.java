@@ -243,6 +243,36 @@ public final class DiscordAccess {
 		return DiscordGate.analytics(user, staffName);
 	}
 
+	/**
+	 * Where a player went between two times, with the blocks they changed, for drawing as a map. Behind
+	 * {@code staff.replay} on both sides, as the in-game replay is; audited. Read off the server thread.
+	 */
+	public static CompletableFuture<DiscordAnswer<DiscordReplayTrack>> replayTrack(DiscordUser user, String player,
+			long from, long to) {
+		return DiscordGate.replayTrack(user, player, from, to);
+	}
+
+	/**
+	 * The window a piece of replay or dig evidence names, as a track. Needs {@code staff.replay} as well as
+	 * the case permission: being able to read a case is not being allowed to see where somebody went.
+	 */
+	public static CompletableFuture<DiscordAnswer<DiscordReplayTrack>> replayForEvidence(DiscordUser user,
+			String caseId, long evidenceId) {
+		return DiscordGate.replayForEvidence(user, caseId, evidenceId);
+	}
+
+	/**
+	 * Files a window of the case's player's movement as evidence, as {@code /staff case <id> evidence replay}
+	 * does: a pointer to the recorded history, never a copy of it.
+	 */
+	public static CompletableFuture<DiscordResult> fileReplayEvidence(DiscordUser user, String caseId, long from,
+			long to) {
+		return DiscordGate.fileReplayEvidence(user, caseId, from, to);
+	}
+
+	/** The longest window a map is drawn for. */
+	public static final long MAX_REPLAY_WINDOW_MS = 6L * 3_600_000L;
+
 	/** The permission the punishment panel needs, for deciding which roles see its channel. */
 	public static final String PUNISH_PANEL_NODE = io.github.alphain24.staffcore.permission.Nodes.DISCORD_PUNISH_PANEL;
 

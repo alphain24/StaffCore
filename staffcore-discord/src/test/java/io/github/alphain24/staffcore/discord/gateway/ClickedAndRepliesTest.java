@@ -51,7 +51,7 @@ class ClickedAndRepliesTest {
 						new io.github.alphain24.staffcore.api.DiscordEvidenceFile("a.png", "image/png", 2048,
 								"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "CASE1234/x.png", null),
 						new io.github.alphain24.staffcore.api.DiscordEvidenceFile("big.mp4", "video/mp4", 90_000_000,
-								null, null, "larger than the 25 MB this server keeps"))), 1);
+								null, null, "larger than the 25 MB this server keeps")), false), 1);
 		assertTrue(detail.contains("Evidence #4"), detail);
 		assertTrue(detail.contains("Steve\\_"), detail);
 		assertFalse(detail.contains("**this**"), "the message text was not escaped: " + detail);

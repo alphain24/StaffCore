@@ -23,6 +23,8 @@ public enum DiscordOperation {
 	VIEW_EVIDENCE(Nodes.STAFF_GUI, false),
 	VIEW_PROFILE(Nodes.STAFF_GUI, false),
 	VIEW_ANALYTICS(Nodes.ANALYTICS, false),
+	/** Where a player went: its own node, as the in-game replay has. */
+	VIEW_REPLAY(Nodes.REPLAY, false),
 
 	// ---- acting
 	BAN(Nodes.BAN, true),

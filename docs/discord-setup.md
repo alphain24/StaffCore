@@ -307,6 +307,7 @@ The permissions the bot uses:
 | `staff.punish.revoke` | `/staff unmute`, `/staff unban` |
 | `staff.audit` | `/staff staff-history` |
 | `analytics.stats` | `/staff analytics` |
+| `staff.replay` | `/staff replay-map`, and maps of replay evidence. Needs `positionTracking` on in `staffcore.json` |
 | `discord.punishpanel` | The punishment panel in `#punish`, and `/staff punish`. Only for admin roles: the roles that list it are the ones that can see `#punish` |
 
 Keep the file valid JSON: quotes around every id, commas between entries, none after the last. If
@@ -378,7 +379,8 @@ answer is private to you; what a command does — a ban, a note — is posted to
 | `/staff notes <player>` | `staff.notes.view` | Their notes, retracted ones marked |
 | `/staff profile <player>` | `staff.gui` | Their standing: punishments, points, notes, what is in force, open cases |
 | `/staff case <id>` | `staff.gui` | A case and the latest of its history |
-| `/staff evidence <case> [item]` | `staff.gui` | The evidence filed on a case; with `item`, one piece with its files |
+| `/staff evidence <case> [item]` | `staff.gui` | The evidence filed on a case; with `item`, one piece with its files, and a map for a replay |
+| `/staff replay-map <player> [minutes] [started] [case]` | `staff.replay` | A map of where a player went and what they broke |
 | `/staff evidence-add <case> [file] [note]` | `staff.gui` | File a screenshot, video, log or note as evidence |
 | `/staff staff-history <staff> [days]` | `staff.audit` | What a staff member did — never where from |
 | `/staff analytics [staff]` | `analytics.stats` | Server totals, and one staff member's or the busiest staff's numbers |
@@ -395,6 +397,13 @@ A command from Discord meets the same checks as in game — the permission, the 
 the rule against punishing somebody who outranks you — and on top of that everything you change from
 Discord counts against `discordActionsPerMinute` in `config/staffcore/staffcore.json` (20 a minute
 unless changed). IP bans, rollbacks and inventory edits are not available from Discord at all.
+
+### Replay maps
+
+`/staff replay-map` draws where a player went over a window as a picture, north up, with what they broke
+and placed marked on it; the message says how to read it. It needs `staff.replay` and position tracking
+switched on (`positionTracking` in `config/staffcore/staffcore.json`). Add `case:` to file the window on a
+case as evidence too. The picture is only shown to you and is not kept.
 
 ### The punishment panel (admins)
 

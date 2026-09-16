@@ -2079,6 +2079,38 @@ Discord, naming the Discord account.
 
 ---
 
+## Replays as maps in Discord
+
+**Date:** 2026-09-17
+
+Phase 6.8, "is there a way to embed the replays as evidence, something that can be viewed in Discord as
+well?"
+
+**Not a video.** A replay in game is the client rendering the world around a camera; the server has no
+renderer, and building one to encode video would be a game engine of its own. What the server does have
+is where the player was and what they changed, so that is what Discord gets: a map from above.
+
+**Shapes only.** Drawing text needs fonts, and the Java a server runs on often has none — the failure is
+an error at the first string, on the one host nobody tested. Lines, dots and squares need nothing. So the
+picture carries no words, and the message it is attached to says the window, the coordinates, the grid
+and scale-bar sizes and the counts. The path is coloured by time through blue, violet, magenta and yellow;
+a straight blend from blue to yellow goes grey half way, and red is taken by broken blocks. Gaps over ten
+seconds and jumps over sixteen blocks are left unjoined, because a teleport drawn as a line is a path that
+was never walked, and only the dimension the player spent most time in is drawn, with the rest said.
+
+**Behind `staff.replay`, and never kept.** In game, filing a replay against a case is not allowed to become
+a way to watch one without that node, and position history is personal data with its own retention. The
+map is the same data, so the same rules: `VIEW_REPLAY` on both sides, audited, and the picture is drawn on
+request and sent privately. It is not posted in the case thread and not kept as a file, because either
+would outlive `positionRetentionDays`; replay evidence stays a pointer, and past retention it says there
+is nothing to draw.
+
+**Off the tick.** The permission check is on the server thread; reconstructing the window and reading the
+block log run on a pool thread, and the drawing on the companion's. The track is thinned to four thousand
+points, keeping the first and last, and block changes are capped at two thousand, with both said.
+
+---
+
 ## A punishment panel for admins
 
 **Date:** 2026-09-17
