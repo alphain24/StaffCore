@@ -153,7 +153,7 @@ The Gradle wrapper is committed, so:
 
 | Workflow | When | Does |
 |---|---|---|
-| `build.yml` | every push and PR | Compile, JUnit, upload the jar |
+| `build.yml` | every push and PR | Compile, JUnit, search the Discord companion's test output for its test token, upload the jars |
 | `boot.yml` | push, PR, weekly | Boot a server, assert every hook applied |
 | `gametest.yml` | push, PR, weekly | Boot a server and run every `@GameTest` against real players, mobs and blocks |
 | `snapshot.yml` | daily | The same boot check against the newest MC snapshot; opens an issue if it breaks, never blocks a merge |
@@ -738,6 +738,10 @@ The token lives in its own file, never in `staffcore.json` or the settings file,
 get pasted into support channels. It is never logged, never shown in `/staff status`, never in
 an error, and not in `/staff export` — nothing writes it to the database. If the file can be
 read by every user on the machine, the companion warns at startup and in `/staff status`.
+
+The tests hand a made-up token to loggers, exceptions, status lines, the settings file, the thread
+book and an export, the way a careless library would. Each test checks what it captured, and the
+build then searches every report and line of test output for that token, failing if it appears.
 
 The companion's own code never logs the token. As a backstop for everything else on the server
 — the Discord library, the HTTP client, other mods — a filter drops any log line containing

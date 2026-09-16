@@ -74,6 +74,41 @@ test {
 	}
 }
 
+// Gate 5: the token appears in nothing the tests wrote. Several tests hand the test token to loggers,
+// exceptions and status lines on purpose, the way a careless library would; each checks what it
+// captured, and this reads what Gradle captured: every report, result file and line of output.
+// The token is built the way BotTokenTest.FAKE builds it, so no token-shaped literal is in the repo.
+def testToken = {
+	(0..2).collect { part ->
+		(0..<(part == 1 ? 6 : 30)).collect { i -> (char) ((int) 'a'.charAt(0) + (i * 7 + part) % 26) }.join('')
+	}.join('.')
+}
+
+tasks.register('checkTestOutputForToken') {
+	description = 'Fails when the test token appears in anything the tests wrote.'
+	def roots = [layout.buildDirectory.dir('test-results').get().asFile,
+			layout.buildDirectory.dir('reports/tests').get().asFile]
+	doLast {
+		// The first part of the token, so a line that kept only part of it is caught too.
+		String needle = testToken().substring(0, 26)
+		def carrying = []
+		int read = 0
+		roots.findAll { it.exists() }.each { root ->
+			root.eachFileRecurse(groovy.io.FileType.FILES) { file ->
+				read++
+				if (new String(file.bytes, 'ISO-8859-1').contains(needle)) carrying << root.toPath().relativize(file.toPath())
+			}
+		}
+		if (read == 0) throw new GradleException('No test output was found to search, so the token check proves nothing.')
+		if (!carrying.isEmpty()) {
+			throw new GradleException("The test token appears in test output: ${carrying}. Something logged, printed or "
+					+ "reported it; find it before it happens with a real one.")
+		}
+		logger.lifecycle("Token check: {} test output file(s) searched, the token is in none.", read)
+	}
+}
+tasks.named('test') { finalizedBy 'checkTestOutputForToken' }
+
 processResources {
 	def v = project.version
 	inputs.property "version", v

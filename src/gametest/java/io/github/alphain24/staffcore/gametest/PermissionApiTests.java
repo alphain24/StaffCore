@@ -40,14 +40,15 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PermissionApiTests {
 
 	/** Accounts the stand-in refuses {@code staff.gui}. */
-	private static final Set<UUID> DENIED = ConcurrentHashMap.newKeySet();
+	static final Set<UUID> DENIED = ConcurrentHashMap.newKeySet();
 	/** Accounts the stand-in grants {@code staff.gui}. */
 	private static final Set<UUID> GRANTED = ConcurrentHashMap.newKeySet();
 	/** Offline accounts the stand-in is still loading, and never finishes. */
-	private static final Set<UUID> LOADING = ConcurrentHashMap.newKeySet();
+	static final Set<UUID> LOADING = ConcurrentHashMap.newKeySet();
 	private static boolean listening;
 
-	private static synchronized void standInPermissionsMod() {
+	/** Registers the stand-in once. It says nothing about any account not in the sets above. */
+	static synchronized void standInPermissionsMod() {
 		if (listening) return;
 		listening = true;
 		PermissionCheckEvent.EVENT.register((source, permission) -> {

@@ -2079,6 +2079,58 @@ Discord, naming the Discord account.
 
 ---
 
+## Gate 5
+
+**Date:** 2026-09-17
+
+The brief's last gate, for the Discord companion. Each condition, and what shows it.
+
+**"Discord cannot perform any action the same account could not perform in game. Test the bypass
+attempts explicitly."** What a Discord user may do is the smaller of their role mapping and what
+their linked account resolves in game, read again on every request. The attempts, and where each is
+tried:
+
+| Attempt | Test |
+|---|---|
+| A role mapping a node the account lacks in game | `DiscordAccessTests.whatDiscordAllowsIsTheSmallerOfRolesAndTheGame` |
+| Being an operator in game, with no role for it | `DiscordAuthorityTest` |
+| An unlinked account with an admin role | `DiscordAccessTests.anUnlinkedAccountHoldsNothingWhateverItsRoles` |
+| A banned staff member unbanning themselves from Discord | `DiscordAccessTests.aBannedAccountCanDoNothingFromDiscord` |
+| A wildcard or unknown node in the role mapping | `DiscordSettingsTest`, `DiscordAuthorityTest` |
+| An IP ban, rollback or inventory edit from Discord | `DiscordAccessTests.ipBansRollbacksAndInventoryEditsRefuseDiscordWhateverItHolds` |
+| Approving a staged action from Discord | `BypassAttemptTest` |
+| Outrunning the rate limit, or punishing upwards | `DiscordCommandTests` |
+| A permissions mod refusing a node to an operator who has a role for it | `DiscordBypassTests` (new) |
+| An offline account whose permissions mod has not loaded it yet | `DiscordBypassTests` (new) |
+| Promotion or demotion in game between two requests | `DiscordAccessTests` |
+
+The sweep found one real bypass, in game rather than from Discord. `Actor.has` counted being an
+operator as holding every node. The node set is resolved through `Permissions.check`, so an operator
+the settings let through already has every node. The extra clause only mattered for operators the
+settings had refused: with `operatorsBypass` off, or a permissions mod saying no, they still passed
+the rate-limit exemption and the IP-ban check. `has` now reads the node set alone, and
+`ActorBoundaryTest` pins it. Discord actors were never built with the flag, so the Discord side was
+not exposed.
+
+**"Killing the bot mid-punishment leaves the punishment applied and the embed queued."** Two halves,
+two tests. `DiscordBypassTests.aBotThatDiesMidPunishmentLeavesThePunishmentApplied` registers a
+listener that hangs and one that throws, then bans through the real service. The ban is in force
+when the call returns, the call does not wait on the hung listener, and a listener after the dead
+one is still told. Delivering events on the calling thread fails it. `DiscordBotQueueTest` kills the
+companion's connection, publishes punishments, and checks they wait in the queue, bounded, and are
+posted once each when the connection is back.
+
+**"Token never appears in any log, export, or error path. Grep for it in test output."**
+`DiscordBotTest` hands the test token to a library logger, to exceptions and their causes, and to
+a status line, and checks the log and `/staff status` for it. It also runs the bot through a
+settings rewrite, a thread-book write and a full personal export, and checks every file except
+the token's own. The companion's build then runs `checkTestOutputForToken` after the tests. It
+searches every result file, report and line of captured output for the token, and fails the build
+if it is there. The token is built at runtime in both places, so the repository holds no
+token-shaped literal. The search was shown to work by planting the token in a result file.
+
+---
+
 ## Posts wait when the bot cannot post
 
 **Date:** 2026-09-17

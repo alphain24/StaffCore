@@ -194,6 +194,102 @@ class DiscordBotTest {
 		}
 	}
 
+	/** A connection that does what the real one writes to disk: channel ids into the settings, posts into the book. */
+	private static final class WritingGateway implements DiscordGateway {
+		final DiscordSettings settings;
+		final io.github.alphain24.staffcore.discord.channels.ThreadBook book;
+		volatile Runnable wake = () -> { };
+		volatile boolean up;
+
+		WritingGateway(DiscordSettings settings, io.github.alphain24.staffcore.discord.channels.ThreadBook book) {
+			this.settings = settings;
+			this.book = book;
+		}
+
+		@Override
+		public void start() {
+			settings.recordCreated(java.util.Map.of(
+					io.github.alphain24.staffcore.discord.channels.Outbound.Channel.PUNISHMENTS, "234567890123456789"));
+			up = true;
+			wake.run();
+		}
+
+		@Override
+		public void stop() {
+			up = false;
+		}
+
+		@Override
+		public String state() {
+			return "connected";
+		}
+
+		@Override
+		public boolean readyToPost() {
+			return up;
+		}
+
+		@Override
+		public void post(io.github.alphain24.staffcore.discord.channels.Outbound outbound) {
+			if (outbound instanceof io.github.alphain24.staffcore.discord.channels.Outbound.Send send && send.key() != null) {
+				book.put(send.key(), new io.github.alphain24.staffcore.discord.channels.ThreadBook.Entry(
+						"234567890123456789", "345678901234567890", null, System.currentTimeMillis(), send.message()));
+			}
+		}
+
+		@Override
+		public void whenReady(Runnable wake) {
+			this.wake = wake;
+		}
+	}
+
+	@Test
+	@DisplayName("the token is written into no file but its own: not the settings, the thread book or an export")
+	void tokenStaysInItsFile(@TempDir Path world) throws Exception {
+		configure(true, FAKE);
+		io.github.alphain24.staffcore.storage.Storage storage = io.github.alphain24.staffcore.StaffCore.storage();
+		storage.open(world);
+		try {
+			AtomicReference<WritingGateway> made = new AtomicReference<>();
+			DiscordBot bot = new DiscordBot(config, world.resolve("staffcore-discord"), Set.of(), (t, s, r, w, b) -> {
+				WritingGateway gateway = new WritingGateway(s, b);
+				made.set(gateway);
+				return gateway;
+			});
+			bot.start();
+			for (int i = 0; i < 250 && (made.get() == null || !made.get().up); i++) Thread.sleep(20);
+			io.github.alphain24.staffcore.api.StaffCoreApi.publish(new io.github.alphain24.staffcore.api.StaffCoreEvent
+					.PunishmentIssued(System.currentTimeMillis(), 1, java.util.UUID.randomUUID(), "Griefer", 0, "BAN",
+					"griefing", "Moderator", null, null));
+			assertTrue(io.github.alphain24.staffcore.api.internal.EventBus.drain(5000));
+			for (int i = 0; i < 250 && !Files.exists(world.resolve("staffcore-discord").resolve("threads.json")); i++) {
+				Thread.sleep(20);
+			}
+			bot.stop();
+			assertTrue(Files.readString(config.resolve(DiscordSettings.FILE_NAME)).contains("234567890123456789"),
+					"the settings were not rewritten, so this proves nothing about the rewrite");
+			assertTrue(Files.exists(world.resolve("staffcore-discord").resolve("threads.json")),
+					"no thread book was written, so this proves nothing about it");
+
+			Path export = storage.export(true);
+			assertNotNull(export, "the export failed, so this proves nothing about it");
+
+			List<String> carrying = new ArrayList<>();
+			for (Path root : List.of(config, world)) {
+				try (Stream<Path> files = Files.walk(root)) {
+					for (Path file : files.filter(Files::isRegularFile).toList()) {
+						if (file.getFileName().toString().equals(BotToken.FILE_NAME)) continue;
+						String text = new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1);
+						if (text.contains(FAKE.substring(0, 26))) carrying.add(root.relativize(file).toString());
+					}
+				}
+			}
+			assertEquals(List.of(), carrying, "the token was written outside its own file");
+		} finally {
+			storage.close();
+		}
+	}
+
 	@Test
 	@DisplayName("the token is read for login in exactly one place")
 	void oneReader() throws IOException {
