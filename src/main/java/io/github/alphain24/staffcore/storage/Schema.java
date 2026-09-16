@@ -1232,6 +1232,17 @@ final class Schema {
 					st.executeUpdate(io.github.alphain24.staffcore.modules.punish.ReturnWatch.backfill(
 							System.currentTimeMillis()));
 				}
+			},
+
+			// 32 - evidence filed from Discord: the message, and each file kept.
+			//
+			//      See DiscordEvidenceStore. The evidence itself is a case_evidence row, as ever.
+			conn -> {
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate(io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.MESSAGES);
+					st.executeUpdate(io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.FILES);
+					st.executeUpdate(io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.FILES_INDEX);
+				}
 			}
 	);
 
@@ -1361,6 +1372,11 @@ final class Schema {
 			// Bans on the address a player joins from. See AddressBans.
 			io.github.alphain24.staffcore.modules.punish.AddressBans.TABLE,
 			io.github.alphain24.staffcore.modules.punish.AddressBans.INDEX,
+
+			// Evidence filed from Discord. See DiscordEvidenceStore.
+			io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.MESSAGES,
+			io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.FILES,
+			io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.FILES_INDEX,
 
 			// Every appeal code a punishment has had. See AppealCodes.
 			io.github.alphain24.staffcore.modules.appeal.AppealCodes.TABLE,

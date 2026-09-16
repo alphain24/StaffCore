@@ -33,6 +33,8 @@ public enum DiscordOperation {
 	FREEZE(Nodes.FREEZE, true),
 	UNFREEZE(Nodes.FREEZE, true),
 	NOTE(Nodes.NOTES, true),
+	/** Filing evidence on a case, as {@code /staff case <id> evidence} does in game. */
+	ADD_EVIDENCE(Nodes.STAFF_GUI, true),
 
 	// ---- reports and staff chat
 	CLAIM_REPORT(Nodes.REPORT_VIEW, true),

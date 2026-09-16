@@ -14,6 +14,10 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`.
 - **A public `#appeal` channel** in Discord with an **Appeal** button that opens the appeal form (code
   and reason); `/appeal` works there too. `appealIntakeChannelId` accepts `create` and is `create` in
   new settings files.
+- **An evidence locker in Discord**: `/staff evidence-add` files a file or note on a case, and a message's
+  *Add to case evidence* menu files the message with its files. Files are downloaded and kept beside the
+  world, named by SHA-256, up to `evidenceMaxMegabytes` (25); the filing is posted in the case's thread,
+  `/staff evidence <case> item:<n>` shows it again, and it opens in game as *From Discord*.
 - **Case ids complete as you type** in Discord's `/staff case` and `/staff evidence`, for linked staff
   allowed to look at cases.
 

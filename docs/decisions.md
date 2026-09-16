@@ -2079,6 +2079,44 @@ Discord, naming the Discord account.
 
 ---
 
+## An evidence locker in Discord
+
+**Date:** 2026-09-16
+
+Phase 6.6, "evidence locker messages and attachment records".
+
+**Two ways in, one door.** `/staff evidence-add` takes a file and a note; a message menu, *Add to case
+evidence*, takes a message with everything on it. Discord hands a bot a message's text in that
+interaction whatever its intents, so this works without Message Content Intent. The form that asks for
+the case loses the message, so the message is held for fifteen minutes under the person and message id,
+at most two hundred at once. Both end in `fileEvidence`, behind `ADD_EVIDENCE` — `staff.gui`, the node the
+in-game evidence commands sit behind — and the Discord action limit.
+
+**Kept, not linked.** Discord's attachment links are signed and expire, so a link is not evidence a
+month later. The companion downloads each file on its own thread, only after `mayFileEvidence` has said
+yes, and never more than `evidenceMaxMegabytes` of it: the size Discord reports is checked first and the
+stream is cut off past the limit anyway. The file is named by its SHA-256, which both removes anything a
+person typed from the path and keeps a file filed twice once, and it keeps its extension only if it is a
+kind a person opens; everything else is `.bin`, so nothing kept runs on a double-click. The hash is
+recorded, so a kept file can be shown not to have changed.
+
+**StaffCore checks what the companion says it kept.** The companion writes the file and reports its
+path. StaffCore accepts only `CASEID/<64 hex>.<ext>`, resolves it inside the evidence folder, checks the
+file is there and the path carries the reported hash, and otherwise records the file as not kept. That
+check is a file lookup on the server thread; it is one stat per file, at most ten.
+
+**Where it lives.** `staffcore-evidence` beside the world, like the database, so a copy of the world is
+a copy of its evidence. The rows are a `case_evidence` row of the new kind `DISCORD` plus
+`evidence_discord` and `evidence_files` (migration 32). Nothing is deleted: retracting hides the
+evidence, and its files stay.
+
+**Where it is seen.** In the case's thread, posted with its files as they are filed — files too large for
+the server's upload limit are named instead. `/staff evidence <case> item:<n>` attaches them again,
+privately. In game, where files cannot be shown, opening it prints the message, the files with their
+hashes and a link to the message.
+
+---
+
 ## Case ids complete, for staff only
 
 **Date:** 2026-09-16

@@ -190,6 +190,7 @@ Open the file the server wrote and fill it in. A complete example — your ids w
   "staffChatChannelId": "create",
   "discordAlertSeverity": 70,
   "serverName": "",
+  "evidenceMaxMegabytes": 25,
   "playerHeadUrl": "https://mc-heads.net/avatar/{uuid}/64"
 }
 ```
@@ -289,7 +290,7 @@ The permissions the bot uses:
 | Permission | Lets them, from Discord |
 |---|---|
 | `report.view` | Claim and resolve reports |
-| `staff.gui` | Escalate a report; `/staff profile`, `/staff case`, `/staff evidence`, and the Profile and Evidence buttons |
+| `staff.gui` | Escalate a report; `/staff profile`, `/staff case`, `/staff evidence`, `/staff evidence-add`, *Add to case evidence*, and the Profile and Evidence buttons |
 | `staff.history` | `/staff history`, and the History and Punishment buttons |
 | `staff.notes` | `/staff note`, and the Add Note and Staff Note buttons |
 | `staff.notes.view` | `/staff notes` |
@@ -372,7 +373,8 @@ answer is private to you; what a command does — a ban, a note — is posted to
 | `/staff notes <player>` | `staff.notes.view` | Their notes, retracted ones marked |
 | `/staff profile <player>` | `staff.gui` | Their standing: punishments, points, notes, what is in force, open cases |
 | `/staff case <id>` | `staff.gui` | A case and the latest of its history |
-| `/staff evidence <case>` | `staff.gui` | The evidence filed on a case |
+| `/staff evidence <case> [item]` | `staff.gui` | The evidence filed on a case; with `item`, one piece with its files |
+| `/staff evidence-add <case> [file] [note]` | `staff.gui` | File a screenshot, video, log or note as evidence |
 | `/staff staff-history <staff> [days]` | `staff.audit` | What a staff member did — never where from |
 | `/staff analytics [staff]` | `analytics.stats` | Server totals, and one staff member's or the busiest staff's numbers |
 | `/staff warn <player> <reason>` | `staff.punish.warn` | Warn |
@@ -388,6 +390,17 @@ A command from Discord meets the same checks as in game — the permission, the 
 the rule against punishing somebody who outranks you — and on top of that everything you change from
 Discord counts against `discordActionsPerMinute` in `config/staffcore/staffcore.json` (20 a minute
 unless changed). IP bans, rollbacks and inventory edits are not available from Discord at all.
+
+### Filing evidence
+
+- **A file or a note:** `/staff evidence-add`, pick the case, attach the file.
+- **A message:** right-click it (long-press on a phone) → **Apps** → **Add to case evidence**, and type
+  the case id.
+
+The bot downloads each file and keeps it on the server, in `staffcore-evidence` beside the world —
+Discord's own links to files stop working after a while. Files larger than `evidenceMaxMegabytes`
+(25 MB) are listed but not kept. The filing is posted in the case's thread with its files, and
+`/staff evidence <case> item:<number>` shows it again later.
 
 ---
 

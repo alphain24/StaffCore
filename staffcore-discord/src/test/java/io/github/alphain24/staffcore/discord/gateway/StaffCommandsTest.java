@@ -30,7 +30,7 @@ class StaffCommandsTest {
 		Set<String> names = StaffCommands.definition().getSubcommands().stream().map(SubcommandData::getName)
 				.collect(Collectors.toSet());
 		assertEquals(Set.of("history", "staff-history", "notes", "evidence", "case", "profile", "analytics",
-				"ban", "unban", "mute", "unmute", "freeze", "unfreeze", "note", "warn"), names);
+				"ban", "unban", "mute", "unmute", "freeze", "unfreeze", "note", "warn", "evidence-add"), names);
 		for (String name : names) {
 			assertFalse(name.contains("ip") || name.contains("rollback") || name.contains("invsee")
 					|| name.contains("inventory") || name.contains("approve"), name);

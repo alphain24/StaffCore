@@ -483,6 +483,7 @@ public final class CaseMenu extends Gui {
 			case LOCATION -> Items.ENDER_PEARL;
 			case SNAPSHOT -> Items.CHEST;
 			case XRAY_DIG -> Items.DIAMOND_PICKAXE;
+			case DISCORD -> Items.WRITABLE_BOOK;
 		};
 	}
 

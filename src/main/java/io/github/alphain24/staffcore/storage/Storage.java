@@ -369,6 +369,14 @@ public final class Storage {
 
 	// -------------------------------------------------------------------- backups
 
+	/**
+	 * Where files kept as case evidence go: beside the world, like the database, so a copy of the world is
+	 * a copy of its evidence. Null before the database is open.
+	 */
+	public Path evidenceDir() {
+		return worldDir == null ? null : worldDir.resolve("staffcore-evidence");
+	}
+
 	public Path backupDir() {
 		return worldDir == null ? null : worldDir.resolve("staffcore-backups");
 	}

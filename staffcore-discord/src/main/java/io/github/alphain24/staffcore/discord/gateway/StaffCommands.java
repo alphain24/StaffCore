@@ -25,7 +25,14 @@ final class StaffCommands {
 										new OptionData(OptionType.INTEGER, "days", "How many days back, 1-90 (7 if left out)", false)
 												.setRequiredRange(1, 90)),
 						sub("notes", "A player's notes").addOptions(player()),
-						sub("evidence", "The evidence filed on a case").addOptions(caseId()),
+						sub("evidence", "The evidence filed on a case, or one piece of it with its files")
+								.addOptions(caseId(), new OptionData(OptionType.INTEGER, "item",
+										"One piece of evidence, by its number, with any files kept", false)
+										.setMinValue(1)),
+						sub("evidence-add", "File a note or a file as evidence on a case")
+								.addOptions(caseId(),
+										new OptionData(OptionType.ATTACHMENT, "file", "A screenshot, video or log", false),
+										new OptionData(OptionType.STRING, "note", "What it shows", false).setMaxLength(500)),
 						sub("case", "A case and the latest of its history").addOptions(caseId()),
 						sub("profile", "A player's standing").addOptions(player()),
 						sub("analytics", "Server totals and staff numbers")

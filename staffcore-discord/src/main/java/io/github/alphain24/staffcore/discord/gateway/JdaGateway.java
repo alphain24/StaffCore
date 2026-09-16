@@ -277,6 +277,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					.addOption(OptionType.STRING, "code", "The appeal code, like ABCD-EFGH-JKMN", true));
 		}
 		commands.add(StaffCommands.definition());
+		// Right-click a message, Apps: file it, with its files, as evidence on a case.
+		commands.add(Commands.message(EVIDENCE_MENU));
 		if (!settings.staffChatChannelId.isEmpty()) {
 			// Works with or without Message Content Intent: a command carries what was typed.
 			commands.add(Commands.slash("staffchat", "Say something in staff chat in game")
@@ -649,8 +651,21 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					event.getOption("staff", "", OptionMapping::getAsString),
 					event.getOption("days", 7, OptionMapping::getAsInt)).thenApply(Replies::staffHistory));
 			case "notes" -> answer(event, DiscordAccess.notes(user, player).thenApply(Replies::notes));
-			case "evidence" -> answer(event, DiscordAccess.caseEvidence(user,
-					event.getOption("case", "", OptionMapping::getAsString)).thenApply(Replies::evidence));
+			case "evidence" -> {
+				String caseTyped = event.getOption("case", "", OptionMapping::getAsString);
+				Integer item = event.getOption("item", null, OptionMapping::getAsInt);
+				if (item == null) {
+					answer(event, DiscordAccess.caseEvidence(user, caseTyped).thenApply(Replies::evidence));
+				} else {
+					evidenceItem(event, user, caseTyped, item);
+				}
+			}
+			case "evidence-add" -> {
+				Message.Attachment file = event.getOption("file", null, OptionMapping::getAsAttachment);
+				fileEvidence(event, user, event.getOption("case", "", OptionMapping::getAsString),
+						event.getOption("note", "", OptionMapping::getAsString), null, null, null, null, null,
+						file == null ? List.of() : List.of(file), "command");
+			}
 			case "case" -> answer(event, DiscordAccess.caseView(user,
 					event.getOption("case", "", OptionMapping::getAsString)).thenApply(Replies::caseView));
 			case "profile" -> answer(event, DiscordAccess.profile(user, player).thenApply(Replies::profile));
@@ -667,6 +682,202 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					event.getOption("text", "", OptionMapping::getAsString)).thenApply(DiscordResult::message));
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
+	}
+
+	// ------------------------------------------------------------------ the evidence locker
+
+	/** The name of the message menu that files a message as evidence. */
+	static final String EVIDENCE_MENU = "Add to case evidence";
+	/** How long a message waits for its case to be named. */
+	private static final long PENDING_MILLIS = 15 * 60_000L;
+	private static final int PENDING_LIMIT = 200;
+
+	/** A message somebody asked to file, waiting for them to say which case. */
+	private record PendingMessage(String url, String authorId, String authorName, long postedAt, String content,
+			List<Message.Attachment> attachments, long expiresAt) {}
+
+	private final Map<String, PendingMessage> pendingEvidence = new ConcurrentHashMap<>();
+
+	/**
+	 * Right-click a message, Apps, "Add to case evidence": asks which case, remembering the message until
+	 * the answer comes. Discord hands a bot the message's text in this interaction whatever its intents.
+	 */
+	@Override
+	public void onMessageContextInteraction(net.dv8tion.jda.api.events.interaction.command.MessageContextInteractionEvent event) {
+		if (!EVIDENCE_MENU.equals(event.getName())) return;
+		if (!inGuild(event.getGuild())) {
+			event.reply("This bot only answers in its own server.").setEphemeral(true).queue();
+			return;
+		}
+		long now = System.currentTimeMillis();
+		pendingEvidence.values().removeIf(p -> p.expiresAt() < now);
+		if (pendingEvidence.size() >= PENDING_LIMIT) {
+			event.reply("Too many filings are waiting for a case. Try again in a few minutes.").setEphemeral(true).queue();
+			return;
+		}
+		Message target = event.getTarget();
+		pendingEvidence.put(event.getUser().getId() + ":" + target.getId(), new PendingMessage(target.getJumpUrl(),
+				target.getAuthor().getId(), target.getAuthor().getName(), target.getTimeCreated().toInstant().toEpochMilli(),
+				target.getContentRaw(), List.copyOf(target.getAttachments()), now + PENDING_MILLIS));
+		event.replyModal(Modal.create("sc:evmsg:" + target.getId(), "File as case evidence")
+				.addComponents(
+						Label.of("Case id", TextInput.create("case", TextInputStyle.SHORT)
+								.setRequired(true).setMinLength(8).setMaxLength(16)
+								.setPlaceholder("ABCD2345 — /staff case finds it")
+								.build()),
+						Label.of("What it shows (optional)", TextInput.create("note", TextInputStyle.PARAGRAPH)
+								.setRequired(false).setMaxLength(500)
+								.build()))
+				.build()).queue();
+	}
+
+	/** The case named for a message waiting to be filed. */
+	private void messageEvidence(ModalInteractionEvent event, DiscordUser user, String messageId) {
+		PendingMessage pending = pendingEvidence.remove(event.getUser().getId() + ":" + messageId);
+		if (pending == null || pending.expiresAt() < System.currentTimeMillis()) {
+			event.reply("That took too long, or the message was already filed. Use the menu on the message again.")
+					.setEphemeral(true).queue();
+			return;
+		}
+		fileEvidence(event, user, value(event, "case"), value(event, "note"), pending.url(), pending.authorId(),
+				pending.authorName(), pending.postedAt(), pending.content(), pending.attachments(), "message");
+	}
+
+	/**
+	 * Files evidence: asks StaffCore whether this user may file on this case, keeps the files, files the
+	 * record, and posts it with its files into the case's thread.
+	 * <p>
+	 * On the companion's thread, which is where downloads belong; posts made meanwhile wait their turn.
+	 * Nothing is downloaded before StaffCore has said yes.
+	 */
+	private void fileEvidence(IReplyCallback event, DiscordUser user, String caseTyped, String note, String url,
+			String authorId, String authorName, Long postedAt, String content, List<Message.Attachment> attachments,
+			String via) {
+		event.deferReply(true).queue();
+		InteractionHook hook = event.getHook();
+		worker.execute(() -> {
+			String reply;
+			try {
+				DiscordResult may = DiscordAccess.mayFileEvidence(user, caseTyped)
+						.get(settings.requestTimeoutSeconds, TimeUnit.SECONDS);
+				if (!may.done()) {
+					hook.sendMessage(Text.clip(token.redact(may.message()), 2000)).queue(ok -> { }, ignored -> { });
+					return;
+				}
+				String caseId = may.message();
+				java.nio.file.Path folder = DiscordAccess.evidenceFolder();
+				long max = Math.min(DiscordAccess.MAX_EVIDENCE_BYTES, settings.evidenceMaxMegabytes * 1024L * 1024L);
+				List<io.github.alphain24.staffcore.api.DiscordEvidenceFile> files = new ArrayList<>();
+				for (Message.Attachment attachment : attachments.subList(0, Math.min(attachments.size(), 10))) {
+					files.add(keep(folder, caseId, attachment, max));
+				}
+				DiscordResult filed = DiscordAccess.fileEvidence(user, new io.github.alphain24.staffcore.api.DiscordEvidenceFiling(
+						caseId, note, url, authorId, authorName, postedAt, content, via, files))
+						.get(settings.requestTimeoutSeconds, TimeUnit.SECONDS);
+				reply = filed.message();
+				if (filed.done()) postEvidence(caseId, user, note, url, authorName, files);
+			} catch (Exception e) {
+				reply = Replies.failure(e);
+				StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Filing evidence failed ({})", describe(e));
+			}
+			hook.sendMessage(Text.clip(token.redact(reply), 2000))
+					.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)).queue(ok -> { }, ignored -> { });
+		});
+	}
+
+	private static io.github.alphain24.staffcore.api.DiscordEvidenceFile keep(java.nio.file.Path folder, String caseId,
+			Message.Attachment attachment, long max) {
+		String name = attachment.getFileName();
+		String type = attachment.getContentType();
+		if (max <= 0) {
+			return io.github.alphain24.staffcore.discord.evidence.EvidenceLocker.notKept(name, type, attachment.getSize(),
+					"this server keeps no files (evidenceMaxMegabytes is 0)");
+		}
+		if (attachment.getSize() > max) {
+			return io.github.alphain24.staffcore.discord.evidence.EvidenceLocker.notKept(name, type, attachment.getSize(),
+					"larger than the " + (max / (1024 * 1024)) + " MB this server keeps");
+		}
+		try {
+			java.io.InputStream in = attachment.getProxy().download().get(120, TimeUnit.SECONDS);
+			return io.github.alphain24.staffcore.discord.evidence.EvidenceLocker.keep(folder, caseId, name, type, in, max);
+		} catch (Exception e) {
+			return io.github.alphain24.staffcore.discord.evidence.EvidenceLocker.notKept(name, type, attachment.getSize(),
+					"it could not be downloaded (" + describe(e) + ")");
+		}
+	}
+
+	/** The filing, with its kept files, in the case's thread, when the case has one. */
+	private void postEvidence(String caseId, DiscordUser user, String note, String url, String authorName,
+			List<io.github.alphain24.staffcore.api.DiscordEvidenceFile> files) {
+		JDA connection = jda;
+		ThreadBook.Entry entry = book.get("case:" + caseId);
+		if (connection == null || entry == null || entry.threadId() == null) return;
+		ThreadChannel thread = thread(connection, entry);
+		if (thread == null) return;
+
+		StringBuilder text = new StringBuilder("**Evidence filed** by ").append(Text.safe(user.name(), 100));
+		if (note != null && !note.isBlank()) text.append(": ").append(Text.safe(note, 500));
+		if (url != null) text.append("\nFrom a message by ").append(Text.safe(authorName, 100)).append(": ").append(url);
+		List<net.dv8tion.jda.api.utils.FileUpload> uploads = new ArrayList<>();
+		long limit = thread.getGuild().getMaxFileSize();
+		long total = 0;
+		for (var file : files) {
+			java.nio.file.Path path = DiscordAccess.keptFile(file);
+			if (path == null) {
+				text.append("\n• ").append(Text.safe(file.name(), 100)).append(" — not kept: ")
+						.append(Text.safe(file.notKeptWhy(), 200));
+			} else if (total + file.sizeBytes() > limit) {
+				text.append("\n• ").append(Text.safe(file.name(), 100))
+						.append(" — kept, too large to post here; `/staff evidence` lists it");
+			} else {
+				total += file.sizeBytes();
+				uploads.add(net.dv8tion.jda.api.utils.FileUpload.fromData(path, safeName(file)));
+			}
+		}
+		try {
+			thread.sendMessage(new MessageCreateBuilder().setContent(Text.clip(text.toString(), 2000))
+					.setFiles(uploads).setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)).build()).complete();
+		} catch (RuntimeException e) {
+			StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Could not post evidence in case {}'s thread ({})", caseId,
+					describe(e));
+		}
+	}
+
+	/** {@code /staff evidence case item}: one piece, with its kept files attached, privately. */
+	private void evidenceItem(SlashCommandInteractionEvent event, DiscordUser user, String caseTyped, int item) {
+		event.deferReply(true).queue();
+		InteractionHook hook = event.getHook();
+		DiscordAccess.evidenceItem(user, caseTyped, item)
+				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+				.whenCompleteAsync((answer, failure) -> {
+					if (failure != null || !answer.answered()) {
+						hook.sendMessage(Text.clip(token.redact(failure != null ? Replies.failure(failure) : answer.refusal()),
+								2000)).queue(ok -> { }, ignored -> { });
+						return;
+					}
+					var detail = answer.value();
+					List<net.dv8tion.jda.api.utils.FileUpload> uploads = new ArrayList<>();
+					long limit = event.getGuild() == null ? 8L * 1024 * 1024 : event.getGuild().getMaxFileSize();
+					long total = 0;
+					for (var file : detail.files()) {
+						java.nio.file.Path path = DiscordAccess.keptFile(file);
+						if (path != null && java.nio.file.Files.isRegularFile(path) && total + file.sizeBytes() <= limit) {
+							total += file.sizeBytes();
+							uploads.add(net.dv8tion.jda.api.utils.FileUpload.fromData(path, safeName(file)));
+						}
+					}
+					hook.sendMessage(Text.clip(token.redact(Replies.evidenceDetail(detail, uploads.size())), 2000))
+							.addFiles(uploads)
+							.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class))
+							.queue(ok -> { }, ignored -> { });
+				}, worker);
+	}
+
+	/** What a kept file is called when posted: its own name, stripped to letters, digits and a few marks. */
+	static String safeName(io.github.alphain24.staffcore.api.DiscordEvidenceFile file) {
+		String name = file.name() == null ? "" : file.name().replaceAll("[^A-Za-z0-9._-]", "_");
+		if (name.isBlank() || name.startsWith(".")) name = "evidence" + name;
+		return name.length() > 80 ? name.substring(name.length() - 80) : name;
 	}
 
 	/**
@@ -809,6 +1020,10 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		if (modalId.equals(io.github.alphain24.staffcore.discord.channels.AppealPanel.FORM_ID)) {
 			answer(event, DiscordAccess.fileAppeal(user, value(event, "code").replaceAll("[^A-Za-z0-9]", ""),
 					value(event, "reason")).thenApply(DiscordResult::message));
+			return;
+		}
+		if (modalId.startsWith("sc:evmsg:")) {
+			messageEvidence(event, user, modalId.substring("sc:evmsg:".length()));
 			return;
 		}
 		if (modalId.startsWith("sc:appealfile:")) {

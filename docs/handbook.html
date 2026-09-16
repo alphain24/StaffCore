@@ -2581,6 +2581,7 @@
               <tr><td class="mono">staffChatChannelId</td><td class="mono">create</td><td class="wrap">Staff chat both ways; lines from Discord are marked <code>[Discord]</code> in game. Typing there needs Message Content Intent switched on for the bot; without it the bot connects anyway and staff talk with <code>/staffchat</code>.</td></tr>
               <tr><td class="mono">discordAlertSeverity</td><td class="mono">70</td><td class="wrap">The lowest signal confidence (0&ndash;100) posted to alerts on its own. A signal that opens a case is always posted.</td></tr>
               <tr><td class="mono">serverName</td><td class="mono">empty</td><td class="wrap">Shown on report posts, for a network sharing one Discord.</td></tr>
+              <tr><td class="mono">evidenceMaxMegabytes</td><td class="mono">25</td><td class="wrap">The largest file kept when Discord material is filed as evidence (0&ndash;500). A larger one is recorded without being kept; 0 keeps none.</td></tr>
               <tr><td class="mono">playerHeadUrl</td><td class="mono">https://mc-heads.net/avatar/{uuid}/64</td><td class="wrap">The head picture on posts. Discord fetches it, so the service sees player ids only. Empty shows none.</td></tr>
             </tbody>
           </table>
@@ -2613,6 +2614,17 @@
           refusal says why. Everything that changes something from Discord also counts against
           <code>discordActionsPerMinute</code> (20 a minute by default, staff chat not counted). IP bans,
           rollbacks and inventory edits have no command.
+        </p>
+        <h3>Evidence from Discord</h3>
+        <p>
+          <code>/staff evidence-add</code> files a file or a note on a case, and right-clicking any message
+          &rarr; <em>Apps</em> &rarr; <strong>Add to case evidence</strong> files the message, its author, its
+          text, a link to it and its files. Both need <code>staff.gui</code>, as filing evidence in game does.
+          Files are downloaded into <code>staffcore-evidence/&lt;case&gt;/</code> beside the world, named by
+          their SHA-256, because Discord's links expire; anything over <code>evidenceMaxMegabytes</code> is
+          recorded without being kept. The filing and its files are posted in the case's thread;
+          <code>/staff evidence &lt;case&gt; item:&lt;n&gt;</code> shows one piece with its files, and in game it
+          reads as <em>From Discord</em> and prints the message and the hashes. Nothing kept is deleted.
         </p>
         <h3>Appeals from Discord</h3>
         <p>

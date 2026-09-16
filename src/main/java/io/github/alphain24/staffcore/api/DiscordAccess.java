@@ -244,6 +244,44 @@ public final class DiscordAccess {
 	}
 
 	/**
+	 * The folder files kept as evidence go in, beside the world; null before the server has started. A
+	 * companion writes a file there before filing it, named as {@link DiscordEvidenceFile#storedPath} says.
+	 */
+	public static java.nio.file.Path evidenceFolder() {
+		return DiscordGate.evidenceFolder();
+	}
+
+	/** The most bytes one kept file may have, whatever a companion is configured to allow. */
+	public static final long MAX_EVIDENCE_BYTES = 500L * 1024 * 1024;
+
+	/**
+	 * Whether this user may file evidence on this case, asked before anything is downloaded. Counts
+	 * against nothing. When it may, the message is the case id as stored, for naming files.
+	 */
+	public static CompletableFuture<DiscordResult> mayFileEvidence(DiscordUser user, String caseId) {
+		return DiscordGate.mayFileEvidence(user, caseId);
+	}
+
+	/** Files evidence on a case: behind the case permission and the Discord action limit, and audited. */
+	public static CompletableFuture<DiscordResult> fileEvidence(DiscordUser user, DiscordEvidenceFiling filing) {
+		return DiscordGate.fileEvidence(user, filing);
+	}
+
+	/** One piece of a case's evidence, by its evidence number, with any files kept from Discord. */
+	public static CompletableFuture<DiscordAnswer<DiscordEvidenceDetail>> evidenceItem(DiscordUser user, String caseId,
+			long evidenceId) {
+		return DiscordGate.evidenceItem(user, caseId, evidenceId);
+	}
+
+	/**
+	 * Where a kept file is, or null when the path is not one a companion could have written: never
+	 * anywhere outside {@link #evidenceFolder()}.
+	 */
+	public static java.nio.file.Path keptFile(DiscordEvidenceFile file) {
+		return DiscordGate.keptFile(file);
+	}
+
+	/**
 	 * Case ids starting with a prefix, live cases first, for autocomplete. Empty for anybody not allowed to
 	 * look at cases from Discord.
 	 */

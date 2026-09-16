@@ -56,6 +56,12 @@ public class CaseModule implements Module {
 
 	private final CaseStore store = new CaseStore();
 	private final CaseEvidence evidence = new CaseEvidence();
+	private final DiscordEvidenceStore discordEvidence = new DiscordEvidenceStore();
+
+	/** What evidence filed from Discord says beyond its row: the message, and the files kept. */
+	public DiscordEvidenceStore discordEvidence() {
+		return discordEvidence;
+	}
 
 	/** Replays, block damage, places and snapshots filed against cases. */
 	public CaseEvidence evidence() {

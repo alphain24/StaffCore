@@ -181,6 +181,9 @@ class DiscordSettingsTest {
 	@DisplayName("alert severity is clamped, and a head address has to be https with {uuid} in it")
 	void alertsAndHeads() throws IOException {
 		assertEquals(100, load("{\"discordAlertSeverity\": 400}").settings().discordAlertSeverity);
+		assertEquals(500, load("{\"evidenceMaxMegabytes\": 9000}").settings().evidenceMaxMegabytes);
+		assertEquals(0, load("{\"evidenceMaxMegabytes\": -3}").settings().evidenceMaxMegabytes);
+		assertEquals(25, new DiscordSettings().evidenceMaxMegabytes);
 		assertEquals("", load("{\"playerHeadUrl\": \"http://example.com/{uuid}\"}").settings().playerHeadUrl);
 		assertEquals("", load("{\"playerHeadUrl\": \"https://example.com/head\"}").settings().playerHeadUrl);
 		assertEquals("https://example.com/{uuid}.png",

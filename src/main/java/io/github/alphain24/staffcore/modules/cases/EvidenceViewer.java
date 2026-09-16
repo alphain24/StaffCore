@@ -35,7 +35,54 @@ public final class EvidenceViewer {
 			case BLOCKS -> blocks(server, viewer, item);
 			case LOCATION -> location(server, viewer, item);
 			case SNAPSHOT -> snapshot(viewer, item);
+			case DISCORD -> discord(viewer, item);
 		};
+	}
+
+	/**
+	 * Evidence from Discord is read, not entered: who wrote it, what it said, and the files kept, with
+	 * where to see them. The files themselves are shown in Discord, which can display them.
+	 */
+	private static boolean discord(ServerPlayer viewer, CaseEvidence.Item item) {
+		var filed = io.github.alphain24.staffcore.module.Mods.cases().discordEvidence().byEvidence(item);
+		if (filed.isEmpty()) return refuse(viewer, "The details of this evidence could not be read.");
+		var message = filed.get().message();
+		viewer.closeContainer();
+		viewer.sendSystemMessage(io.github.alphain24.staffcore.gui.Theme.info("Evidence #" + item.id() + " on case "
+				+ item.caseId() + ", filed from Discord by " + item.addedBy() + " "
+				+ io.github.alphain24.staffcore.util.TimeFormat.words(item.addedAt())));
+		if (item.label() != null && !item.label().isBlank()) {
+			viewer.sendSystemMessage(line("Note: " + item.label()));
+		}
+		if (message.authorName() != null) {
+			viewer.sendSystemMessage(line("Message by " + message.authorName()
+					+ (message.postedAt() == null ? "" : ", " + io.github.alphain24.staffcore.util.TimeFormat.full(message.postedAt()))));
+		}
+		if (message.content() != null && !message.content().isBlank()) {
+			viewer.sendSystemMessage(line("\"" + message.content() + "\""));
+		}
+		for (var file : filed.get().files()) {
+			viewer.sendSystemMessage(line(file.name() + " (" + size(file.sizeBytes()) + ")"
+					+ (file.storedPath() == null ? " - not kept: " + file.notKeptWhy()
+							: ", SHA-256 " + file.sha256().substring(0, 16) + "...")));
+		}
+		if (message.messageUrl() != null) {
+			viewer.sendSystemMessage(io.github.alphain24.staffcore.gui.Icon.text("  ", io.github.alphain24.staffcore.gui.Theme.MUTED)
+					.append(io.github.alphain24.staffcore.gui.Link.url("[open the message in Discord]", message.messageUrl(),
+							io.github.alphain24.staffcore.gui.Theme.ACCENT, "Opens Discord")));
+		}
+		viewer.sendSystemMessage(line("In Discord: /staff evidence case:" + item.caseId() + " item:" + item.id()));
+		return true;
+	}
+
+	private static net.minecraft.network.chat.MutableComponent line(String text) {
+		return io.github.alphain24.staffcore.gui.Icon.text("  " + text, io.github.alphain24.staffcore.gui.Theme.MUTED);
+	}
+
+	private static String size(long bytes) {
+		if (bytes < 1024) return bytes + " B";
+		if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";
+		return String.format(java.util.Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
 	}
 
 	private static boolean replay(MinecraftServer server, ServerPlayer viewer, CaseEvidence.Item item) {

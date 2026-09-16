@@ -536,6 +536,7 @@ companion is doing instead.
 | `staffChatChannelId` | `create` | A channel bridged with staff chat both ways. Typing there needs Message Content Intent switched on for the bot; without it the bot connects anyway, game lines still arrive, and staff answer with `/staffchat`, which `/staff status` and the panel point out. Empty bridges nothing. |
 | `discordAlertSeverity` | `70` | The lowest signal confidence (0–100) posted to the alerts channel on its own. A signal that opens a case is always posted, because the case needs its thread. |
 | `serverName` | empty | Shown on report posts, for a network sharing one Discord. Empty shows nothing. |
+| `evidenceMaxMegabytes` | `25` | The largest file kept when Discord material is filed as case evidence (0–500). A larger one is recorded without being kept. 0 keeps no files. Kept files are never deleted, so this bounds the disk one filing can take. |
 | `playerHeadUrl` | `https://mc-heads.net/avatar/{uuid}/64` | The head picture on posts about a player. Discord fetches it, so that service sees player ids and nothing else. Empty shows no heads. |
 
 Each channel setting is a channel id, `"create"`, or empty. **`"create"` has the bot make the
@@ -592,7 +593,8 @@ answer private to whoever asked:
 | `/staff notes <player>` | `staff.notes.view` | Their notes, retracted ones marked |
 | `/staff profile <player>` | `staff.gui` | Their standing: punishments, points, notes, what is in force, open cases |
 | `/staff case <id>` | `staff.gui` | A case and the latest of its history |
-| `/staff evidence <case>` | `staff.gui` | The evidence filed on a case |
+| `/staff evidence <case> [item]` | `staff.gui` | The evidence filed on a case; with `item`, one piece in full with its kept files |
+| `/staff evidence-add <case> [file] [note]` | `staff.gui` | File a file or a note as evidence — see below |
 | `/staff staff-history <staff> [days]` | `staff.audit` | What a staff member did — never where from |
 | `/staff analytics [staff]` | `analytics.stats` | Server totals, and one staff member's or the busiest staff's numbers |
 | `/staff warn <player> <reason>` | `staff.punish.warn` | Warn |
@@ -610,6 +612,27 @@ buttons alike, staff chat excepted — also counts against **`discordActionsPerM
 forty of them means standing in the server doing them. Lookups are recorded in the audit log, as they
 are in game. IP bans, rollbacks and inventory edits have no command and are refused to Discord by the
 services that run them.
+
+### Evidence from Discord
+
+Staff file Discord material as evidence on a case, two ways:
+
+- **`/staff evidence-add <case> [file] [note]`** — a screenshot, video or log, with a note, or a note alone.
+- **Right-click a message → Apps → Add to case evidence** — the message, who wrote it and when, what it
+  said, a link back to it, and every file on it. A form asks which case.
+
+Both need `staff.gui` on both sides, as filing evidence in game does, and count against
+`discordActionsPerMinute`. **Files are kept, not linked**, because Discord's attachment links stop
+working: each is downloaded into `staffcore-evidence/<case>/` beside the world, named by its SHA-256,
+and kept as `.bin` unless it is a picture, video, sound, text, PDF or archive. The same file filed twice
+is kept once. A file over `evidenceMaxMegabytes` (25) is still recorded, with a note that it was not
+kept. Nothing is downloaded until StaffCore has said the person may file on that case, and nothing kept
+is ever deleted — retracting the evidence hides it.
+
+The filing, with its kept files, is posted in the case's thread. `/staff evidence <case>` lists every
+piece with its number; **`/staff evidence <case> item:<n>`** shows one piece in full and attaches its
+kept files, privately. In game the evidence reads as *From Discord* on the case screen, and opening it
+prints the message, the files with their hashes, and a link to the message.
 
 ### Appeals
 

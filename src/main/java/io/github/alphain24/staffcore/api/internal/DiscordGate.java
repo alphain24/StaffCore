@@ -585,9 +585,121 @@ public final class DiscordGate {
 		List<io.github.alphain24.staffcore.api.DiscordEvidence> out = new ArrayList<>();
 		for (var item : Mods.cases().evidence().forCase(caseId)) {
 			out.add(new io.github.alphain24.staffcore.api.DiscordEvidence(item.id(), item.kind().label(),
-					item.describe(), item.addedAt(), item.addedBy()));
+					"#" + item.id() + " " + item.describe(), item.addedAt(), item.addedBy()));
 		}
 		return out;
+	}
+
+	// ------------------------------------------------------------------ evidence from Discord
+
+	public static java.nio.file.Path evidenceFolder() {
+		return io.github.alphain24.staffcore.StaffCore.storage().evidenceDir();
+	}
+
+	public static java.nio.file.Path keptFile(io.github.alphain24.staffcore.api.DiscordEvidenceFile file) {
+		java.nio.file.Path folder = evidenceFolder();
+		if (file == null || file.storedPath() == null || folder == null
+				|| !io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.STORED_PATH.matcher(file.storedPath()).matches()) {
+			return null;
+		}
+		java.nio.file.Path path = folder.resolve(file.storedPath()).normalize();
+		return path.startsWith(folder.normalize()) ? path : null;
+	}
+
+	public static CompletableFuture<DiscordResult> mayFileEvidence(DiscordUser user, String caseId) {
+		return gated(user, DiscordOperation.ADD_EVIDENCE, (server, resolved) -> {
+			var found = caseFor(caseId);
+			if (found == null) return DiscordResult.no("There is no case " + (caseId == null ? "" : caseId.strip()) + ".");
+			return new DiscordResult(true, found.id());
+		}, DiscordResult::no, DiscordResult.no(STOPPED));
+	}
+
+	/** The longest note kept with evidence. */
+	static final int EVIDENCE_NOTE_LIMIT = 500;
+
+	public static CompletableFuture<DiscordResult> fileEvidence(DiscordUser user,
+			io.github.alphain24.staffcore.api.DiscordEvidenceFiling filing) {
+		return act(user, DiscordOperation.ADD_EVIDENCE, (server, resolved) -> {
+			if (filing == null) return DiscordResult.no("Nothing to file.");
+			var found = caseFor(filing.caseId());
+			if (found == null) return DiscordResult.no("There is no case " + filing.caseId() + ".");
+
+			String note = cleanText(filing.note(), EVIDENCE_NOTE_LIMIT);
+			String content = filing.content() == null ? null : filing.content().length()
+					> io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.CONTENT_LIMIT
+					? filing.content().substring(0, io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.CONTENT_LIMIT)
+					: filing.content();
+			if (note.isEmpty() && (content == null || content.isBlank()) && filing.files().isEmpty()) {
+				return DiscordResult.no("Give a note, a file, or a message to file.");
+			}
+			if (filing.files().size() > io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.FILE_LIMIT) {
+				return DiscordResult.no("At most " + io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.FILE_LIMIT
+						+ " files at once.");
+			}
+			String url = filing.messageUrl();
+			if (url != null && !url.startsWith("https://discord.com/channels/")) url = null;
+
+			List<io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.File> files = new ArrayList<>();
+			for (var file : filing.files()) {
+				String stored = file.storedPath();
+				String notKept = file.notKeptWhy();
+				if (stored != null) {
+					java.nio.file.Path path = keptFile(file);
+					boolean sound = path != null && java.nio.file.Files.isRegularFile(path)
+							&& file.sha256() != null && stored.contains(file.sha256());
+					if (!sound) {
+						// Recorded, and said to be missing, rather than pointing at something that is not there.
+						stored = null;
+						notKept = "the kept copy was not where the bot said";
+					}
+				}
+				files.add(new io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.File(
+						cleanText(file.name(), 200), file.contentType() == null ? null : cleanText(file.contentType(), 100),
+						Math.max(0, file.sizeBytes()), file.sha256(), stored,
+						notKept == null ? null : cleanText(notKept, 200)));
+			}
+
+			String label = !note.isEmpty() ? note
+					: filing.authorName() != null ? "message by " + cleanText(filing.authorName(), 100)
+					: files.size() == 1 ? files.get(0).name() : files.size() + " files";
+			long id = Mods.cases().discordEvidence().file(found.id(), found.subjectId(), found.subjectName(), label,
+					new io.github.alphain24.staffcore.modules.cases.DiscordEvidenceStore.Message(url,
+							filing.authorId(), filing.authorName() == null ? null : cleanText(filing.authorName(), 100),
+							filing.postedAt(), content, "command".equals(filing.via()) ? "command" : "message"),
+					files, resolved.standing().minecraftName());
+			if (id < 0) return DiscordResult.no("The evidence could not be saved. Try again.");
+
+			long kept = files.stream().filter(f -> f.storedPath() != null).count();
+			audit(resolved, user, "evidence #" + id + " on case " + found.id() + " (" + files.size() + " file(s), "
+					+ kept + " kept)", found.id());
+			return new DiscordResult(true, "Filed as evidence #" + id + " on case " + found.id() + " (" + found.subjectName()
+					+ ")" + (files.isEmpty() ? "." : ", " + kept + " of " + files.size() + " file(s) kept."));
+		});
+	}
+
+	public static CompletableFuture<DiscordAnswer<io.github.alphain24.staffcore.api.DiscordEvidenceDetail>> evidenceItem(
+			DiscordUser user, String caseId, long evidenceId) {
+		return read(user, DiscordOperation.VIEW_EVIDENCE, (server, resolved) -> {
+			var found = caseFor(caseId);
+			if (found == null) return DiscordAnswer.no("There is no case " + (caseId == null ? "" : caseId.strip()) + ".");
+			var item = Mods.cases().evidence().byId(evidenceId).filter(i -> i.caseId().equals(found.id())).orElse(null);
+			if (item == null) return DiscordAnswer.no("Case " + found.id() + " has no evidence #" + evidenceId + ".");
+			audit(resolved, user, "evidence #" + evidenceId + " case " + found.id(), found.id());
+
+			var filed = Mods.cases().discordEvidence().byEvidence(item).orElse(null);
+			List<io.github.alphain24.staffcore.api.DiscordEvidenceFile> files = new ArrayList<>();
+			if (filed != null) {
+				for (var file : filed.files()) {
+					files.add(new io.github.alphain24.staffcore.api.DiscordEvidenceFile(file.name(), file.contentType(),
+							file.sizeBytes(), file.sha256(), file.storedPath(), file.notKeptWhy()));
+				}
+			}
+			var message = filed == null ? null : filed.message();
+			return DiscordAnswer.of(new io.github.alphain24.staffcore.api.DiscordEvidenceDetail(item.id(), item.caseId(),
+					item.kind().label(), item.describe(), item.addedBy(), item.addedAt(),
+					message == null ? null : message.messageUrl(), message == null ? null : message.authorName(),
+					message == null ? null : message.postedAt(), message == null ? null : message.content(), files));
+		});
 	}
 
 	/** How many staff an analytics answer lists when nobody in particular was asked about. */

@@ -43,7 +43,9 @@ public final class CaseEvidence {
 		/** An inventory snapshot, by id. */
 		SNAPSHOT("Inventory snapshot"),
 		/** The biggest dig in a window, stood in with the path drawn. */
-		XRAY_DIG("X-ray dig");
+		XRAY_DIG("X-ray dig"),
+		/** A message or file from Discord, kept. See DiscordEvidenceStore. */
+		DISCORD("From Discord");
 
 		private final String label;
 
@@ -81,6 +83,7 @@ public final class CaseEvidence {
 						+ TimeFormat.stamp(from) + " for " + TimeFormat.length(to - from);
 				case LOCATION -> kind.label() + " " + where();
 				case SNAPSHOT -> kind.label() + " #" + ref + " of " + subjectName;
+				case DISCORD -> kind.label() + (label == null || label.isBlank() ? "" : ": " + label);
 			};
 		}
 

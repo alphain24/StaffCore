@@ -81,7 +81,8 @@ public final class DiscordSettings {
 	//
 	// Each is one of three things. A channel id in guildId posts there. "create" has the bot make the
 	// channel when it connects - private, under a StaffCore category, seen only by the bot and the staff
-	// roles in roleNodes - and write its id back here in place of "create". Empty means that kind of post
+	// roles in roleNodes; the players' appeal channel alone is public - and write its id back here in place
+	// of "create". Empty means that kind of post
 	// is not made. Set any of the first five and StaffCore's own discordWebhookUrl stops posting once the
 	// bot connects, so nothing arrives twice. The bot needs to see, send messages, embed links and
 	// create public threads in each; to make channels it also needs Manage Channels and Manage Roles.
@@ -154,6 +155,14 @@ public final class DiscordSettings {
 	 * signal that opens a case is posted whatever this says, because the case needs its thread.
 	 */
 	public int discordAlertSeverity = 70;
+
+	/**
+	 * The largest file, in megabytes, kept when staff file a Discord file or message as case evidence.
+	 * Kept files go in {@code staffcore-evidence} beside the world and are never deleted, so this is what
+	 * bounds how much disk one filing can take. A larger file is still recorded, with a note that it was
+	 * not kept. 0 keeps no files at all and records only their names and sizes. 0 to 500.
+	 */
+	public int evidenceMaxMegabytes = 25;
 
 	/**
 	 * A name shown on report posts, for a network where several servers share one Discord. Empty
@@ -382,6 +391,13 @@ public final class DiscordSettings {
 		if (!appealIntakeChannelId.isEmpty() && appealsChannelId.isEmpty()) {
 			problems.add("appealIntakeChannelId is set but appealsChannelId is not, so there is nowhere to post "
 					+ "appeals and /appeal is not offered. Set appealsChannelId too.");
+		}
+
+		if (evidenceMaxMegabytes < 0 || evidenceMaxMegabytes > 500) {
+			int was = evidenceMaxMegabytes;
+			evidenceMaxMegabytes = Math.max(0, Math.min(500, evidenceMaxMegabytes));
+			problems.add("evidenceMaxMegabytes is " + was + ", which is outside 0-500. Using "
+					+ evidenceMaxMegabytes + ".");
 		}
 
 		if (discordAlertSeverity < 0 || discordAlertSeverity > 100) {

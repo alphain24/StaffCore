@@ -36,6 +36,28 @@ class ClickedAndRepliesTest {
 		assertEquals(null, JdaGateway.waitDays("seven"));
 		assertEquals(7, JdaGateway.waitDays(" 7 "));
 		assertEquals(0, JdaGateway.waitDays("0"));
+
+		// A kept file is posted under its own name, made harmless.
+		assertEquals("my_proof__1_.png", JdaGateway.safeName(new io.github.alphain24.staffcore.api.DiscordEvidenceFile(
+				"my proof (1).png", "image/png", 1, "a", "b", null)));
+		assertEquals("evidence.hidden", JdaGateway.safeName(new io.github.alphain24.staffcore.api.DiscordEvidenceFile(
+				".hidden", null, 1, "a", "b", null)));
+		assertEquals("evidence", JdaGateway.safeName(new io.github.alphain24.staffcore.api.DiscordEvidenceFile(
+				null, null, 1, "a", "b", null)));
+
+		String detail = Replies.evidenceDetail(new io.github.alphain24.staffcore.api.DiscordEvidenceDetail(4, "CASE1234",
+				"From Discord", "From Discord: saw it", "Mod", 1L, "https://discord.com/channels/1/2/3", "Steve_",
+				2L, "look at **this**", java.util.List.of(
+						new io.github.alphain24.staffcore.api.DiscordEvidenceFile("a.png", "image/png", 2048,
+								"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "CASE1234/x.png", null),
+						new io.github.alphain24.staffcore.api.DiscordEvidenceFile("big.mp4", "video/mp4", 90_000_000,
+								null, null, "larger than the 25 MB this server keeps"))), 1);
+		assertTrue(detail.contains("Evidence #4"), detail);
+		assertTrue(detail.contains("Steve\\_"), detail);
+		assertFalse(detail.contains("**this**"), "the message text was not escaped: " + detail);
+		assertTrue(detail.contains("a.png (2 KB)"), detail);
+		assertTrue(detail.contains("not kept: larger than"), detail);
+		assertTrue(detail.contains("1 file(s) not attached"), detail);
 		assertNull(JdaGateway.Clicked.parse("sc:accept:" + STEVE), "an appeal button with a player where its number goes");
 		assertEquals(STEVE, JdaGateway.Clicked.parse("sc:freeze:" + STEVE).player());
 		assertNull(JdaGateway.Clicked.parse("sc:ban:" + STEVE), "an action no button offers");

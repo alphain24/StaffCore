@@ -100,6 +100,37 @@ public final class Replies {
 		return out.toString();
 	}
 
+	/** One piece of evidence, in full. */
+	public static String evidenceDetail(io.github.alphain24.staffcore.api.DiscordEvidenceDetail detail, int attached) {
+		StringBuilder out = new StringBuilder();
+		out.append("**Evidence #").append(detail.id()).append("** on case `").append(Text.safe(detail.caseId(), 16))
+				.append("` — ").append(Text.safe(detail.description(), 300)).append("\nFiled by ")
+				.append(Text.safe(detail.addedBy(), 32)).append(' ').append(Text.relative(detail.addedAt()));
+		if (detail.authorName() != null) {
+			out.append("\nMessage by ").append(Text.safe(detail.authorName(), 100));
+			if (detail.postedAt() != null) out.append(", ").append(Text.when(detail.postedAt()));
+		}
+		if (detail.messageUrl() != null) out.append("\n").append(detail.messageUrl());
+		if (detail.content() != null && !detail.content().isBlank()) {
+			out.append("\n> ").append(Text.safe(detail.content(), 900).replace("\n", "\n> "));
+		}
+		for (var file : detail.files()) {
+			out.append("\n• ").append(Text.safe(file.name(), 100)).append(" (").append(size(file.sizeBytes())).append(")");
+			if (file.storedPath() == null) out.append(" — not kept: ").append(Text.safe(file.notKeptWhy(), 200));
+			else out.append(" — SHA-256 `").append(file.sha256(), 0, 16).append("…`");
+		}
+		if (detail.files().size() > attached) {
+			out.append("\n").append(detail.files().size() - attached).append(" file(s) not attached here: not kept, or too large to post.");
+		}
+		return out.length() > 1900 ? out.substring(0, 1899) + "…" : out.toString();
+	}
+
+	static String size(long bytes) {
+		if (bytes < 1024) return bytes + " B";
+		if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";
+		return String.format(java.util.Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
+	}
+
 	/** A player's notes, newest first. */
 	public static String notes(DiscordAnswer<List<io.github.alphain24.staffcore.api.DiscordNote>> answer) {
 		if (!answer.answered()) return answer.refusal();
