@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0 — unreleased
+
+In progress. Ships with `staffcore-discord-1.1.0.jar`.
+
 ## 1.1.0 — 2026-09-16
 
 Cases, staff accountability, x-ray rebuilt on ground truth, session replay, and a Discord bot.
