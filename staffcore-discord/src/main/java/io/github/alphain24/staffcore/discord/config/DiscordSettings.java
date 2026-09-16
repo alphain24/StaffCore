@@ -77,6 +77,17 @@ public final class DiscordSettings {
 	 */
 	public int requestTimeoutSeconds = 10;
 
+	/**
+	 * How many posts may wait while the bot cannot post, from 50 to 10000.
+	 * <p>
+	 * Posts made while the bot is disconnected, still connecting or being answered with Discord server
+	 * errors wait, in order, and are made when it can post again. Past this many, the oldest is dropped
+	 * for each new one, and the drops are logged and counted in {@code /staff status}. Higher keeps
+	 * more of a long outage, at the cost of the memory the waiting posts hold (a few kilobytes each);
+	 * lower keeps less. Waiting posts are not kept when the server stops.
+	 */
+	public int outboundQueueSize = 500;
+
 	// ---- channels ------------------------------------------------------------
 	//
 	// Each is one of three things. A channel id in guildId posts there. "create" has the bot make the
@@ -362,6 +373,13 @@ public final class DiscordSettings {
 			requestTimeoutSeconds = Math.max(2, Math.min(60, requestTimeoutSeconds));
 			problems.add("requestTimeoutSeconds is " + was + ", which is outside 2-60. Using "
 					+ requestTimeoutSeconds + ".");
+		}
+
+		if (outboundQueueSize < 50 || outboundQueueSize > 10_000) {
+			int was = outboundQueueSize;
+			outboundQueueSize = Math.max(50, Math.min(10_000, outboundQueueSize));
+			problems.add("outboundQueueSize is " + was + ", which is outside 50-10000. Using "
+					+ outboundQueueSize + ".");
 		}
 
 		Map<String, List<String>> kept = new LinkedHashMap<>();

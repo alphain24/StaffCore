@@ -372,6 +372,43 @@ public final class StartupCheck {
 	}
 
 	/**
+	 * The Discord bot, as the last line of the startup diagnostic.
+	 * <p>
+	 * Logged a tick after the server has started rather than with the hooks: the companion reads its
+	 * settings once the server has started, after the hooks are checked, and "waiting for the server to
+	 * start" would be true and useless. The bot then connects on its own thread, so this is where it
+	 * stands at that moment; the companion logs when it connects or fails, and {@code /staff status}
+	 * has the rest.
+	 */
+	public static void logDiscord() {
+		io.github.alphain24.staffcore.api.DiscordBotStatus bot =
+				io.github.alphain24.staffcore.api.StaffCoreApi.discordBot();
+		String line = discordLine(bot);
+		switch (bot.phase()) {
+			case FAILED, NOT_CONFIGURED -> StaffCore.LOGGER.warn("[StaffCore] {}", line);
+			default -> StaffCore.LOGGER.info("[StaffCore] {}", line);
+		}
+	}
+
+	/** The line {@link #logDiscord} writes, in ASCII: the companion's words can be anything. */
+	static String discordLine(io.github.alphain24.staffcore.api.DiscordBotStatus bot) {
+		if (bot.phase() == io.github.alphain24.staffcore.api.DiscordBotStatus.Phase.NOT_INSTALLED) {
+			return "Discord bot: not installed.";
+		}
+		String phase = bot.phase().name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+		String summary = io.github.alphain24.staffcore.util.ConsoleText.ascii(bot.summary()).strip();
+		StringBuilder out = new StringBuilder("Discord bot: ");
+		// "off (enabled is false ...)" already says it is off; saying "off - off" first reads as a stutter.
+		if (summary.toLowerCase(java.util.Locale.ROOT).startsWith(phase)) out.append(summary);
+		else if (summary.isEmpty()) out.append(phase);
+		else out.append(phase).append(" - ").append(summary);
+		if (!bot.problems().isEmpty()) {
+			out.append(". ").append(bot.problems().size()).append(" problem(s); /staff status lists them");
+		}
+		return out.append('.').toString();
+	}
+
+	/**
 	 * One readable block instead of a wall of stack traces.
 	 * <p>
 	 * Mixin already prints the full failure above, at length and three times over. What an

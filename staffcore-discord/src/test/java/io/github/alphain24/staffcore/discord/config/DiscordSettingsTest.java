@@ -79,10 +79,16 @@ class DiscordSettingsTest {
 	}
 
 	@Test
-	@DisplayName("the timeout is clamped into range")
+	@DisplayName("the timeout and the queue size are clamped into range")
 	void timeoutClamped() throws IOException {
 		assertEquals(60, load("{\"requestTimeoutSeconds\": 900}").settings().requestTimeoutSeconds);
 		assertEquals(2, load("{\"requestTimeoutSeconds\": 0}").settings().requestTimeoutSeconds);
+		assertEquals(10_000, load("{\"outboundQueueSize\": 999999}").settings().outboundQueueSize);
+		assertEquals(50, load("{\"outboundQueueSize\": 0}").settings().outboundQueueSize);
+		assertTrue(load("{\"outboundQueueSize\": 0}").problems().stream().anyMatch(p -> p.contains("outboundQueueSize")));
+		assertEquals(500, new DiscordSettings().outboundQueueSize);
+		assertEquals(io.github.alphain24.staffcore.discord.channels.PostQueue.DEFAULT_CAPACITY,
+				new DiscordSettings().outboundQueueSize);
 	}
 
 	@Test

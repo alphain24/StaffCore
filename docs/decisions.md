@@ -2079,6 +2079,51 @@ Discord, naming the Discord account.
 
 ---
 
+## Posts wait when the bot cannot post
+
+**Date:** 2026-09-17
+
+Phase 5.6: "The bot being unreachable is normal, not exceptional. Queue outbound embeds with bounded
+backpressure and drop oldest with a logged count when full. Never block a punishment on a Discord
+write."
+
+**The punishment was already safe; the post was not.** StaffCore's `EventBus` has always handed
+events to listeners on a thread of its own, with its own bounded queue, and `StaffCoreApiTest`
+proves a hung listener does not hold up whatever raised the event. The companion then threw away
+any post made while it was not connected and counted it. Nothing was queued.
+
+**`PostQueue`.** The router offers posts to a queue instead of the connection. The queue posts one
+at a time on the companion's worker, and only while the connection says `readyToPost`: connected,
+in the guild, with its channels made and checked since connecting. The connection wakes the queue
+once its channels are set up and whenever JDA's status goes back to `CONNECTED`. It says it is ready
+before it wakes the queue, and the queue reads that under its lock, so a wake cannot be lost between
+a turn ending and a reconnect.
+
+- **Bounded, oldest first.** `outboundQueueSize` (500, 50–10000). A full queue drops its oldest post
+  for each new one. The first drop is logged at once, then a count at most once a minute, so an
+  outage costs a few log lines. The newest posts are the ones staff are about to look for.
+- **What counts as passing.** A failure while the connection is down puts the post back at the front
+  and costs no try, since an outage is not the post's fault. A Discord server error or a network error
+  while connected also puts it back, then waits five seconds; after five such tries it is given up and
+  logged. Any other failure, such as a missing permission, is counted and dropped at once, as before,
+  because trying again changes nothing.
+- **One post per turn.** Each post is its own task on the worker, so a button click is not stuck
+  behind a whole backlog.
+- **Memory only.** Keeping the queue across restarts would mean writing embeds to disk, and a post
+  about a ban from before a restart is still in `#punishments` history once it is made. Not worth a
+  second file. Posts waiting at shutdown are lost, which is now the known limit.
+
+**Status.** `/staff status` and the panel list waiting, dropped and given-up posts only when there
+are any. The startup diagnostic logs one line on the bot, a tick after the server starts, because
+the companion reads its settings in the same event after the hook check.
+
+**Tests.** `PostQueueTest` covers order, the bound, the log rate, a disconnect mid-post, server
+errors, a broken post, a hung post, and a stopped worker. `DiscordBotQueueTest` runs it through the
+whole bot: connection killed, punishments published through StaffCore's event thread, queued and
+bounded, then made once each when the connection is back.
+
+---
+
 ## The permissions API is a library, not a permissions mod
 
 **Date:** 2026-09-17

@@ -9,6 +9,7 @@ import io.github.alphain24.staffcore.api.StaffCoreApi;
 import io.github.alphain24.staffcore.discord.StaffCoreDiscord;
 import io.github.alphain24.staffcore.discord.channels.Embed;
 import io.github.alphain24.staffcore.discord.channels.Outbound;
+import io.github.alphain24.staffcore.discord.channels.PostQueue;
 import io.github.alphain24.staffcore.discord.channels.Text;
 import io.github.alphain24.staffcore.discord.channels.ThreadBook;
 import io.github.alphain24.staffcore.discord.config.BotToken;
@@ -70,7 +71,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * Posting runs on the companion's worker, one operation at a time and in order, waiting for Discord
  * to answer each. In order because a claim edits a message the report before it posted; waiting
- * because the thread book needs the ids Discord hands back.
+ * because the thread book needs the ids Discord hands back. What to post waits in the bot's
+ * {@link io.github.alphain24.staffcore.discord.channels.PostQueue} until {@link #readyToPost} says it can
+ * go, so a post made while the bot is disconnected is made when it is back rather than lost.
  */
 public final class JdaGateway extends ListenerAdapter implements DiscordGateway {
 
@@ -89,7 +92,10 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	private volatile String state = "not started";
 	private volatile String closeReason;
 	private final AtomicLong failed = new AtomicLong();
-	private final AtomicLong skipped = new AtomicLong();
+	/** Posts for a channel that was never made or found, so there is nowhere to post them. */
+	private final AtomicLong noChannel = new AtomicLong();
+	/** Run when posting can start again; see {@link #whenReady}. */
+	private volatile Runnable wake = () -> { };
 	private final AtomicLong undelivered = new AtomicLong();
 	private final Map<Outbound.Channel, String> channelProblems = new ConcurrentHashMap<>();
 	private volatile String intakeProblem;
@@ -250,7 +256,9 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					+ "read; staff use /staffchat there. Turn it on in the developer portal (Bot page) and restart");
 		}
 		if (failed.get() > 0) out.add("posts Discord refused: " + failed.get() + " (the log names why)");
-		if (skipped.get() > 0) out.add("posts not made because the bot was not connected: " + skipped.get());
+		if (noChannel.get() > 0) {
+			out.add("posts not made because their channel was not made or found: " + noChannel.get());
+		}
 		if (undelivered.get() > 0) {
 			out.add("direct messages players did not receive: " + undelivered.get() + " (said in each appeal's thread)");
 		}
@@ -304,6 +312,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			appealPanel(guild);
 			punishPanel(guild);
 			channelsChecked = true;
+			// Posts that waited while the bot connected go now, into channels that exist.
+			wakeQueue();
 			// Only now: a bot that never connects must not have silenced the webhook that works, or told
 			// banned players to use an /appeal nobody is answering.
 			if (settings.postsToChannels()) StaffCoreApi.declareDiscordPosting();
@@ -327,6 +337,22 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			if (saved != null) setupProblems.add(saved);
 		}
 		setupProblems.forEach(p -> StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] {}", p));
+	}
+
+	/** Back from a disconnection: whatever waited meanwhile can go. */
+	@Override
+	public void onStatusChange(net.dv8tion.jda.api.events.StatusChangeEvent event) {
+		if (event.getNewStatus() == JDA.Status.CONNECTED) wakeQueue();
+	}
+
+	private void wakeQueue() {
+		if (!readyToPost()) return;
+		try {
+			wake.run();
+		} catch (RuntimeException e) {
+			StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Could not start posting what was waiting ({}).",
+					e.getClass().getSimpleName());
+		}
 	}
 
 	@Override
@@ -467,16 +493,25 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	// ------------------------------------------------------------------ posting
 
 	@Override
-	public void deliver(Outbound outbound) {
-		worker.execute(() -> perform(outbound));
+	public void whenReady(Runnable wake) {
+		this.wake = wake == null ? () -> { } : wake;
 	}
 
-	private void perform(Outbound outbound) {
+	/**
+	 * Connected, in the guild, and with the channels made and checked since the bot connected. Until
+	 * then a post has nowhere it can reliably go, so it waits.
+	 */
+	@Override
+	public boolean readyToPost() {
 		JDA connection = jda;
-		if (connection == null || connection.getStatus() != JDA.Status.CONNECTED) {
-			skipped.incrementAndGet();
-			return;
-		}
+		return connection != null && connection.getStatus() == JDA.Status.CONNECTED
+				&& Boolean.TRUE.equals(inGuild) && channelsChecked;
+	}
+
+	@Override
+	public void post(Outbound outbound) {
+		JDA connection = jda;
+		if (connection == null || !readyToPost()) throw new PostQueue.Retry("not connected");
 		try {
 			switch (outbound) {
 				case Outbound.Send send -> send(connection, send);
@@ -485,21 +520,33 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 				case Outbound.Direct message -> direct(connection, message);
 			}
 		} catch (RuntimeException e) {
+			// Lost the connection part way, or Discord failing on its side: both pass, so the post waits.
+			if (!readyToPost() || passing(e)) throw new PostQueue.Retry(describe(e));
 			failed.incrementAndGet();
 			StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] A post was not made ({}).", describe(e));
 		}
+	}
+
+	/** A failure that says nothing about the post: Discord's own servers, or the network on the way. */
+	static boolean passing(Throwable failure) {
+		Throwable cause = failure instanceof java.util.concurrent.CompletionException && failure.getCause() != null
+				? failure.getCause() : failure;
+		if (cause instanceof ErrorResponseException discord) return discord.isServerError();
+		return cause instanceof java.io.IOException || cause instanceof java.io.UncheckedIOException
+				|| cause instanceof java.util.concurrent.TimeoutException
+				|| cause.getCause() instanceof java.io.IOException;
 	}
 
 	private void send(JDA connection, Outbound.Send send) {
 		String id = settings.channelId(send.channel());
 		if (!SNOWFLAKE.matcher(id).matches()) {
 			// Still "create": the channel was not made, and the status already says why.
-			skipped.incrementAndGet();
+			noChannel.incrementAndGet();
 			return;
 		}
 		TextChannel channel = connection.getTextChannelById(id);
 		if (channel == null) {
-			failed.incrementAndGet();
+			noChannel.incrementAndGet();
 			return;
 		}
 		Message posted = channel.sendMessage(create(send.message())).complete();

@@ -183,6 +183,7 @@ Open the file the server wrote and fill it in. A complete example — your ids w
     "444444444444444444": ["report.view", "staff.gui", "staff.history", "staff.notes", "staff.notes.view", "staff.freeze", "staff.chat", "staff.appeals", "staff.punish.warn", "staff.punish.mute", "staff.punish.ban", "staff.punish.revoke", "staff.audit", "analytics.stats", "discord.punishpanel"]
   },
   "requestTimeoutSeconds": 10,
+  "outboundQueueSize": 500,
   "punishmentsChannelId": "create",
   "reportsChannelId": "create",
   "alertsChannelId": "create",
@@ -496,7 +497,10 @@ entry of `/staff` → **Discord**, and in `logs/latest.log` (lines starting `[St
 | `the Appeal button could not be posted in #…` | The bot cannot send or read history in that channel. Give it View Channel, Send Messages, Embed Links and Read Message History there. |
 | `the appeal channel could not be made (…)` | As for the private channels: the bot is missing Manage Channels or Manage Roles. |
 | `posts Discord refused: …` | The log line `A post was not made (…)` names the reason — usually `MISSING_PERMISSIONS` in one channel. |
-| `posts not made because the bot was not connected: …` | Something happened while the bot was offline, still connecting, or before its channels existed. Those posts are not sent later. |
+| `posts waiting until the bot can post: …` | The bot is disconnected or still connecting. The posts go out, in order, when it can post again. If the number stays up, look at the lines above for why it cannot. |
+| `posts dropped because too many were waiting: …` | More than `outboundQueueSize` posts piled up while the bot could not post, so the oldest were dropped. Raise `outboundQueueSize` if your outages are long. |
+| `posts given up after Discord kept failing them: …` | Discord answered with server errors five times for those posts. The log line `A Discord post was given up…` names the reason. |
+| `posts not made because their channel was not made or found: …` | A channel is still set to `"create"` or its id is wrong. Look at the lines above for why. |
 | `direct messages players did not receive: …` | Those players have direct messages off. Each appeal's thread says which. |
 | `warning: the token file is readable by every user on this machine` | Restrict the file — see [step 3](#3-make-the-bot-in-discord). |
 | `disabled: built for a different StaffCore API version` | The two jars are from different builds. Replace both — see [Updating](#updating). |

@@ -56,6 +56,11 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`; install both jars from th
 
 ### Changed
 
+- **Discord posts wait while the bot cannot post**, instead of being dropped. A post made while the bot
+  is disconnected, still connecting or getting Discord server errors is queued and made in order once
+  it can post. The queue holds `outboundQueueSize` posts (new, 500, 50–10000); past that the oldest are
+  dropped, logged once a minute at most and counted in `/staff status`. Posts still waiting when the
+  server stops are not kept. The startup log now has a line on where the bot stands.
 - **The Discord staff chat channel is made by default** (`staffChatChannelId` is `create` in new
   settings files). Without Message Content Intent the bot now connects anyway, and staff use
   `/staffchat` in that channel; before, the bot could not log in at all.

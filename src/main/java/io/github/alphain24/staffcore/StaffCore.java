@@ -204,8 +204,12 @@ public class StaffCore implements ModInitializer {
 			}
 		});
 
-		ServerLifecycleEvents.SERVER_STARTED.register(mc ->
-				brokenFeatures = io.github.alphain24.staffcore.diagnostic.StartupCheck.run());
+		ServerLifecycleEvents.SERVER_STARTED.register(mc -> {
+			brokenFeatures = io.github.alphain24.staffcore.diagnostic.StartupCheck.run();
+			// A tick later, once every mod's own start-up has run: the Discord companion reads its
+			// settings in the same event, after this one.
+			mc.schedule(mc.wrapRunnable(io.github.alphain24.staffcore.diagnostic.StartupCheck::logDiscord));
+		});
 
 		// Everything that ran out while the server was down, retired the moment it is up.
 		// Expiry used to happen only when somebody looked, so a ban that ended during a

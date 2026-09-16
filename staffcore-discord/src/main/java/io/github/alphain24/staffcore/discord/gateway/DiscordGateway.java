@@ -2,6 +2,7 @@ package io.github.alphain24.staffcore.discord.gateway;
 
 import io.github.alphain24.staffcore.api.DiscordBotStatus;
 import io.github.alphain24.staffcore.discord.channels.Outbound;
+import io.github.alphain24.staffcore.discord.channels.PostQueue;
 
 import java.util.List;
 
@@ -9,7 +10,7 @@ import java.util.List;
  * The connection to Discord, behind an interface so everything around it can be tested without
  * one.
  */
-public interface DiscordGateway {
+public interface DiscordGateway extends PostQueue.Poster {
 
 	/**
 	 * Starts connecting. Called on the companion's own thread, never the server's; may throw, and
@@ -23,8 +24,22 @@ public interface DiscordGateway {
 	/** One line for {@code /staff status}: connecting, connected as whom, or what went wrong. */
 	String state();
 
-	/** Hands something to post to the connection. Returns at once; posting happens off this thread. */
-	default void deliver(Outbound outbound) {
+	/** Whether a post made now could reach Discord. False until connected with the channels set up. */
+	@Override
+	default boolean readyToPost() {
+		return false;
+	}
+
+	/** Makes one post, waiting for Discord; see {@link PostQueue.Poster#post}. On the companion's worker only. */
+	@Override
+	default void post(Outbound outbound) {
+	}
+
+	/**
+	 * What to run each time the connection becomes ready to post: after connecting and setting up the
+	 * channels, and after coming back from a disconnection. Run after {@link #readyToPost} is true.
+	 */
+	default void whenReady(Runnable wake) {
 	}
 
 	/** What is wrong with the channels or with posting, for {@code /staff status}. Empty when nothing. */

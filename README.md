@@ -533,6 +533,7 @@ companion is doing instead.
 | `guildId` | empty | The Discord server the bot works in. It answers only there and reads roles only from there. The bot stays off until this is a real server id. |
 | `roleNodes` | empty | Role id → the StaffCore permissions that role may use from Discord, each named. Wildcards and unknown permissions are refused and logged. An unmapped role allows nothing. |
 | `requestTimeoutSeconds` | `10` | How long a Discord user waits for the server before being told it timed out (2–60). The request still completes if the server gets to it later. |
+| `outboundQueueSize` | `500` | How many posts may wait while the bot cannot post (50–10000). Past it the oldest are dropped, logged and counted. Higher keeps more of a long outage, at a few kilobytes a post. |
 | `punishmentsChannelId` | `create` | Where punishments are posted. Empty posts none. |
 | `reportsChannelId` | `create` | Where reports are posted, with a thread and buttons. Empty posts none, and reports reach Discord only as alerts. |
 | `alertsChannelId` | `create` | Where detector signals are posted and where cases get their threads. Empty posts none, and only cases a report opened get a thread. |
@@ -720,7 +721,16 @@ Where each post went is remembered in `world/staffcore-discord/threads.json`, so
 lines still find their post after a restart. It holds Discord ids and the posts' text, is kept for
 90 days, and losing it costs a new post where an edit would have gone.
 
-Posts made while the bot is not connected are counted in `/staff status` and not made.
+**When the bot cannot post, posts wait.** A post made while the bot is disconnected, still
+connecting, or getting server errors from Discord is queued and made, in order, once the bot can
+post again. The queue holds `outboundQueueSize` posts (500). Past that, the oldest is dropped for
+each new one; the log says so at most once a minute, and `/staff status` counts the drops. A post
+Discord keeps failing with server errors while connected is tried five times, then given up.
+Posts still waiting when the server stops are not kept.
+
+Punishments never wait for any of this. StaffCore hands events to the bot on a thread of its own,
+so a slow, hung or dead bot cannot hold up a ban. The startup log has one line on where the bot
+stands, and `/staff status` has the rest.
 
 ### The token
 
@@ -880,11 +890,11 @@ known gap — not a bug list.
 
 **Not built**
 
-- **A Discord post made while the bot is disconnected is dropped.** It is counted in
-  `/staff status` rather than queued and sent when the bot reconnects
-  ([the companion](#discord-companion--staffcore-discord)).
 - **No map integrations.** BlueMap, Dynmap and Squaremap would each need that mod present as
   a compile dependency.
+
+- **Discord posts waiting when the server stops are lost.** The queue is kept in memory only
+  ([the companion](#discord-companion--staffcore-discord)).
 
 **Structural**
 

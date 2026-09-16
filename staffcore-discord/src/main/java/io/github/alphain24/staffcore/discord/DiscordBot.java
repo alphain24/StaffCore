@@ -3,6 +3,7 @@ package io.github.alphain24.staffcore.discord;
 import io.github.alphain24.staffcore.api.DiscordAccess;
 import io.github.alphain24.staffcore.api.DiscordBotStatus;
 import io.github.alphain24.staffcore.api.StaffCoreApi;
+import io.github.alphain24.staffcore.discord.channels.PostQueue;
 import io.github.alphain24.staffcore.discord.channels.Router;
 import io.github.alphain24.staffcore.discord.channels.ThreadBook;
 import io.github.alphain24.staffcore.discord.config.BotToken;
@@ -55,6 +56,7 @@ final class DiscordBot {
 	private volatile TokenShield shield;
 	private volatile boolean tokenExposed;
 	private volatile Router router;
+	private volatile PostQueue queue;
 
 	/**
 	 * @param configDir {@code config/staffcore/}
@@ -146,9 +148,13 @@ final class DiscordBot {
 		gateway = connection;
 		state = "starting";
 
-		// Listening from now; anything that happens before the bot has connected is counted and
-		// not posted, and says so in /staff status.
-		router = new Router(settings, book, connection::deliver);
+		// Listening from now. Anything that happens before the bot can post, or while it is disconnected,
+		// waits in the queue and is posted when it can be; the queue's size is the only limit.
+		PostQueue posts = new PostQueue(settings.outboundQueueSize, worker, connection,
+				line -> StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] {}", line));
+		queue = posts;
+		connection.whenReady(posts::wake);
+		router = new Router(settings, book, posts::offer);
 		StaffCoreApi.addListener(router);
 		worker.execute(() -> {
 			try {
@@ -209,6 +215,8 @@ final class DiscordBot {
 
 		List<String> problems = new ArrayList<>(settingsProblems);
 		if (connection != null) problems.addAll(connection.problems());
+		PostQueue posts = queue;
+		if (posts != null) problems.addAll(queueLines(posts));
 		if (tokenExposed) problems.add("warning: the token file is readable by every user on this machine");
 		TokenShield current = shield;
 		if (current != null && current.withheld() > 0) {
@@ -219,6 +227,23 @@ final class DiscordBot {
 				connecting ? connection.state() : state, problems,
 				connection == null ? List.of() : connection.channels(),
 				connecting ? connection.pingMillis() : -1);
+	}
+
+	/** What the queue says about itself: only what needs saying. */
+	static List<String> queueLines(PostQueue posts) {
+		List<String> out = new ArrayList<>();
+		int waiting = posts.waiting();
+		if (waiting > 0) {
+			out.add("posts waiting until the bot can post: " + waiting + " of at most " + posts.capacity()
+					+ " (outboundQueueSize)");
+		}
+		if (posts.dropped() > 0) {
+			out.add("posts dropped because too many were waiting: " + posts.dropped() + ", the oldest first");
+		}
+		if (posts.gaveUp() > 0) {
+			out.add("posts given up after Discord kept failing them: " + posts.gaveUp() + " (the log names why)");
+		}
+		return out;
 	}
 
 	/** Lines for {@code /staff status}. */

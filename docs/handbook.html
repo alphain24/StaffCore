@@ -2555,6 +2555,7 @@
               <tr><td class="mono">guildId</td><td class="mono">empty</td><td class="wrap">The Discord server the bot works in. It answers only there and reads roles only from there. The bot stays off until this is a real server id.</td></tr>
               <tr><td class="mono">roleNodes</td><td class="mono">empty</td><td class="wrap">Role id &rarr; the StaffCore permissions that role may use from Discord, each named. Wildcards and unknown permissions are refused and logged. An unmapped role allows nothing.</td></tr>
               <tr><td class="mono">requestTimeoutSeconds</td><td class="mono">10</td><td class="wrap">How long a Discord user waits for the server before being told it timed out (2&ndash;60). The request still completes if the server gets to it later.</td></tr>
+              <tr><td class="mono">outboundQueueSize</td><td class="mono">500</td><td class="wrap">How many posts may wait while the bot cannot post (50&ndash;10000). Past it the oldest are dropped, logged and counted.</td></tr>
             </tbody>
           </table>
         </div>
@@ -2601,8 +2602,16 @@
         <p>
           A case opened by a report is discussed in the report's thread. Nothing a player typed can ping or
           link: text is escaped and every message is sent with mentions disabled. Where each post went is kept
-          in <code>world/staffcore-discord/threads.json</code> for 90 days, so edits survive a restart. Posts
-          made while the bot is disconnected are counted in <code>/staff status</code> and not made.
+          in <code>world/staffcore-discord/threads.json</code> for 90 days, so edits survive a restart.
+        </p>
+        <p>
+          <strong>When the bot cannot post, posts wait.</strong> Anything posted while the bot is disconnected,
+          still connecting, or getting server errors from Discord is queued and made in order once it can post.
+          The queue holds <code>outboundQueueSize</code> posts (500); past that the oldest are dropped, logged at
+          most once a minute and counted in <code>/staff status</code>. A post Discord keeps failing while
+          connected is given up after five tries. Waiting posts are not kept when the server stops. Punishments
+          never wait on any of it: StaffCore hands events to the bot on a thread of its own. The startup log has
+          one line on where the bot stands.
         </p>
         <h3>Commands in Discord</h3>
         <p>
@@ -3459,7 +3468,7 @@
           </ul>
           <h3>Not built</h3>
           <ul>
-            <li><strong>A Discord post made while the bot is disconnected is dropped.</strong> It is counted in <code>/staff status</code> rather than queued and sent when the bot reconnects (see <a href="#discord">Discord</a>).</li>
+            <li><strong>Discord posts waiting when the server stops are lost.</strong> The queue is kept in memory only (see <a href="#discord">Discord</a>).</li>
             <li><strong>No map integrations.</strong> BlueMap, Dynmap and Squaremap would each need that mod present as a compile dependency.</li>
           </ul>
           <h3>Structural</h3>
