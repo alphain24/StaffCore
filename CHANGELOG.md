@@ -1,17 +1,99 @@
 # Changelog
 
-## 1.1.0 — unreleased
+## 1.1.0 — 2026-09-16
 
-The case model and everything that hangs off it. In progress.
+Cases, staff accountability, x-ray rebuilt on ground truth, session replay, and a Discord bot.
+Ships with the first release of the Discord companion, `staffcore-discord-1.0.0.jar`; install both
+jars from the same release or neither.
+
+### Upgrading from 1.0.0
+
+- **Config files move into `config/staffcore/`** on the first start: `staffcore.json` keeps its
+  name, `staffcore-permissions.json` becomes `permissions.json`. Nothing is lost and the log says
+  what moved. If a file is in both places, the folder's copy is used and the old one is left for
+  you to delete.
+- The database upgrades itself in place, to schema version 29. Every migration only adds;
+  nothing is deleted.
+- New settings are written into your config with their defaults, and the log names each one.
 
 ### Added
 
-- **Cases.** Every detector now emits a *signal* instead of its own alert, and signals group
-  into cases about one player. A signal below `caseAutoOpenSeverity` is kept and stays silent;
-  one about somebody with an open case joins it. `/staff cases`, `/staff case <id>`.
-- Case ids are eight characters, readable aloud — no `I`, `L`, `O` or `U`.
-- Punishments record the case they came from, or `null` where there was none.
-- Reversals record when and why, not just who.
+- **Cases.** Every detector emits a *signal* instead of its own alert, and signals group into
+  cases about one player, with evidence you can open, an assignee, and the punishment each ended
+  in. A case board with open and solved tabs. `/staff cases`, `/staff case <id>`. Case ids are
+  eight characters, readable aloud. Punishments record the case they came from.
+- **Staff accountability.** An audit log of what each staff member did, rate limits on
+  punishments and other destructive actions, two-person approval for IP bans, and a rank guard:
+  staff cannot punish anybody whose permissions are not a strict subset of theirs.
+- **Notes are never deleted**, only retracted with a reason, and the warning ladder suggests the
+  next step rather than taking it.
+- **IP bans**, a banned-players screen, and a screen of who punished whom.
+- **X-ray, rebuilt.** Decoy ore veins in sealed rock, sent to each player and counted when
+  uncovered; a live score of sealed diamond veins against what honest mining uncovers, as a
+  p-value rather than a score; ore that was already visible in a cave no longer counts; and an
+  alert from ore needs the way the player's tunnels turned to agree. Cleared cases are kept as
+  labelled data with a reason. Works alongside AntiXray or Meow Anti-Xray, and says so at startup.
+- **Session replay.** `/staff replay` shows where a player went and the damage they did, even
+  after it was rolled back, through a camera the client can smooth. Position history is kept for
+  a configurable time and counted as personal data.
+- **Rollback.** Shift-click one row of the grief log to roll back just that; container contents
+  restored when a chest was broken, stolen items taken back, and explosion drops billed as they
+  actually fell. Mass grief counts TNT, crystals, beds and
+  respawn anchors. `/staff grief test` proves the mass-grief alert arrives.
+- **Screens.** The staff panel is seven sections instead of twenty-five buttons, and the back
+  arrow goes one screen back along the path you took. A player's file is a fixed grid. New
+  screens for the risk profile, teleport history, owed items, replay, decoys and the x-ray report.
+- **The ban screen** shows an appeal code, and tells players to `/appeal` in Discord when the bot
+  takes appeals.
+- **The Discord companion** (`staffcore-discord`, a second jar): staff link their Discord account
+  to their Minecraft account; punishments, reports, alerts, appeals and the staff log are posted to
+  private channels the bot makes itself, each report, appeal and case with a thread; buttons on
+  reports and appeals; `/appeal` for banned players; `/staff` slash commands for looking players up
+  and punishing them; and staff chat bridged both ways. What anybody can do from Discord is the
+  smaller of what their Discord roles allow and what their Minecraft account holds in game. IP
+  bans, rollbacks and inventory edits never run from Discord. The token lives in its own file and
+  is never logged. [Installation guide](docs/discord-setup.md).
+- **The panel's Discord section** shows whether the bot is running, what is wrong, each channel,
+  and who is linked, and lets every staff member link their account.
+- **A published API** (`io.github.alphain24.staffcore.api`, version 4) for companion mods: events,
+  status lines and the Discord calls, every one through the same checks as the game.
+- `discordActionsPerMinute` (20): every change made from Discord counts against it, on top of the
+  in-game limits.
+
+### Fixed
+
+- **Rate-limit refusals never said anything useful**: they printed `%d %s(s) a minute` with
+  nothing filled in.
+- **Accepting an appeal lifted every ban and mute the player had**, not just the one appealed.
+- **New settings never appeared in an existing config** unless the file was deleted.
+- **The CI boot check failed on every push**, because a startup line contained an em dash.
+  Console lines are ASCII now, and a test checks every logged string.
+- A grief log row could lose its "nothing left to roll back" warning in the same click that drew
+  it; this also made one game test fail now and then.
+- A broken chest that was rolled back came back empty.
+- Contraband alerts reached nobody, because "no case" was read as "say nothing"; three alerts
+  spoke twice or not at all.
+- The replay camera sat at the player's feet and looked through the floor, and the replay
+  disconnected the viewer a second after it opened.
+- Decoys were assumed to still be on the client after a chunk reload; they are sent again.
+- Database transactions on the server thread and the log writer could see each other's work.
+- Illegal enchantments, grief replays, appeals and container rollback: four smaller bugs.
+
+### Changed
+
+- **Config files live in `config/staffcore/`** (see Upgrading).
+- The panel's Discord section is open to every staff member with `staff.gui`; channels, linked
+  accounts and the webhook stay behind `staff.reload`.
+- The starter helper group can write notes (`staff.notes`).
+- Rollback is one button and one confirm, and asks whether to put back only what was broken.
+
+### Known limits
+
+- **A Discord post made while the bot is disconnected is dropped**, and counted in
+  `/staff status`, rather than queued for when it reconnects.
+- Decoy blocks and the replay overlay are verified from the packets sent, not by somebody watching
+  a client; the scripts to check are in [docs/manual-checks](docs/manual-checks/).
+- See [Known limits](README.md#known-limits) for the rest.
 
 ## 1.0.0
 

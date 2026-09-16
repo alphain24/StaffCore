@@ -1,6 +1,6 @@
 name: Release
 
-# Builds the jar and attaches it to a GitHub release when a version tag is pushed.
+# Builds both jars and attaches them to a GitHub release when a version tag is pushed.
 #
 # The jar that ships is the one CI built, not one from somebody's laptop. That is the whole
 # point of doing it here: a locally built jar carries whatever was in that working tree, and
@@ -46,11 +46,15 @@ jobs:
           echo "eula=true" > run/gametest/eula.txt
           ./gradlew runGametest
 
-      - name: Attach the jar to the release
+      # The mod and the Discord companion, from the same build, because the companion refuses to
+      # start against a StaffCore from any other. Not the sources jar: nobody installs that.
+      - name: Attach the jars to the release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            build/libs/*.jar
+            build/libs/staffcore-*[0-9].jar
+            staffcore-discord/build/libs/staffcore-discord-*[0-9].jar
+          fail_on_unmatched_files: true
           generate_release_notes: true
           draft: true
           body_path: .github/RELEASE_TEMPLATE.md

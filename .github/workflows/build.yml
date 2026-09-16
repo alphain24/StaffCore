@@ -50,9 +50,11 @@ jobs:
           path: build/reports/tests/test
           retention-days: 7
 
-      - name: Upload the jar
+      - name: Upload the jars
         uses: actions/upload-artifact@v4
         with:
           name: staffcore
-          path: build/libs/*.jar
+          path: |
+            build/libs/*.jar
+            staffcore-discord/build/libs/*.jar
           retention-days: 14
