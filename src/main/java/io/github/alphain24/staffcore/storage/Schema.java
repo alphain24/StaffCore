@@ -21,7 +21,8 @@ import java.util.List;
 final class Schema {
 	private Schema() {}
 
-	static void create(Connection conn) throws SQLException {
+	/** Creates and upgrades the schema. Returns the columns the repair had to add, as table.column. */
+	static List<String> create(Connection conn) throws SQLException {
 		try (Statement st = conn.createStatement()) {
 			punishments(st);
 			notes(st);
@@ -46,7 +47,7 @@ final class Schema {
 		// After the migrations, never instead of them. Catches a database whose version
 		// counter disagrees with its actual shape — which is not hypothetical: it is how a
 		// misplaced migration left servers stamped up to date and missing a column.
-		reconcile(conn);
+		return reconcile(conn);
 	}
 
 	// ------------------------------------------------------------- enforcement
@@ -71,10 +72,15 @@ final class Schema {
 				    case_id       TEXT,
 				    revoked_at    INTEGER,
 				    revoke_reason TEXT,
-				    points        INTEGER NOT NULL DEFAULT 0
+				    points        INTEGER NOT NULL DEFAULT 0,
+				    appeal_code   TEXT,
+				    server_version TEXT,
+				    mod_version   TEXT,
+				    return_noticed_at INTEGER
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_punish_target ON punishments(target_uuid, active)");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_punishments_appeal_code ON punishments(appeal_code)");
 	}
 
 	private static void notes(Statement st) throws SQLException {
@@ -87,7 +93,9 @@ final class Schema {
 				    created_at   INTEGER NOT NULL,
 				    case_id      TEXT,
 				    retracted_at INTEGER,
-				    retracted_by TEXT
+				    retracted_by TEXT,
+				    server_version TEXT,
+				    mod_version  TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_notes_target ON notes(target_uuid)");
@@ -169,6 +177,8 @@ final class Schema {
 				    created_at  INTEGER NOT NULL
 				)
 				""");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_anticheat_player "
+				+ "ON anticheat_log(player_name, created_at)");
 
 		st.executeUpdate("""
 				CREATE TABLE IF NOT EXISTS command_log (
@@ -436,6 +446,7 @@ final class Schema {
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_connections_ip ON connections(ip)");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_connections_prefix ON connections(ip_prefix)");
 	}
 
 	private static void sessionLog(Statement st) throws SQLException {
@@ -509,10 +520,16 @@ final class Schema {
 				    handled_by    TEXT,
 				    verdict       TEXT,
 				    created_at    INTEGER NOT NULL,
-				    handled_at    INTEGER
+				    handled_at    INTEGER,
+				    source        TEXT,
+				    discord_id    TEXT,
+				    discord_name  TEXT,
+				    info_requested_at INTEGER,
+				    replied_at    INTEGER
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status, created_at)");
+		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_appeals_punishment ON appeals(punishment_id, status)");
 
 		// Every write into a player's inventory, whoever made it and why. Punishments have
 		// had one door and one record for a long time; item movement had four doors and no
@@ -535,7 +552,9 @@ final class Schema {
 				    ref_kind     TEXT,
 				    ref_id       INTEGER,
 				    reversed_at  INTEGER,
-				    reversed_by  TEXT
+				    reversed_by  TEXT,
+				    server_version TEXT,
+				    mod_version  TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_inventory_audit_target "
@@ -563,7 +582,9 @@ final class Schema {
 				    closed_by      TEXT,
 				    resolution     TEXT,
 				    server_version TEXT,
-				    mod_version    TEXT
+				    mod_version    TEXT,
+				    resolution_reason TEXT,
+				    category       TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_cases_subject "
@@ -607,7 +628,9 @@ final class Schema {
 				    at      INTEGER NOT NULL,
 				    actor   TEXT    NOT NULL,
 				    kind    TEXT    NOT NULL,
-				    body    TEXT
+				    body    TEXT,
+				    server_version TEXT,
+				    mod_version    TEXT
 				)
 				""");
 		st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_case_events ON case_events(case_id, at)");
@@ -1503,10 +1526,10 @@ final class Schema {
 	 * remain how schema changes are expressed and recorded. This only catches the case where
 	 * the record and the reality disagree.
 	 */
-	private static void reconcile(Connection conn) {
+	private static List<String> reconcile(Connection conn) {
 		reconcileTables(conn);
 
-		int repaired = 0;
+		List<String> repaired = new java.util.ArrayList<>();
 		for (String[] required : REQUIRED_COLUMNS) {
 			if (hasColumn(conn, required[0], required[1])) continue;
 
@@ -1514,12 +1537,13 @@ final class Schema {
 							+ "says it should be there - adding it now.",
 					required[0], required[1]);
 			addColumn(conn, required[0], required[1], required[2]);
-			repaired++;
+			repaired.add(required[0] + "." + required[1]);
 		}
-		if (repaired > 0) {
+		if (!repaired.isEmpty()) {
 			StaffCore.LOGGER.warn("[StaffCore] Repaired {} column(s). This means a migration "
-					+ "did not run when it should have; the database is usable again.", repaired);
+					+ "did not run when it should have; the database is usable again.", repaired.size());
 		}
+		return repaired;
 	}
 
 	/**
@@ -1535,7 +1559,9 @@ final class Schema {
 
 		if (version == 0 && isFreshDatabase(conn)) {
 			// Nothing to migrate: the tables were just created at the current shape. Stamping
-			// the version avoids replaying every historical change against a new file.
+			// the version avoids replaying every historical change against a new file. That
+			// rests on the CREATE TABLE statements above keeping up with the migrations, which
+			// FreshShapeTest checks: a column or index added only by a migration fails it.
 			setUserVersion(conn, MIGRATIONS.size());
 			return;
 		}

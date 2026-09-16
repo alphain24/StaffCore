@@ -47,6 +47,9 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`; install both jars from th
   LuckPerms sets still wins, and anything it leaves unset goes to `permissions.json`, then op level.
   On a LuckPerms server, operators now hold the StaffCore nodes LuckPerms leaves unset unless
   `operatorsBypass` is off.
+- **A new server's database logged seventeen "missing column" warnings on its first start.** It was
+  repaired at once and worked, but the log said it was damaged. New databases are now created with
+  every column and index the upgrades add, including the index appeal codes are looked up by.
 - **Offline accounts are now read through the permissions API too.** If LuckPerms has not loaded an
   account yet, a Discord request or an offline staff punishment is refused with "try again in a
   moment" instead of "join the server".
