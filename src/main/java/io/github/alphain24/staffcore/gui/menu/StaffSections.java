@@ -43,7 +43,8 @@ import java.util.List;
  *   <li><b>Server</b> — the machine rather than the players: chat control, maintenance,
  *       analytics, diagnostics.</li>
  *   <li><b>Discord</b> — its own section because it is a separate surface with its own
- *       permissions and its own failure modes, not a feature of anything above.</li>
+ *       permissions and its own failure modes, not a feature of anything above. Open to all staff,
+ *       since every staff member links their own account there.</li>
  * </ul>
  *
  * <h2>What is deliberately not here</h2>
@@ -335,37 +336,9 @@ public final class StaffSections {
 
 	// --------------------------------------------------------------------- discord
 
+	/** The bot, the viewer's own link, and what goes to Discord; see {@link DiscordSection}. */
 	public static void discord(ServerPlayer viewer) {
-		boolean configured = Mods.discord().isConfigured();
-
-		SectionMenu.open(viewer, "Discord", "The other surface staff act from.", List.of(
-				SectionMenu.Entry.of(Nodes.RELOAD, Icon.of(configured
-								? Items.ENDER_EYE : Items.ENDER_PEARL)
-						.name("Webhook", configured ? Theme.GOOD : Theme.MUTED)
-						.lore(configured
-								? "Configured. Punishments and reports are posted."
-								: "Not configured. Nothing is being posted.")
-						.gap()
-						.lore("Set discordWebhookUrl in config/staffcore.json.", Theme.MUTED)
-						.build(),
-						v -> v.sendSystemMessage(configured
-								? Theme.good("Discord webhook is configured.")
-								: Theme.warn("No discordWebhookUrl set, so nothing is posted."))),
-
-				// Named rather than left blank. An empty section reads as a missing feature,
-				// and what is actually true is that the bridge is one-way so far.
-				SectionMenu.Entry.of(null, Icon.of(Items.PAPER)
-						.name("What is posted", Theme.ACCENT)
-						.lore("Punishments, reports and security flags go out.")
-						.lore("Nothing comes back in yet — the bridge is one-way.",
-								Theme.MUTED)
-						.gap()
-						.lore("Staff addresses and session data never leave the", Theme.MUTED)
-						.lore("server, in any embed, export or log line.", Theme.MUTED)
-						.build(),
-						v -> v.sendSystemMessage(Theme.info(
-								"Discord receives punishments, reports and security flags. "
-										+ "Addresses and session data are never sent.")))));
+		DiscordSection.open(viewer);
 	}
 
 	// --------------------------------------------------------------------- helpers

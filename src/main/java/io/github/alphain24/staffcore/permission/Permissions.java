@@ -45,7 +45,7 @@ public final class Permissions {
 	 * A staff node, resolved through whichever authority is available.
 	 * <p>
 	 * A permissions API wins outright where one is installed. Failing that, the built-in
-	 * groups in {@code staffcore-permissions.json} get a say — without them every node fell
+	 * groups in {@code config/staffcore/permissions.json} get a say — without them every node fell
 	 * back to the vanilla moderator level, which made every staff member equally powerful
 	 * and left no way to say that a trainee should not be able to revoke bans. Op level is
 	 * the last resort rather than the only one.

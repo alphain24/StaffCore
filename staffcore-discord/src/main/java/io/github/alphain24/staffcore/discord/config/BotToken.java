@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  * Never {@code staffcore.json}, and never the companion's settings file either. Settings get
  * pasted into support channels, committed to repositories and attached to bug reports; a file
  * whose only content is a secret gets treated like one. So the token lives alone in
- * {@value #FILE_NAME} next to the other config files, and nothing else is ever written there.
+ * {@value #SHOWN} next to the other config files, and nothing else is ever written there.
  *
  * <h2>Never printed</h2>
  * {@link #toString} is redacted, so a token that ends up in a string concatenation or a debugger
@@ -33,7 +33,11 @@ import java.util.regex.Pattern;
  */
 public final class BotToken {
 
-	public static final String FILE_NAME = "staffcore-discord.token";
+	public static final String FILE_NAME = "discord.token";
+	/** What earlier builds called it, loose in {@code config/}. */
+	public static final String LEGACY_FILE_NAME = "staffcore-discord.token";
+	/** The file as an owner finds it from the server folder. */
+	public static final String SHOWN = "config/staffcore/" + FILE_NAME;
 
 	/**
 	 * Three base64url parts separated by dots, the shape Discord issues. Checked so a pasted client
@@ -60,8 +64,7 @@ public final class BotToken {
 
 	public static Loaded load(Path file) {
 		if (!Files.isRegularFile(file)) {
-			return new Loaded(null, "There is no token file. Create " + file.getFileName() + " in the "
-					+ "config folder containing only the bot token.", false);
+			return new Loaded(null, "There is no token file. Create " + SHOWN + " containing only the bot token.", false);
 		}
 
 		boolean exposed = worldReadable(file);
@@ -115,7 +118,7 @@ public final class BotToken {
 
 	/** Strips a byte-order mark, surrounding whitespace and a pasted "Bot " prefix. */
 	static String clean(String text) {
-		String t = text.replace("﻿", "").strip();
+		String t = text.replace("\uFEFF", "").strip();
 		if (t.regionMatches(true, 0, "Bot ", 0, 4)) t = t.substring(4).strip();
 		return t;
 	}

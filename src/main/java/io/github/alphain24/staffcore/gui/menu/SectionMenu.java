@@ -74,6 +74,12 @@ public final class SectionMenu extends Gui {
 				(id, inv, player) -> new SectionMenu(id, inv, player, section, blurb, entries));
 	}
 
+	/** The same section drawn again in place, for an entry whose click changes what it shows. */
+	public static void refresh(ServerPlayer viewer, String section, String blurb, List<Entry> entries) {
+		Guis.silent(viewer, Theme.title(section),
+				(id, inv, player) -> new SectionMenu(id, inv, player, section, blurb, entries));
+	}
+
 	private SectionMenu(int containerId, Inventory playerInventory, ServerPlayer viewer,
 			String section, String blurb, List<Entry> entries) {
 

@@ -3305,7 +3305,7 @@ public final class StaffCommands {
 
 		fail(ctx, Permissions.hasProvider()
 				? "A permissions mod is installed — manage staff there, not here."
-				: "staffcore-permissions.json could not be read. See the server log.");
+				: "config/staffcore/permissions.json could not be read. See the server log.");
 		return true;
 	}
 

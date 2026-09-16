@@ -169,7 +169,11 @@ class SharedStateTest {
 
 			// Set once, when a Discord companion starts — and, separately, once it posts to
 			// Discord itself — and never cleared while the server runs.
-			"StaffCoreApi.discordCompanion", "StaffCoreApi.discordPosting", "StaffCoreApi.discordAppeals"));
+			"StaffCoreApi.discordCompanion", "StaffCoreApi.discordPosting", "StaffCoreApi.discordAppeals",
+			// Where the companion's status comes from: set when it loads and again when the server has
+			// started, by the companion alone. The one gametest that stands in for it does all its
+			// checks in a single test, so no two tests set it at once.
+			"StaffCoreApi.discordBot"));
 
 	@Test
 	@DisplayName("every mutable static is one somebody decided to add")
@@ -225,7 +229,7 @@ class SharedStateTest {
 
 		// And it actually found things in the real source — a regex that matched nothing would
 		// make noUndeclaredGlobalState pass forever while the codebase filled up with globals.
-		assertEquals(19, DECLARED.size(),
+		assertEquals(20, DECLARED.size(),
 				"the declared list changed size; check the new entry is classified correctly "
 						+ "rather than added to make the build green");
 	}

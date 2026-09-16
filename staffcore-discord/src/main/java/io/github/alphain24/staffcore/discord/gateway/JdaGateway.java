@@ -1,6 +1,7 @@
 package io.github.alphain24.staffcore.discord.gateway;
 
 import io.github.alphain24.staffcore.api.DiscordAccess;
+import io.github.alphain24.staffcore.api.DiscordBotStatus;
 import io.github.alphain24.staffcore.api.DiscordLinkResult;
 import io.github.alphain24.staffcore.api.DiscordResult;
 import io.github.alphain24.staffcore.api.DiscordUser;
@@ -92,6 +93,10 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	private final AtomicLong undelivered = new AtomicLong();
 	private final Map<Outbound.Channel, String> channelProblems = new ConcurrentHashMap<>();
 	private volatile String intakeProblem;
+	/** Null until Discord says the bot is ready; then whether it is in the guild {@code guildId} names. */
+	private volatile Boolean inGuild;
+	/** Whether the channels have been made and checked since the bot connected. */
+	private volatile boolean channelsChecked;
 	private final List<String> setupProblems = new java.util.concurrent.CopyOnWriteArrayList<>();
 	private static final java.util.regex.Pattern SNOWFLAKE = java.util.regex.Pattern.compile("\\d{15,22}");
 
@@ -154,6 +159,50 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	}
 
 	@Override
+	public DiscordBotStatus.Phase phase() {
+		JDA connection = jda;
+		if (connection == null) {
+			return "stopping".equals(state) ? DiscordBotStatus.Phase.STOPPED : DiscordBotStatus.Phase.CONNECTING;
+		}
+		return switch (connection.getStatus()) {
+			case CONNECTED -> inGuild == null ? DiscordBotStatus.Phase.CONNECTING
+					: inGuild ? DiscordBotStatus.Phase.RUNNING : DiscordBotStatus.Phase.FAILED;
+			case SHUTDOWN, SHUTTING_DOWN -> closeReason == null
+					? DiscordBotStatus.Phase.STOPPED : DiscordBotStatus.Phase.FAILED;
+			case FAILED_TO_LOGIN -> DiscordBotStatus.Phase.FAILED;
+			default -> DiscordBotStatus.Phase.CONNECTING;
+		};
+	}
+
+	@Override
+	public long pingMillis() {
+		JDA connection = jda;
+		return connection == null || connection.getStatus() != JDA.Status.CONNECTED ? -1 : connection.getGatewayPing();
+	}
+
+	@Override
+	public List<DiscordBotStatus.Channel> channels() {
+		List<DiscordBotStatus.Channel> out = new ArrayList<>();
+		for (Outbound.Channel channel : Outbound.Channel.values()) {
+			String name = ChannelSetup.name(channel);
+			String id = settings.channelId(channel);
+			String problem = channelProblems.get(channel);
+			if (id.isEmpty()) {
+				out.add(new DiscordBotStatus.Channel(name, false, "not set"));
+			} else if (problem != null) {
+				out.add(new DiscordBotStatus.Channel(name, false, problem));
+			} else if (!channelsChecked) {
+				out.add(new DiscordBotStatus.Channel(name, false, settings.toCreate(channel)
+						? "made when the bot connects" : "checked when the bot connects"));
+			} else {
+				out.add(new DiscordBotStatus.Channel(name, true,
+						channel == Outbound.Channel.STAFF_CHAT ? "bridged" : "posting"));
+			}
+		}
+		return out;
+	}
+
+	@Override
 	public List<String> problems() {
 		List<String> out = new ArrayList<>(setupProblems);
 		out.addAll(channelProblems.values());
@@ -172,9 +221,10 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	@Override
 	public void onReady(ReadyEvent event) {
 		Guild guild = event.getJDA().getGuildById(settings.guildId);
+		inGuild = guild != null;
 		if (guild == null) {
 			state = "connected as " + event.getJDA().getSelfUser().getName() + ", but not in the guild "
-					+ "named by guildId — invite the bot to that server";
+					+ "named by guildId; invite the bot to that server";
 			StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Connected, but the bot is not in guild {}. "
 					+ "Invite it to that server, or correct guildId.", settings.guildId);
 			return;
@@ -201,6 +251,7 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		worker.execute(() -> {
 			setUpChannels(guild);
 			checkChannels(guild);
+			channelsChecked = true;
 			// Only now: a bot that never connects must not have silenced the webhook that works, or told
 			// banned players to use an /appeal nobody is answering.
 			if (settings.postsToChannels()) StaffCoreApi.declareDiscordPosting();

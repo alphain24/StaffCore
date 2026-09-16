@@ -285,9 +285,13 @@ public class StaffPanelMenu extends Gui {
 				.state(!maintenance, "Open to all", "Maintenance mode")
 				.build(), maintenance, click -> StaffSections.server(viewer));
 
-		gated(SEC_DISCORD, Nodes.RELOAD, Icon.of(Items.ENDER_EYE)
+		// Every staff member links their own account here, so the section is open to all of them and
+		// what only an owner should see is locked inside it.
+		gated(SEC_DISCORD, Nodes.STAFF_GUI, Icon.of(Items.ENDER_EYE)
 				.name("Discord", Theme.ACCENT)
-				.lore("What is posted, and whether the bridge is configured.")
+				.lore("The bot, your link, and what is posted.")
+				.gap()
+				.lore(DiscordSection.headline(), DiscordSection.headlineColour())
 				.build(), false, click -> StaffSections.discord(viewer));
 	}
 

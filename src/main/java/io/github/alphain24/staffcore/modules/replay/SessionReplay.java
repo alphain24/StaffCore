@@ -161,7 +161,7 @@ public final class SessionReplay {
 		// grief log's three counters exist to separate.
 		if (!io.github.alphain24.staffcore.config.StaffConfig.get().positionTracking) {
 			return Entry.no("Position tracking is off, so nothing was recorded to replay. "
-					+ "Set positionTracking to true in config/staffcore.json — it only starts "
+					+ "Set positionTracking to true in config/staffcore/staffcore.json — it only starts "
 					+ "recording from that point, so this window will stay empty.");
 		}
 

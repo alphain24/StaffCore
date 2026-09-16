@@ -57,6 +57,15 @@ public final class Link {
 				hover == null ? null : Component.literal(hover)));
 	}
 
+	/**
+	 * Text that opens a web page. The client asks before opening it, so this is for pages this mod
+	 * names itself — its own documentation — and never for a link somebody typed.
+	 */
+	public static MutableComponent url(String text, String url, int rgb, String hover) {
+		return Component.literal(text).setStyle(style(rgb, new ClickEvent.OpenUrl(java.net.URI.create(url)),
+				hover == null ? null : Component.literal(hover)));
+	}
+
 	public static MutableComponent copy(String text, String value, int rgb, String hover) {
 		return Component.literal(text).setStyle(style(rgb, new ClickEvent.CopyToClipboard(value),
 				hover == null ? null : Component.literal(hover)));

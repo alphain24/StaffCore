@@ -108,7 +108,7 @@ public final class CanaryMenu extends Gui {
 		}
 		return icon.lore("canaryBlocks is off, or the density is zero.")
 				.gap()
-				.lore("Set canaryBlocks in config/staffcore.json.", Theme.MUTED)
+				.lore("Set canaryBlocks in config/staffcore/staffcore.json.", Theme.MUTED)
 				.build();
 	}
 

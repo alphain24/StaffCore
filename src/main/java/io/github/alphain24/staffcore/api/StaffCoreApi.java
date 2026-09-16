@@ -23,6 +23,8 @@ import java.util.function.Supplier;
  *       staff chat, as they happen.</li>
  *   <li>A place in {@code /staff status}, through {@link #addStatus}, so an owner can see whether
  *       the companion is connected without reading its log.</li>
+ *   <li>For the Discord companion, a place in the staff panel, through {@link #reportDiscordBot}.</li>
+ *   <li>A folder for its files, {@link #configFolder}.</li>
  * </ul>
  * Acting — punishing, noting, claiming a report — is added to this package item by item, and
  * every path through it runs the same permission checks, rate limits and approvals the game's
@@ -39,14 +41,18 @@ public final class StaffCoreApi {
 	 * <p>
 	 * 3: appeals from Discord — who filed, the conversation, stale verdicts, and the appeal calls on
 	 * {@link DiscordAccess}.
+	 * <p>
+	 * 4: the slash command reads and writes on {@link DiscordAccess}, {@link #reportDiscordBot} for the
+	 * staff panel, and {@link #configFolder}.
 	 */
-	public static final int VERSION = 3;
+	public static final int VERSION = 4;
 
 	private static final List<StaffCoreListener> LISTENERS = new CopyOnWriteArrayList<>();
 	private static final Map<String, Supplier<List<String>>> STATUS = new ConcurrentHashMap<>();
 	private static volatile boolean discordCompanion;
 	private static volatile boolean discordPosting;
 	private static volatile boolean discordAppeals;
+	private static volatile Supplier<DiscordBotStatus> discordBot;
 
 	/** Starts telling this listener about events. */
 	public static void addListener(StaffCoreListener listener) {
@@ -99,6 +105,54 @@ public final class StaffCoreApi {
 
 	public static boolean discordAppealsTaken() {
 		return discordAppeals;
+	}
+
+	/**
+	 * Says how the Discord bot is, for the Discord section of the staff panel. Asked each time the
+	 * section is opened, on the server thread, so it must be quick; if it throws, the panel says the
+	 * bot could not report rather than failing to open.
+	 */
+	public static void reportDiscordBot(Supplier<DiscordBotStatus> status) {
+		discordBot = status;
+	}
+
+	/** How the Discord bot is, or {@link DiscordBotStatus#NOT_INSTALLED} when nothing has said. */
+	public static DiscordBotStatus discordBot() {
+		Supplier<DiscordBotStatus> supplier = discordBot;
+		if (supplier == null) {
+			// A companion too old or too new to report this still puts lines in /staff status.
+			Supplier<List<String>> lines = STATUS.get("Discord");
+			if (lines == null) return DiscordBotStatus.NOT_INSTALLED;
+			List<String> said = status().stream().filter(l -> l.startsWith("Discord: "))
+					.map(l -> l.substring("Discord: ".length())).toList();
+			return new DiscordBotStatus(DiscordBotStatus.Phase.FAILED,
+					said.isEmpty() ? "installed, and not reporting" : said.get(0),
+					said.size() > 1 ? said.subList(1, said.size()) : List.of(), List.of(), -1);
+		}
+		try {
+			DiscordBotStatus status = supplier.get();
+			return status != null ? status : new DiscordBotStatus(DiscordBotStatus.Phase.FAILED,
+					"the bot did not say how it is", List.of(), List.of(), -1);
+		} catch (RuntimeException e) {
+			// The class and nothing else, as for status lines.
+			return new DiscordBotStatus(DiscordBotStatus.Phase.FAILED,
+					"status failed (" + e.getClass().getSimpleName() + ")", List.of(), List.of(), -1);
+		}
+	}
+
+	/**
+	 * {@code config/staffcore/}, where a companion keeps its files beside StaffCore's own. Made if it
+	 * is not there; the server's {@code config/} itself if it cannot be made.
+	 */
+	public static java.nio.file.Path configFolder() {
+		java.nio.file.Path root = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir();
+		java.nio.file.Path folder = root.resolve(io.github.alphain24.staffcore.config.ConfigFolder.NAME);
+		try {
+			java.nio.file.Files.createDirectories(folder);
+			return folder;
+		} catch (java.io.IOException | RuntimeException e) {
+			return root;
+		}
 	}
 
 	/**

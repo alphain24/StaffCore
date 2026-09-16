@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import io.github.alphain24.staffcore.StaffCore;
 import io.github.alphain24.staffcore.modules.security.XrayTuning;
-import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -16,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * config/staffcore.json — written with defaults on first run.
+ * config/staffcore/staffcore.json — written with defaults on first run.
  * <p>
  * The preset lists drive the punishment GUI: staff never have to type a reason or a
  * duration, they click one. Add entries here and they show up as new buttons.
@@ -937,7 +936,7 @@ public final class StaffConfig {
 	}
 
 	private static Path path() {
-		return FabricLoader.getInstance().getConfigDir().resolve("staffcore.json");
+		return ConfigFolder.settings();
 	}
 
 	public static void load() {
@@ -1147,7 +1146,7 @@ public final class StaffConfig {
 			cfg.staffModeGameMode = "creative";
 			StaffCore.LOGGER.info(
 					"[StaffCore] Config upgrade: staffModeGameMode survival -> creative. "
-							+ "Set it back in config/staffcore.json if that was deliberate.");
+							+ "Set it back in config/staffcore/staffcore.json if that was deliberate.");
 		}
 
 		// v2: the contraband list carried entries that match no item, so they protected
@@ -1175,7 +1174,7 @@ public final class StaffConfig {
 					"[StaffCore] Config upgrade: rollbackChasesBankedLoot and "
 							+ "rollbackReclaimsFromStaff are now off by default for new servers. "
 							+ "Yours keep their current behaviour. Set them to false in "
-							+ "config/staffcore.json if you would rather take the new default.");
+							+ "config/staffcore/staffcore.json if you would rather take the new default.");
 		}
 
 		// v4: decoys became veins and their count became the number of veins. A server still on

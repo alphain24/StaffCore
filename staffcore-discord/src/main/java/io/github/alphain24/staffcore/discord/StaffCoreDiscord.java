@@ -1,5 +1,6 @@
 package io.github.alphain24.staffcore.discord;
 
+import io.github.alphain24.staffcore.api.DiscordBotStatus;
 import io.github.alphain24.staffcore.api.StaffCoreApi;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -22,7 +23,7 @@ public final class StaffCoreDiscord implements ModInitializer {
 	public static final Logger LOGGER = LoggerFactory.getLogger("staffcore-discord");
 
 	/** The API version this build of the companion was written against. */
-	static final int API_VERSION = 3;
+	static final int API_VERSION = 4;
 
 	@Override
 	public void onInitialize() {
@@ -39,10 +40,13 @@ public final class StaffCoreDiscord implements ModInitializer {
 		// open before the first Discord request can arrive.
 		DiscordBot[] bot = new DiscordBot[1];
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-			bot[0] = new DiscordBot(FabricLoader.getInstance().getConfigDir(),
+			// config/staffcore/ beside StaffCore's own files, taking over any left loose in config/ by an
+			// earlier build.
+			bot[0] = new DiscordBot(StaffCoreApi.configFolder(), FabricLoader.getInstance().getConfigDir(),
 					server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
 							.resolve("staffcore-discord").normalize());
 			StaffCoreApi.addStatus("Discord", bot[0]::status);
+			StaffCoreApi.reportDiscordBot(bot[0]::botStatus);
 			bot[0].start();
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -50,6 +54,8 @@ public final class StaffCoreDiscord implements ModInitializer {
 		});
 
 		StaffCoreApi.addStatus("Discord", () -> List.of("waiting for the server to start"));
+		StaffCoreApi.reportDiscordBot(() -> new DiscordBotStatus(DiscordBotStatus.Phase.CONNECTING,
+				"waiting for the server to start", List.of(), List.of(), -1));
 		LOGGER.info("[StaffCore Discord] loaded against StaffCore API v{}", API_VERSION);
 	}
 }

@@ -18,7 +18,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * {@code config/staffcore-discord.json}: everything about the bot except its token.
+ * {@code config/staffcore/discord.json}: everything about the bot except its token.
  * <p>
  * Written with defaults the first time the server starts with the companion installed. The bot
  * stays off until {@link #enabled} is set, a guild is named and the token file exists, so
@@ -29,7 +29,11 @@ import java.util.regex.Pattern;
  */
 public final class DiscordSettings {
 
-	public static final String FILE_NAME = "staffcore-discord.json";
+	public static final String FILE_NAME = "discord.json";
+	/** What earlier builds called it, loose in {@code config/}. */
+	public static final String LEGACY_FILE_NAME = "staffcore-discord.json";
+	/** The file as an owner finds it from the server folder. */
+	public static final String SHOWN = "config/staffcore/" + FILE_NAME;
 
 	/**
 	 * Whether the bot connects to Discord at all.
@@ -195,6 +199,12 @@ public final class DiscordSettings {
 	transient Path source;
 
 	/**
+	 * Whether the bot is off because this file is wrong rather than because {@link #enabled} says so:
+	 * unreadable, or naming no usable guild. The staff panel tells the two apart.
+	 */
+	public transient boolean needsFixing;
+
+	/**
 	 * Puts the ids of channels the bot made in place of {@code "create"}, here and in the file.
 	 * <p>
 	 * The file is changed key by key rather than rewritten from these settings. These have been through
@@ -233,7 +243,7 @@ public final class DiscordSettings {
 			}
 			return null;
 		} catch (IOException | RuntimeException e) {
-			return FILE_NAME + " could not be updated with the new channel ids (" + e.getClass().getSimpleName()
+			return SHOWN + " could not be updated with the new channel ids (" + e.getClass().getSimpleName()
 					+ "). They are used until the server stops; put them in the file by hand, or the channels are "
 					+ "found by name again at the next start.";
 		}
@@ -268,9 +278,10 @@ public final class DiscordSettings {
 				DiscordSettings read = GSON.fromJson(reader, DiscordSettings.class);
 				if (read != null) settings = read;
 			} catch (IOException | JsonParseException e) {
-				problems.add(FILE_NAME + " could not be read (" + e.getClass().getSimpleName() + "). The "
+				problems.add(SHOWN + " could not be read (" + e.getClass().getSimpleName() + "). The "
 						+ "bot stays off until it is fixed; the file was left as it is.");
 				settings.enabled = false;
+				settings.needsFixing = true;
 				return new Loaded(settings, problems);
 			}
 		} else {
@@ -280,7 +291,7 @@ public final class DiscordSettings {
 					GSON.toJson(settings, writer);
 				}
 			} catch (IOException e) {
-				problems.add(FILE_NAME + " could not be written with defaults ("
+				problems.add(SHOWN + " could not be written with defaults ("
 						+ e.getClass().getSimpleName() + ").");
 			}
 		}
@@ -306,6 +317,7 @@ public final class DiscordSettings {
 					+ "stays off. Turn on Developer Mode in Discord, right-click the server icon and "
 					+ "choose Copy Server ID.");
 			enabled = false;
+			needsFixing = true;
 		}
 
 		if (requestTimeoutSeconds < 2 || requestTimeoutSeconds > 60) {
@@ -330,7 +342,7 @@ public final class DiscordSettings {
 					String n = node == null ? "" : node.strip();
 					if (n.contains("*")) {
 						problems.add("roleNodes." + role + " has \"" + n + "\". Wildcards are not "
-								+ "accepted — name each permission, so a node StaffCore adds later is "
+								+ "accepted: name each permission, so a node StaffCore adds later is "
 								+ "not granted to Discord without anybody deciding to. Ignoring it.");
 					} else if (!knownNodes.contains(n)) {
 						problems.add("roleNodes." + role + " has \"" + n + "\", which is not a StaffCore "

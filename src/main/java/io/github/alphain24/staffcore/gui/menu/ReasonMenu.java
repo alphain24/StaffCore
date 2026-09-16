@@ -77,7 +77,7 @@ public class ReasonMenu extends Gui {
 				.gap()
 				.field("Command", command + "<reason>")
 				.gap()
-				.lore("Add presets in config/staffcore.json.")
+				.lore("Add presets in config/staffcore/staffcore.json.")
 				.build(),
 				click -> {
 					Sfx.click(viewer);

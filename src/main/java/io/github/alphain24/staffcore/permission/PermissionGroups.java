@@ -3,7 +3,6 @@ package io.github.alphain24.staffcore.permission;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import io.github.alphain24.staffcore.StaffCore;
-import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -19,7 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * config/staffcore-permissions.json — a permissions system for servers that do not have one.
+ * config/staffcore/permissions.json — a permissions system for servers that do not have one.
  * <p>
  * Without a permissions mod every StaffCore node used to fall back to the vanilla moderator
  * level, which made all staff equally powerful: a trainee helper could revoke bans and roll
@@ -130,12 +129,12 @@ public final class PermissionGroups {
 				groups.put("helper", upgraded);
 				StaffCore.LOGGER.info("[StaffCore] Permissions upgrade: added staff.notes to the "
 						+ "helper group, so helpers can write notes with /staff note. If helpers "
-						+ "were meant not to, take it back out of config/staffcore-permissions.json.");
+						+ "were meant not to, take it back out of config/staffcore/permissions.json.");
 			} else if (!holds("helper", Nodes.NOTES)) {
 				StaffCore.LOGGER.warn("[StaffCore] Permissions upgrade: the helper group has been "
 						+ "edited, so it was left as it is. It does not grant staff.notes, which "
 						+ "/staff note needs - add \"staff.notes\" to it in "
-						+ "config/staffcore-permissions.json if helpers should write notes.");
+						+ "config/staffcore/permissions.json if helpers should write notes.");
 			}
 		}
 
@@ -175,7 +174,7 @@ public final class PermissionGroups {
 		// looked correctly configured while doing the opposite of what it said.
 		if (!groups.containsKey(group.toLowerCase(Locale.ROOT))) {
 			StaffCore.LOGGER.warn("[StaffCore] {} is assigned to \"{}\", which is not a group in "
-					+ "staffcore-permissions.json. Denying, and they hold nothing until it is "
+					+ "config/staffcore/permissions.json. Denying, and they hold nothing until it is "
 					+ "spelled the same as one of: {}",
 					name, group, String.join(", ", groups.keySet()));
 			return false;
@@ -344,7 +343,7 @@ public final class PermissionGroups {
 	}
 
 	private static Path path() {
-		return FabricLoader.getInstance().getConfigDir().resolve("staffcore-permissions.json");
+		return io.github.alphain24.staffcore.config.ConfigFolder.permissions();
 	}
 
 	/**
@@ -358,7 +357,7 @@ public final class PermissionGroups {
 		if (permissionsApiPresent) {
 			instance = null;
 			StaffCore.LOGGER.info(
-					"[StaffCore] A permissions API is present - staffcore-permissions.json is ignored.");
+					"[StaffCore] A permissions API is present - config/staffcore/permissions.json is ignored.");
 			return;
 		}
 
@@ -387,13 +386,13 @@ public final class PermissionGroups {
 			// Boot is the one moment anybody reads this. A cycle or a mistyped group name is
 			// otherwise found by a staff member discovering they cannot do their job.
 			for (String problem : instance.validate()) {
-				StaffCore.LOGGER.error("[StaffCore] staffcore-permissions.json: {}", problem);
+				StaffCore.LOGGER.error("[StaffCore] config/staffcore/permissions.json: {}", problem);
 			}
 		} catch (IOException | RuntimeException e) {
 			// Falling back to defaults here would silently promote everyone in the file to
 			// whatever the starter groups say, so the file is treated as absent instead.
 			instance = null;
-			StaffCore.LOGGER.error("[StaffCore] staffcore-permissions.json is unreadable - "
+			StaffCore.LOGGER.error("[StaffCore] config/staffcore/permissions.json is unreadable - "
 					+ "falling back to operator level", e);
 		}
 	}
@@ -407,7 +406,7 @@ public final class PermissionGroups {
 				GSON.toJson(instance, w);
 			}
 		} catch (IOException e) {
-			StaffCore.LOGGER.error("[StaffCore] Could not write staffcore-permissions.json", e);
+			StaffCore.LOGGER.error("[StaffCore] Could not write config/staffcore/permissions.json", e);
 		}
 	}
 }

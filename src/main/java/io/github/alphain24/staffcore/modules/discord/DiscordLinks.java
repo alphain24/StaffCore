@@ -8,7 +8,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -211,21 +213,60 @@ public final class DiscordLinks {
 						+ "ORDER BY linked_at DESC LIMIT 1", player.toString());
 	}
 
+	/** Every active link, newest first, at most {@code limit}. For whoever administers permissions. */
+	public List<Link> active(int limit) {
+		Connection c = StaffCore.storage().conn();
+		List<Link> out = new ArrayList<>();
+		if (c == null || limit <= 0) return out;
+		try (PreparedStatement ps = c.prepareStatement("SELECT * FROM discord_links WHERE ended_at IS NULL "
+				+ "ORDER BY linked_at DESC LIMIT ?")) {
+			ps.setInt(1, limit);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) {
+					try {
+						out.add(read(rs));
+					} catch (IllegalArgumentException skipped) {
+						// A row with a malformed id is somebody else's problem to find; the rest still list.
+					}
+				}
+			}
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Discord] could not list links: {}", e.getMessage());
+		}
+		return out;
+	}
+
+	/** How many links are active. */
+	public int activeCount() {
+		Connection c = StaffCore.storage().conn();
+		if (c == null) return 0;
+		try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM discord_links WHERE ended_at IS NULL");
+				ResultSet rs = ps.executeQuery()) {
+			return rs.next() ? rs.getInt(1) : 0;
+		} catch (SQLException e) {
+			StaffCore.LOGGER.warn("[Discord] could not count links: {}", e.getMessage());
+			return 0;
+		}
+	}
+
 	private Link one(String sql, String key) {
 		Connection c = StaffCore.storage().conn();
 		if (c == null || key == null) return null;
 		try (PreparedStatement ps = c.prepareStatement(sql)) {
 			ps.setString(1, key);
 			try (ResultSet rs = ps.executeQuery()) {
-				if (!rs.next()) return null;
-				return new Link(rs.getLong("id"), rs.getString("discord_id"),
-						rs.getString("discord_name"), UUID.fromString(rs.getString("uuid")),
-						rs.getString("name"), rs.getLong("linked_at"));
+				return rs.next() ? read(rs) : null;
 			}
 		} catch (SQLException | IllegalArgumentException e) {
 			StaffCore.LOGGER.warn("[Discord] could not read a link: {}", e.getMessage());
 			return null;
 		}
+	}
+
+	private static Link read(ResultSet rs) throws SQLException {
+		return new Link(rs.getLong("id"), rs.getString("discord_id"),
+				rs.getString("discord_name"), UUID.fromString(rs.getString("uuid")),
+				rs.getString("name"), rs.getLong("linked_at"));
 	}
 
 	// ------------------------------------------------------------------ ending

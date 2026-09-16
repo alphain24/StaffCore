@@ -76,7 +76,7 @@ public final class ReplayMenu extends Gui {
 			// different selection.
 			set(22, Icon.of(Items.BARRIER)
 					.name("Nothing is being recorded", Theme.BAD)
-					.lore("positionTracking is false in config/staffcore.json.")
+					.lore("positionTracking is false in config/staffcore/staffcore.json.")
 					.gap()
 					.lore("Turning it on records from that point forward.", Theme.MUTED)
 					.lore("It does not fill in the past, so this player's", Theme.MUTED)
