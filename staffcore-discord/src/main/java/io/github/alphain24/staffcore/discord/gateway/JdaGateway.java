@@ -93,6 +93,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	private final AtomicLong undelivered = new AtomicLong();
 	private final Map<Outbound.Channel, String> channelProblems = new ConcurrentHashMap<>();
 	private volatile String intakeProblem;
+	/** The appeal panel's message id, once it is posted or found; null until then. */
+	private volatile String intakePanel;
 	/** True once Discord refused the message content intent and the bot connected without it. */
 	private volatile boolean contentIntentMissing;
 	/** When a typed staff chat line was last answered with how to use /staffchat instead. */
@@ -221,6 +223,15 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 				out.add(new DiscordBotStatus.Channel(name, true, "posting"));
 			}
 		}
+		String intake = settings.appealIntakeChannelId;
+		if (!intake.isEmpty()) {
+			out.add(new DiscordBotStatus.Channel(ChannelSetup.INTAKE + " (players)",
+					intakeProblem == null && channelsChecked && intakePanel != null,
+					intakeProblem != null ? intakeProblem
+							: !channelsChecked ? (DiscordSettings.CREATE.equals(intake) ? "made when the bot connects"
+									: "checked when the bot connects")
+							: intakePanel != null ? "Appeal button posted" : "no Appeal button; /appeal only"));
+		}
 		return out;
 	}
 
@@ -283,6 +294,7 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		worker.execute(() -> {
 			setUpChannels(guild);
 			checkChannels(guild);
+			appealPanel(guild);
 			channelsChecked = true;
 			// Only now: a bot that never connects must not have silenced the webhook that works, or told
 			// banned players to use an /appeal nobody is answering.
@@ -300,6 +312,12 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		setupProblems.addAll(outcome.problems());
 		String saving = settings.recordCreated(outcome.created());
 		if (saving != null) setupProblems.add(saving);
+		ChannelSetup.Intake intake = ChannelSetup.intake(guild, settings);
+		if (intake.problem() != null) setupProblems.add(intake.problem());
+		if (intake.id() != null) {
+			String saved = settings.recordIntakeCreated(intake.id());
+			if (saved != null) setupProblems.add(saved);
+		}
 		setupProblems.forEach(p -> StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] {}", p));
 	}
 
@@ -331,6 +349,59 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		}
 		closeReason = event.getCloseCode().getMeaning();
 		StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Disconnected: {}", closeReason);
+	}
+
+	/**
+	 * The message with the Appeal button in the players' appeal channel: edited if it is there, posted if
+	 * it is not. Found by the key it is remembered under, or among the channel's recent messages by its
+	 * button when that memory was lost, so a restart never posts a second one.
+	 */
+	private void appealPanel(Guild guild) {
+		intakePanel = null;
+		if (settings.appealsChannelId.isEmpty() || !SNOWFLAKE.matcher(settings.appealIntakeChannelId).matches()) return;
+		TextChannel channel = guild.getTextChannelById(settings.appealIntakeChannelId);
+		if (channel == null) return;
+		Outbound.Message panel = io.github.alphain24.staffcore.discord.channels.AppealPanel.message();
+		String key = io.github.alphain24.staffcore.discord.channels.AppealPanel.KEY;
+		try {
+			String messageId = null;
+			ThreadBook.Entry known = book.get(key);
+			if (known != null && channel.getId().equals(known.channelId())) messageId = known.messageId();
+			if (messageId == null) {
+				for (Message recent : channel.getHistory().retrievePast(50).complete()) {
+					boolean ours = recent.getAuthor().getIdLong() == guild.getSelfMember().getIdLong()
+							&& recent.getComponentTree().find(net.dv8tion.jda.api.components.buttons.Button.class,
+									b -> io.github.alphain24.staffcore.discord.channels.AppealPanel.BUTTON_ID
+											.equals(b.getCustomId())).isPresent();
+					if (ours) {
+						messageId = recent.getId();
+						break;
+					}
+				}
+			}
+			if (messageId != null) {
+				try {
+					channel.editMessageById(messageId, edit(panel)).complete();
+				} catch (ErrorResponseException gone) {
+					messageId = null;
+				}
+			}
+			if (messageId == null) {
+				Message posted = channel.sendMessage(create(panel)).complete();
+				messageId = posted.getId();
+				try {
+					posted.pin().complete();
+				} catch (RuntimeException ignored) {
+					// Pinning needs Pin Messages, which the bot is not asked for; the panel works unpinned.
+				}
+			}
+			// Remembered afresh at every start, so it is never forgotten as old.
+			book.put(key, new ThreadBook.Entry(channel.getId(), messageId, null, System.currentTimeMillis(), panel));
+			intakePanel = messageId;
+		} catch (RuntimeException e) {
+			setupProblems.add("the Appeal button could not be posted in #" + channel.getName() + " (" + describe(e)
+					+ "); players can still use /appeal there");
+		}
 	}
 
 	/** Every configured channel has to be a text channel in the guild. Said once, at connect. */
@@ -631,7 +702,9 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			event.reply("Appeals are not taken in Discord on this server.").setEphemeral(true).queue();
 			return;
 		}
-		if (!settings.appealIntakeChannelId.isEmpty() && !settings.appealIntakeChannelId.equals(event.getChannel().getId())) {
+		// Only once the channel exists: "create" that has not happened yet leaves /appeal open everywhere.
+		if (SNOWFLAKE.matcher(settings.appealIntakeChannelId).matches()
+				&& !settings.appealIntakeChannelId.equals(event.getChannel().getId())) {
 			event.reply("Use /appeal in <#" + settings.appealIntakeChannelId + ">.").setEphemeral(true).queue();
 			return;
 		}
@@ -646,6 +719,25 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 						.setRequired(true).setMaxLength(1000)
 						.setPlaceholder("What happened, and anything staff should know")
 						.build()))
+				.build()).queue();
+	}
+
+	/** The Appeal button: the same form as {@code /appeal}, with the code asked for in it. */
+	private void appealForm(ButtonInteractionEvent event) {
+		if (settings.appealsChannelId.isEmpty()) {
+			event.reply("Appeals are not taken in Discord on this server.").setEphemeral(true).queue();
+			return;
+		}
+		event.replyModal(Modal.create(io.github.alphain24.staffcore.discord.channels.AppealPanel.FORM_ID, "Your appeal")
+				.addComponents(
+						Label.of("Appeal code", TextInput.create("code", TextInputStyle.SHORT)
+								.setRequired(true).setMinLength(12).setMaxLength(20)
+								.setPlaceholder("ABCD-EFGH-JKMN, from your ban screen or chat")
+								.build()),
+						Label.of("Why should it be lifted?", TextInput.create("reason", TextInputStyle.PARAGRAPH)
+								.setRequired(true).setMaxLength(1000)
+								.setPlaceholder("What happened, and anything staff should know")
+								.build()))
 				.build()).queue();
 	}
 
@@ -674,6 +766,7 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			case "close" -> answer(event, DiscordAccess.closeAppeal(user, clicked.id()).thenApply(DiscordResult::message));
 			case "punishment" -> answer(event, DiscordAccess.punishment(user, clicked.id()).thenApply(Replies::punishment));
 			case "evidence" -> answer(event, DiscordAccess.evidence(user, clicked.id()).thenApply(Replies::evidence));
+			case "appealpanel" -> appealForm(event);
 			case "info" -> event.replyModal(Modal.create("sc:info:" + clicked.id(), "Ask the player")
 					.addComponents(Label.of("Question", TextInput.create("question", TextInputStyle.PARAGRAPH)
 							.setRequired(true).setMaxLength(1000)
@@ -703,6 +796,11 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		}
 		DiscordUser user = userOf(event.getMember(), event.getUser());
 
+		if (modalId.equals(io.github.alphain24.staffcore.discord.channels.AppealPanel.FORM_ID)) {
+			answer(event, DiscordAccess.fileAppeal(user, value(event, "code").replaceAll("[^A-Za-z0-9]", ""),
+					value(event, "reason")).thenApply(DiscordResult::message));
+			return;
+		}
 		if (modalId.startsWith("sc:appealfile:")) {
 			answer(event, DiscordAccess.fileAppeal(user, modalId.substring("sc:appealfile:".length()),
 					value(event, "reason")).thenApply(DiscordResult::message));
@@ -850,7 +948,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			if (parts.length != 3) return null;
 			try {
 				return switch (parts[1]) {
-					case "claim", "resolve", "escalate", "accept", "reject", "close", "info", "punishment", "evidence" ->
+					case "claim", "resolve", "escalate", "accept", "reject", "close", "info", "punishment", "evidence",
+							"appealpanel", "appealform" ->
 							new Clicked(parts[1], Long.parseLong(parts[2]), null);
 					case "profile", "history", "note", "freeze" -> new Clicked(parts[1], 0, UUID.fromString(parts[2]));
 					default -> null;

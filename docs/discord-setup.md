@@ -185,7 +185,7 @@ Open the file the server wrote and fill it in. A complete example — your ids w
   "reportsChannelId": "create",
   "alertsChannelId": "create",
   "appealsChannelId": "create",
-  "appealIntakeChannelId": "",
+  "appealIntakeChannelId": "create",
   "staffLogChannelId": "create",
   "staffChatChannelId": "create",
   "discordAlertSeverity": 70,
@@ -209,8 +209,8 @@ Open the file the server wrote and fill it in. A complete example — your ids w
 
 ### The channels the bot makes
 
-When the bot connects, it makes a **StaffCore** category and puts every channel set to `"create"`
-inside it:
+When the bot connects, it makes a **StaffCore** category and puts every staff channel set to
+`"create"` inside it:
 
 | Channel | Setting | What goes there |
 |---|---|---|
@@ -235,11 +235,12 @@ restarting never makes them again. You can rename or move the channels, and chan
 permissions — the bot goes by id and never touches permissions again. To let another role see them,
 add it to the category's permissions in Discord.
 
-A new settings file sets all six to `"create"`. One is left empty on purpose:
+**One channel is for players: `#appeal`** (`appealIntakeChannelId`). The bot makes it outside the
+category, **public**: everybody can read it and press its button, nobody but the bot can type or
+start threads. The bot keeps one message there with an **Appeal** button; see
+[step 9](#9-set-up-appeals).
 
-- **`appealIntakeChannelId`** — this one is for players, so it cannot be private and the bot does
-  not make it. Leave it empty and players can use `/appeal` in any channel; see
-  [step 9](#9-set-up-appeals).
+A new settings file sets all seven to `"create"`.
 
 > **Your file was written by an earlier build?** Some channel settings will be `""` — `staffChatChannelId`
 > was empty by default before 1.2.0. Change the ones you want to `"create"`.
@@ -397,9 +398,11 @@ With `appealsChannelId` set, banned and muted players can appeal from Discord.
    screen tells players where to go. With the bot taking appeals, the ban screen tells them to type
    `/appeal` with the appeal code shown underneath.
 2. `#appeals` is private to staff. Appeals and staff discussion go there, and players never see it.
-3. Players type `/appeal` in **any channel they can see** — `#general` is fine. The form and the
-   bot's answers are visible only to them. If you want appeals made in one particular channel, make
-   a public channel yourself (for example `#appeal-here`) and put its id in `appealIntakeChannelId`.
+3. Players go to **`#appeal`** and press **Appeal**, or type `/appeal` there. The form asks for the
+   appeal code and what happened; the form and the bot's answers are visible only to them. To use a
+   channel you made instead, put its id in `appealIntakeChannelId` — the bot posts the button there,
+   and needs to see, send and read history in it. Empty lets players use `/appeal` in any channel and
+   posts no button.
 4. Tell players to allow **direct messages from server members** (*Server name → Privacy Settings*).
    Questions from staff and the verdict reach them by direct message, and they answer by replying
    to the bot. If their direct messages are off, the appeal's thread tells staff they did not hear.
@@ -444,6 +447,8 @@ entry of `/staff` → **Discord**, and in `logs/latest.log` (lines starting `[St
 | `… channel … is not a text channel in …` | That id is wrong, is a category, voice or forum channel, or is a private channel the bot cannot see. |
 | `the bot cannot send messages in the … channel` | Give the bot the permissions from step 4 in that channel. |
 | `appeal intake channel … is not a text channel…` | Fix `appealIntakeChannelId`, or empty it. |
+| `the Appeal button could not be posted in #…` | The bot cannot send or read history in that channel. Give it View Channel, Send Messages, Embed Links and Read Message History there. |
+| `the appeal channel could not be made (…)` | As for the private channels: the bot is missing Manage Channels or Manage Roles. |
 | `posts Discord refused: …` | The log line `A post was not made (…)` names the reason — usually `MISSING_PERMISSIONS` in one channel. |
 | `posts not made because the bot was not connected: …` | Something happened while the bot was offline, still connecting, or before its channels existed. Those posts are not sent later. |
 | `direct messages players did not receive: …` | Those players have direct messages off. Each appeal's thread says which. |

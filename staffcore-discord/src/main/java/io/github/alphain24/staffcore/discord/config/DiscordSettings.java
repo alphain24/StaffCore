@@ -119,13 +119,15 @@ public final class DiscordSettings {
 	public volatile String appealsChannelId = CREATE;
 
 	/**
-	 * The one channel {@code /appeal} is answered in, for a server that wants appeals made somewhere
-	 * players can see. Appeals are still posted to {@link #appealsChannelId}, which can stay private
-	 * to staff. Empty answers {@code /appeal} in any channel of the guild, and the player's reply is
-	 * private to them wherever they use it. Never {@code "create"}: a channel for players is not one to
-	 * make private, so it is one an owner makes themselves.
+	 * The players' appeal channel: the one {@code /appeal} is answered in, and where the bot keeps a
+	 * message with an Appeal button that opens the form. Appeals are still posted to
+	 * {@link #appealsChannelId}, which stays private to staff.
+	 * <p>
+	 * {@code "create"} makes a public channel, {@code #appeal}, that everybody can read and nobody but the
+	 * bot can type in; the button and {@code /appeal} work there. A channel id uses one you made. Empty
+	 * answers {@code /appeal} in any channel and posts no button.
 	 */
-	public volatile String appealIntakeChannelId = "";
+	public volatile String appealIntakeChannelId = CREATE;
 
 	/**
 	 * Where every audited staff action is posted: who, what, the player it names, when, and its
@@ -214,6 +216,12 @@ public final class DiscordSettings {
 	 *
 	 * @return why the file could not be changed, or null when it was
 	 */
+	/** As {@link #recordCreated}, for the players' appeal channel. */
+	public String recordIntakeCreated(String id) {
+		appealIntakeChannelId = id;
+		return writeKeys(Map.of("appealIntakeChannelId", id));
+	}
+
 	public String recordCreated(Map<io.github.alphain24.staffcore.discord.channels.Outbound.Channel, String> ids) {
 		if (ids.isEmpty()) return null;
 		ids.forEach((channel, id) -> {
@@ -226,12 +234,19 @@ public final class DiscordSettings {
 				case STAFF_CHAT -> staffChatChannelId = id;
 			}
 		});
+		Map<String, String> byKey = new LinkedHashMap<>();
+		ids.forEach((channel, id) -> byKey.put(key(channel), id));
+		return writeKeys(byKey);
+	}
+
+	/** Sets these keys in the file and leaves every other line as the owner wrote it. */
+	private String writeKeys(Map<String, String> values) {
 		if (source == null) return null;
 		try {
 			com.google.gson.JsonObject root = Files.isRegularFile(source)
 					? com.google.gson.JsonParser.parseString(Files.readString(source, StandardCharsets.UTF_8)).getAsJsonObject()
 					: new com.google.gson.JsonObject();
-			ids.forEach((channel, id) -> root.addProperty(key(channel), id));
+			values.forEach(root::addProperty);
 			Path temp = source.resolveSibling(source.getFileName() + ".tmp");
 			try (Writer writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8)) {
 				GSON.toJson(root, writer);
@@ -363,7 +378,7 @@ public final class DiscordSettings {
 		appealsChannelId = channel("appealsChannelId", appealsChannelId, true, problems);
 		staffLogChannelId = channel("staffLogChannelId", staffLogChannelId, true, problems);
 		staffChatChannelId = channel("staffChatChannelId", staffChatChannelId, true, problems);
-		appealIntakeChannelId = channel("appealIntakeChannelId", appealIntakeChannelId, false, problems);
+		appealIntakeChannelId = channel("appealIntakeChannelId", appealIntakeChannelId, true, problems);
 		if (!appealIntakeChannelId.isEmpty() && appealsChannelId.isEmpty()) {
 			problems.add("appealIntakeChannelId is set but appealsChannelId is not, so there is nowhere to post "
 					+ "appeals and /appeal is not offered. Set appealsChannelId too.");
@@ -406,12 +421,7 @@ public final class DiscordSettings {
 	private static String channel(String key, String value, boolean creatable, List<String> problems) {
 		String id = value == null ? "" : value.strip();
 		if (id.isEmpty() || SNOWFLAKE.matcher(id).matches()) return id;
-		if (CREATE.equalsIgnoreCase(id)) {
-			if (creatable) return CREATE;
-			problems.add(key + " cannot be \"create\": the bot only makes private channels, and this one is for "
-					+ "players. Make it yourself and put its id here, or leave it empty. Leaving it empty.");
-			return "";
-		}
+		if (CREATE.equalsIgnoreCase(id) && creatable) return CREATE;
 		problems.add(key + " is \"" + id + "\", which is not a channel id. Posting nothing there. Copy the "
 				+ "id with Developer Mode on: right-click the channel, Copy Channel ID.");
 		return "";

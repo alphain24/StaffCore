@@ -11,6 +11,9 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`.
   `notifyReturningPlayers` (on). Bans already over when you upgrade are not announced.
 
 - **`/staffchat <message>`** in the Discord staff chat channel.
+- **A public `#appeal` channel** in Discord with an **Appeal** button that opens the appeal form (code
+  and reason); `/appeal` works there too. `appealIntakeChannelId` accepts `create` and is `create` in
+  new settings files.
 
 ### Changed
 

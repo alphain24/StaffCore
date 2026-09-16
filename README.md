@@ -531,7 +531,7 @@ companion is doing instead.
 | `reportsChannelId` | `create` | Where reports are posted, with a thread and buttons. Empty posts none, and reports reach Discord only as alerts. |
 | `alertsChannelId` | `create` | Where detector signals are posted and where cases get their threads. Empty posts none, and only cases a report opened get a thread. |
 | `appealsChannelId` | `create` | Where appeals are posted for staff, each with a thread and buttons. Setting it offers `/appeal` to players and has the bot read direct messages sent to it, which is where players answer questions and hear verdicts. Empty takes no appeals from Discord. |
-| `appealIntakeChannelId` | empty | The one channel `/appeal` is answered in, so appeals can be made somewhere players see while `appealsChannelId` stays staff-only. Empty answers `/appeal` anywhere in the server. Never `create`: it is for players, so you make it. |
+| `appealIntakeChannelId` | `create` | The players' appeal channel: `/appeal` is answered only there, and the bot keeps a message in it with an **Appeal** button that opens the form. `create` makes a public `#appeal` that everybody can read and only the bot can write in. Empty answers `/appeal` anywhere in the server and posts no button. |
 | `staffLogChannelId` | `create` | Where every audited staff action is posted — one post per command on a busy server. Empty posts none. |
 | `staffChatChannelId` | `create` | A channel bridged with staff chat both ways. Typing there needs Message Content Intent switched on for the bot; without it the bot connects anyway, game lines still arrive, and staff answer with `/staffchat`, which `/staff status` and the panel point out. Empty bridges nothing. |
 | `discordAlertSeverity` | `70` | The lowest signal confidence (0–100) posted to the alerts channel on its own. A signal that opens a case is always posted, because the case needs its thread. |
@@ -541,7 +541,9 @@ companion is doing instead.
 Each channel setting is a channel id, `"create"`, or empty. **`"create"` has the bot make the
 channel when it connects**: under a **StaffCore** category, private — hidden from `@everyone`, open
 to the bot and to the staff roles in `roleNodes`, and to administrators as Discord always is — and
-its id is written back into the file in place of `"create"`, so it is made once. Threads in those
+its id is written back into the file in place of `"create"`, so it is made once. The one exception is
+the players' `#appeal`, which is made outside the category and public, with typing and starting threads
+switched off for everybody but the bot. Threads in those
 channels are as private as the channels. The bot never changes a channel's permissions after making
 it, and making channels needs Manage Channels and Manage Roles, which can be removed afterwards.
 
@@ -610,8 +612,10 @@ services that run them.
 
 ### Appeals
 
-A banned player types `/appeal` with the code from their ban screen, and a form asks why the
-punishment should be lifted. The appeal is posted to `appealsChannelId` with a thread. On the ban
+A banned player presses **Appeal** on the bot's message in `#appeal`, or types `/appeal` with the
+code from their ban screen, and a form asks for the code and why the punishment should be lifted. The
+message is posted once, edited to the current wording at every start, and found again rather than
+posted twice. The appeal is posted to `appealsChannelId` with a thread. On the ban
 screen, "type /appeal with the appeal code below" appears once the bot is connected and taking
 appeals.
 

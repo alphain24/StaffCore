@@ -42,6 +42,24 @@ class ChannelSetupTest {
 	}
 
 	@Test
+	@DisplayName("the players' appeal channel can be read by everybody, written in by nobody, and set up by the bot")
+	void publicAppealChannel() {
+		assertTrue(ChannelSetup.PUBLIC_ALLOWED.contains(Permission.VIEW_CHANNEL));
+		assertFalse(ChannelSetup.PUBLIC_ALLOWED.contains(Permission.MESSAGE_SEND), "players can type in #appeal");
+		assertTrue(ChannelSetup.PUBLIC_DENIED.contains(Permission.MESSAGE_SEND));
+		assertTrue(ChannelSetup.PUBLIC_DENIED.contains(Permission.CREATE_PUBLIC_THREADS));
+		// Discord refuses an override naming a permission the bot does not hold, and the invite link grants
+		// exactly BOT plus the two it needs to make channels.
+		for (Permission permission : ChannelSetup.PUBLIC_ALLOWED) {
+			assertTrue(ChannelSetup.BOT.contains(permission), permission + " is not the bot's to grant");
+		}
+		for (Permission permission : ChannelSetup.PUBLIC_DENIED) {
+			assertTrue(ChannelSetup.BOT.contains(permission), permission + " is not the bot's to deny");
+		}
+		assertFalse(ChannelSetup.names().contains(ChannelSetup.INTAKE), "#appeal shares a name with a staff channel");
+	}
+
+	@Test
 	@DisplayName("each channel has its own name, and making them needs only Manage Channels and Manage Roles")
 	void namesAndRequirements() {
 		Set<String> names = new HashSet<>();

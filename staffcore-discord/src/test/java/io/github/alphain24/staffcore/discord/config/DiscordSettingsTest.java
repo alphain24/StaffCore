@@ -120,7 +120,7 @@ class DiscordSettingsTest {
 	}
 
 	@Test
-	@DisplayName("a new file asks for the five posting channels to be made, and leaves staff chat and intake alone")
+	@DisplayName("a new file asks for every channel to be made")
 	void channelsAreCreatedByDefault() {
 		var loaded = DiscordSettings.load(dir.resolve(DiscordSettings.FILE_NAME), KNOWN);
 		DiscordSettings s = loaded.settings();
@@ -132,18 +132,17 @@ class DiscordSettingsTest {
 				io.github.alphain24.staffcore.discord.channels.Outbound.Channel.STAFF_CHAT)) {
 			assertTrue(s.toCreate(channel), channel + " is not made by default");
 		}
-		// The players' channel is theirs, not the bot's to make private.
-		assertEquals("", s.appealIntakeChannelId);
+		// The players' channel is made too, as a public one.
+		assertEquals(DiscordSettings.CREATE, s.appealIntakeChannelId);
 	}
 
 	@Test
-	@DisplayName("\"create\" is accepted in any case, except for the players' intake channel")
+	@DisplayName("\"create\" is accepted in any case, the players' appeal channel included")
 	void createValue() throws IOException {
-		var loaded = load("{\"reportsChannelId\": \"Create\", \"appealIntakeChannelId\": \"create\"}");
+		var loaded = load("{\"reportsChannelId\": \"Create\", \"appealIntakeChannelId\": \"CREATE\"}");
 		assertEquals(DiscordSettings.CREATE, loaded.settings().reportsChannelId);
-		assertEquals("", loaded.settings().appealIntakeChannelId);
-		assertTrue(loaded.problems().stream().anyMatch(p -> p.startsWith("appealIntakeChannelId cannot be")),
-				loaded.problems().toString());
+		assertEquals(DiscordSettings.CREATE, loaded.settings().appealIntakeChannelId);
+		assertTrue(loaded.problems().isEmpty(), loaded.problems().toString());
 	}
 
 	@Test
@@ -167,8 +166,15 @@ class DiscordSettingsTest {
 				"writing the ids back deleted the owner's mistake, and the warning about it with it");
 		assertEquals(5, json.get("somethingElse").getAsInt(), "a key this build does not know was removed");
 
+		assertEquals(null, loaded.settings().recordIntakeCreated("567890123456789012"));
+		written = Files.readString(dir.resolve(DiscordSettings.FILE_NAME));
+		json = com.google.gson.JsonParser.parseString(written).getAsJsonObject();
+		assertEquals("567890123456789012", json.get("appealIntakeChannelId").getAsString());
+		assertEquals("456789012345678901", json.get("reportsChannelId").getAsString(), "the earlier id was lost");
+
 		var reloaded = DiscordSettings.load(dir.resolve(DiscordSettings.FILE_NAME), KNOWN);
 		assertEquals("456789012345678901", reloaded.settings().reportsChannelId);
+		assertEquals("567890123456789012", reloaded.settings().appealIntakeChannelId);
 	}
 
 	@Test

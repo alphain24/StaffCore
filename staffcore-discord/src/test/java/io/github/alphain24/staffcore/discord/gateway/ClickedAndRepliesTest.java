@@ -28,6 +28,14 @@ class ClickedAndRepliesTest {
 		assertEquals(3, JdaGateway.Clicked.parse("sc:accept:3").id());
 		assertEquals(7, JdaGateway.Clicked.parse("sc:evidence:7").id());
 		assertEquals("info", JdaGateway.Clicked.parse("sc:info:3").action());
+		assertEquals("appealpanel", JdaGateway.Clicked.parse(
+				io.github.alphain24.staffcore.discord.channels.AppealPanel.BUTTON_ID).action());
+		assertEquals("reject", JdaGateway.Clicked.parse("sc:reject:4").action());
+		assertEquals(null, JdaGateway.waitDays("400"), "a wait over a year was accepted");
+		assertEquals(null, JdaGateway.waitDays("-1"));
+		assertEquals(null, JdaGateway.waitDays("seven"));
+		assertEquals(7, JdaGateway.waitDays(" 7 "));
+		assertEquals(0, JdaGateway.waitDays("0"));
 		assertNull(JdaGateway.Clicked.parse("sc:accept:" + STEVE), "an appeal button with a player where its number goes");
 		assertEquals(STEVE, JdaGateway.Clicked.parse("sc:freeze:" + STEVE).player());
 		assertNull(JdaGateway.Clicked.parse("sc:ban:" + STEVE), "an action no button offers");

@@ -2079,6 +2079,34 @@ Discord, naming the Discord account.
 
 ---
 
+## A public appeal channel with a button
+
+**Date:** 2026-09-16
+
+Phase 6.4. "A separate channel where players can type /appeal or click on some embed."
+
+**The one channel the bot makes public.** `appealIntakeChannelId` used to refuse `"create"`, because
+every channel the bot made was private. Players need to see this one, so it is made outside the
+StaffCore category with its own overwrites: everybody may view and read history, and use application
+commands as they may anywhere; nobody but the bot may send messages or start threads. Reactions stay on: Discord refuses an
+override for a permission the bot does not hold, and the invite link does not grant it. A channel for one message and
+a button is not a place for players to argue in public, and it is not where staff discuss anything —
+appeals are still posted to the private `#appeals`. A top-level channel already called `appeal` is used
+rather than a second made, as for the category's channels.
+
+**The panel is posted once.** It is remembered in the thread book under `panel:appeal` and edited to the
+current wording on every start, which also refreshes its age, so the book's ninety-day forgetting never
+reaches it. If the book was lost, the channel's last fifty messages are searched for the bot's own
+message carrying the button before a new one is posted. Pinning is tried and allowed to fail: it needs a
+permission the bot is not asked for, and the panel works unpinned.
+
+**The button asks for the code in the form.** `/appeal` takes the code as an option and opens a form for
+the reason; a button has nowhere to type, so its form asks for both. Both end in the same
+`fileAppeal`, with the same attempt counting. `/appeal` is restricted to the channel only once it
+exists, so a `"create"` that failed does not tell players to use a channel that is not there.
+
+---
+
 ## A staff chat channel by default
 
 **Date:** 2026-09-16

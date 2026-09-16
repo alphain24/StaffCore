@@ -143,6 +143,70 @@ public final class ChannelSetup {
 		return new Outcome(created, problems);
 	}
 
+	/** Every staff channel's name. */
+	static Set<String> names() {
+		Set<String> names = new java.util.HashSet<>();
+		for (Channel channel : Channel.values()) names.add(name(channel));
+		return names;
+	}
+
+	/** The name the players' appeal channel is made with. */
+	static final String INTAKE = "appeal";
+
+	/**
+	 * What everybody is given on the players' appeal channel: to read it. Not to type or start threads;
+	 * the channel is for the one message. Using the button and {@code /appeal} needs nothing here, since
+	 * everybody may use commands unless an owner has said otherwise.
+	 * <p>
+	 * Only permissions in {@link #BOT} appear, because Discord refuses an override that grants or denies a
+	 * permission the bot does not hold itself — which is also why reactions are not switched off.
+	 */
+	static final Set<Permission> PUBLIC_ALLOWED = EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_HISTORY);
+	static final Set<Permission> PUBLIC_DENIED = EnumSet.of(Permission.MESSAGE_SEND, Permission.MESSAGE_SEND_IN_THREADS,
+			Permission.CREATE_PUBLIC_THREADS);
+
+	/**
+	 * What making the players' appeal channel did.
+	 *
+	 * @param id      the channel made or found, or null
+	 * @param problem why there is none, or null
+	 */
+	public record Intake(String id, String problem) {}
+
+	/**
+	 * Makes the players' appeal channel when the settings ask for it: {@code #appeal}, outside the private
+	 * category, readable by everybody and written in by nobody but the bot. A top-level channel of that name
+	 * already there is used instead.
+	 */
+	public static Intake intake(Guild guild, DiscordSettings settings) {
+		if (!DiscordSettings.CREATE.equals(settings.appealIntakeChannelId) || settings.appealsChannelId.isEmpty()) {
+			return new Intake(null, null);
+		}
+		if (!guild.getSelfMember().hasPermission(TO_CREATE)) {
+			return new Intake(null, "the appeal channel was not made: the bot needs Manage Channels and Manage Roles");
+		}
+		try {
+			for (TextChannel text : guild.getTextChannelsByName(INTAKE, true)) {
+				if (text.getParentCategory() == null) {
+					StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Using #{} for appeals rather than making another.",
+							text.getName());
+					return new Intake(text.getId(), null);
+				}
+			}
+			TextChannel made = guild.createTextChannel(INTAKE)
+					.setTopic("Appeal a ban or mute on the Minecraft server: press Appeal, or type /appeal.")
+					.addPermissionOverride(guild.getPublicRole(), PUBLIC_ALLOWED, PUBLIC_DENIED)
+					.addPermissionOverride(guild.getSelfMember(), BOT, EnumSet.noneOf(Permission.class))
+					.complete();
+			StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Made public channel #{} for appeals.", made.getName());
+			return new Intake(made.getId(), null);
+		} catch (RuntimeException e) {
+			String why = e instanceof ErrorResponseException discord ? discord.getErrorResponse().name()
+					: e.getClass().getSimpleName();
+			return new Intake(null, "the appeal channel could not be made (" + why + "); it is tried again at the next start");
+		}
+	}
+
 	/**
 	 * The StaffCore category: the one already there, or a new private one.
 	 * <p>
