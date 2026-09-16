@@ -65,6 +65,7 @@ final class StaffCommands {
 	}
 
 	private static OptionData caseId() {
-		return new OptionData(OptionType.STRING, "case", "The case id, like ABCD2345", true).setMaxLength(16);
+		return new OptionData(OptionType.STRING, "case", "The case id, like ABCD2345", true).setMaxLength(16)
+				.setAutoComplete(true);
 	}
 }

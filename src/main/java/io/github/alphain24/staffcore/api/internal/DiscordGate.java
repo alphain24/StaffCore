@@ -629,6 +629,29 @@ public final class DiscordGate {
 		}, List.of());
 	}
 
+	/**
+	 * Case ids starting with what has been typed, live cases first, for autocomplete. Only for a linked
+	 * account allowed to look at cases, from both sides: a case id names a player and what they are
+	 * suspected of, which is not something to list to anybody else. Not audited, for the same reason
+	 * player names are not.
+	 */
+	public static CompletableFuture<List<io.github.alphain24.staffcore.api.DiscordSuggestion>> suggestCases(
+			DiscordUser user, String prefix) {
+		return onServer(server -> {
+			var standing = resolve(server, user).standing();
+			if (!standing.linked() || !standing.holds(DiscordOperation.VIEW_CASE.node())) {
+				return List.<io.github.alphain24.staffcore.api.DiscordSuggestion>of();
+			}
+			List<io.github.alphain24.staffcore.api.DiscordSuggestion> out = new ArrayList<>();
+			for (var found : Mods.cases().store().startingWith(prefix == null ? "" : prefix.strip(), 25)) {
+				out.add(new io.github.alphain24.staffcore.api.DiscordSuggestion(found.id() + " · "
+						+ found.subjectName() + " · " + found.category().stored() + ", "
+						+ found.status().name().toLowerCase(java.util.Locale.ROOT), found.id()));
+			}
+			return out;
+		}, List.of());
+	}
+
 	// ------------------------------------------------------------------ staff chat
 
 	/** The longest line a staff chat message from Discord becomes: one chat line in game. */

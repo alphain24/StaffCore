@@ -680,9 +680,19 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	public void onCommandAutoCompleteInteraction(net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent event) {
 		if (!"staff".equals(event.getName()) || !inGuild(event.getGuild())) return;
 		String option = event.getFocusedOption().getName();
+		DiscordUser user = userOf(event.getMember(), event.getUser());
+		if (option.equals("case")) {
+			DiscordAccess.suggestCases(user, event.getFocusedOption().getValue())
+					.completeOnTimeout(List.of(), 2, TimeUnit.SECONDS)
+					.whenCompleteAsync((found, failure) -> event.replyChoices(
+							failure != null || found == null ? List.of() : found.stream().limit(25)
+									.map(s -> new net.dv8tion.jda.api.interactions.commands.Command.Choice(s.label(), s.value()))
+									.toList())
+							.queue(ok -> { }, ignored -> { }), worker);
+			return;
+		}
 		if (!option.equals("player") && !option.equals("staff")) return;
 
-		DiscordUser user = userOf(event.getMember(), event.getUser());
 		DiscordAccess.suggestPlayers(user, event.getFocusedOption().getValue())
 				.completeOnTimeout(List.of(), 2, TimeUnit.SECONDS)
 				.whenCompleteAsync((names, failure) -> event.replyChoiceStrings(

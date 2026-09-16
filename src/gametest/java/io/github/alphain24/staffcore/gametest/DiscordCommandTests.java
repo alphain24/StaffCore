@@ -260,6 +260,14 @@ public class DiscordCommandTests {
 			Harness.check(helper, suggested.contains(Harness.name(target)), "autocomplete did not offer the player: " + suggested);
 			Harness.check(helper, DiscordAccess.suggestPlayers(new DiscordUser(snowflake(), "x", Set.of()),
 					Harness.name(target).substring(0, 8)).join().isEmpty(), "autocomplete listed players to an unlinked account");
+
+			var cases = DiscordAccess.suggestCases(user, caseId.substring(0, 5).toLowerCase(java.util.Locale.ROOT)).join();
+			Harness.check(helper, cases.stream().anyMatch(s -> s.value().equals(caseId)
+							&& s.label().contains(Harness.name(target))), "autocomplete did not offer the case: " + cases);
+			Harness.check(helper, DiscordAccess.suggestCases(nothing, caseId.substring(0, 5)).join().isEmpty(),
+					"case ids were offered to an account that cannot look at cases");
+			Harness.check(helper, DiscordAccess.suggestCases(new DiscordUser(snowflake(), "x", Set.of(Nodes.STAFF_GUI)),
+					caseId.substring(0, 5)).join().isEmpty(), "case ids were offered to an unlinked account");
 		} finally {
 			ungroup(staff, group);
 		}

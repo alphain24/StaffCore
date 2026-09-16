@@ -362,7 +362,8 @@ off a Discord account that has been taken over. Admins can see everybody who is 
 
 ### Using the commands
 
-Type `/staff` in your Discord server and pick a command. Player names complete as you type. Every
+Type `/staff` in your Discord server and pick a command. Player names and case ids complete as you
+type, but only for linked staff: anybody else is offered nothing. Every
 answer is private to you; what a command does — a ban, a note — is posted to its channel as usual.
 
 | Command | Needs | Does |

@@ -582,7 +582,8 @@ Intent is off: the bot posts the line in the channel once the game has it.
 
 ### Commands
 
-`/staff` in Discord runs the staff commands, with player names completing as you type and every
+`/staff` in Discord runs the staff commands, with player names and case ids completing as you type
+(offered only to linked staff who may use them) and every
 answer private to whoever asked:
 
 | Command | Needs | Does |

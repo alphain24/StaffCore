@@ -243,6 +243,14 @@ public final class DiscordAccess {
 		return DiscordGate.analytics(user, staffName);
 	}
 
+	/**
+	 * Case ids starting with a prefix, live cases first, for autocomplete. Empty for anybody not allowed to
+	 * look at cases from Discord.
+	 */
+	public static CompletableFuture<List<DiscordSuggestion>> suggestCases(DiscordUser user, String prefix) {
+		return DiscordGate.suggestCases(user, prefix);
+	}
+
 	/** Known player names starting with a prefix, for autocomplete. Empty for anybody who holds nothing. */
 	public static CompletableFuture<List<String>> suggestPlayers(DiscordUser user, String prefix) {
 		return DiscordGate.suggestPlayers(user, prefix);

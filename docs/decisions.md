@@ -2079,6 +2079,19 @@ Discord, naming the Discord account.
 
 ---
 
+## Case ids complete, for staff only
+
+**Date:** 2026-09-16
+
+Phase 6.5, "autofill player names or codes by staff only". Player names already completed for a linked
+account holding anything. Case ids now complete too, live cases first, labelled with the player and
+what the case is about — which is exactly why they are offered only to a linked account allowed to look
+at cases from both sides, the game and `roleNodes`. A list of case ids is a list of who is suspected of
+what. Appeal codes do not complete for anybody: they are the player's, and staff have no command that
+takes one.
+
+---
+
 ## A public appeal channel with a button
 
 **Date:** 2026-09-16

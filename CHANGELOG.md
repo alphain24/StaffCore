@@ -14,6 +14,8 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`.
 - **A public `#appeal` channel** in Discord with an **Appeal** button that opens the appeal form (code
   and reason); `/appeal` works there too. `appealIntakeChannelId` accepts `create` and is `create` in
   new settings files.
+- **Case ids complete as you type** in Discord's `/staff case` and `/staff evidence`, for linked staff
+  allowed to look at cases.
 
 ### Changed
 

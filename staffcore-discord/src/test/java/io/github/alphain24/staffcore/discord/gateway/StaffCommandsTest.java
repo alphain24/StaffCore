@@ -47,6 +47,9 @@ class StaffCommandsTest {
 					assertTrue(option.isRequired(), sub.getName() + " can be run without a player");
 				}
 				if (option.getName().equals("duration")) assertFalse(option.isRequired(), sub.getName());
+				if (option.getName().equals("case")) {
+					assertTrue(option.isAutoComplete(), sub.getName() + " does not complete case ids");
+				}
 			}
 		}
 	}
