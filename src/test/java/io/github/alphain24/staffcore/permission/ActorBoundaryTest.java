@@ -166,6 +166,23 @@ class ActorBoundaryTest {
 		assertFalse(old.isStale(0), "0 disables the check, like every other window here");
 	}
 
+	@Test
+	@DisplayName("being an operator is not a node: an operator the settings refused holds nothing extra")
+	void operatorIsNotAGrant() {
+		// Gate 5. An operator with operatorsBypass off and no group, or one a permissions mod refused,
+		// resolves to an empty or partial node set. Counting the operator flag as a wildcard let every
+		// check made through has() pass anyway: the rate-limit exemption and the IP ban among them.
+		Actor refused = new Actor(UUID.randomUUID(), "Op", Actor.Source.PLAYER, Set.of(Nodes.HISTORY), true,
+				System.currentTimeMillis());
+		assertTrue(refused.has(Nodes.HISTORY));
+		assertFalse(refused.has(Nodes.IP_BAN), "an operator passed a check for a node they were refused");
+		assertFalse(refused.has(Nodes.RATE_LIMIT_EXEMPT), "an operator was exempt from the rate limit they were not given");
+
+		// The console still holds everything, through its node set.
+		assertTrue(Actor.console().has(Nodes.IP_BAN));
+		assertTrue(Actor.console().has(Nodes.RATE_LIMIT_EXEMPT));
+	}
+
 	// ------------------------------------------------------------- actor retention
 
 	/**

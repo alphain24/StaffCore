@@ -36,8 +36,8 @@ import java.util.UUID;
  * differently halfway through because a permissions plugin reloaded.
  *
  * @param nodes    every StaffCore node this actor holds, resolved at construction
- * @param operator the vanilla fallback, kept separately because it is not a node and some
- *                 checks care about the difference
+ * @param operator whether the account holds vanilla's moderator level, kept for the rank guard and
+ *                 for display. Never a grant: what an operator may do is already in {@code nodes}.
  */
 public record Actor(UUID id, String name, Source source, Set<String> nodes, boolean operator,
 		long resolvedAt) {
@@ -110,9 +110,18 @@ public record Actor(UUID id, String name, Source source, Set<String> nodes, bool
 		return source.isAccountable() && id != null;
 	}
 
-	/** Whether this actor holds a node. A pure lookup — no server, no plugin, no I/O. */
+	/**
+	 * Whether this actor holds a node. A pure lookup — no server, no plugin, no I/O.
+	 * <p>
+	 * The node set only. It used to count being an operator as holding everything, which was a way
+	 * round two settings that exist to close exactly that: with {@code operatorsBypass} off, or with a
+	 * permissions mod refusing a node, an operator still passed every check made through here — the
+	 * rate-limit exemption and the IP ban among them — while the command tree, asking
+	 * {@link Permissions#check}, refused. The node set was resolved through that same check, so an
+	 * operator the settings let through already holds every node, and nothing is lost.
+	 */
 	public boolean has(String node) {
-		return nodes.contains(node) || operator;
+		return nodes.contains(node);
 	}
 
 	// ------------------------------------------------------------------ building

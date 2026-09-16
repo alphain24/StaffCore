@@ -50,6 +50,10 @@ In progress. Ships with `staffcore-discord-1.1.0.jar`; install both jars from th
 - **A new server's database logged seventeen "missing column" warnings on its first start.** It was
   repaired at once and worked, but the log said it was damaged. New databases are now created with
   every column and index the upgrades add, including the index appeal codes are looked up by.
+- **An operator refused a node could still use it in two places.** The rate-limit exemption and the
+  IP-ban check counted being an operator as holding every node, even with `operatorsBypass` off or a
+  permissions mod saying no. They now go by the permissions the operator actually holds, like
+  everything else.
 - **Offline accounts are now read through the permissions API too.** If LuckPerms has not loaded an
   account yet, a Discord request or an offline staff punishment is refused with "try again in a
   moment" instead of "join the server".
