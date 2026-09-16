@@ -361,6 +361,15 @@ public final class StaffConfig {
 	public int appealCooldownDays = 7;
 
 	/**
+	 * Tell staff when a player joins for the first time since a ban of theirs ended — ran out or
+	 * was lifted — in game to those with alerts on, and to Discord. Each ban is announced once.
+	 * <p>
+	 * Off, returning players arrive unannounced, as they always used to; bans are still marked
+	 * as seen, so turning it back on does not replay the ones that came back meanwhile.
+	 */
+	public boolean notifyReturningPlayers = true;
+
+	/**
 	 * Days an appeal waits for the player to answer a question from staff before it is marked stale.
 	 * <p>
 	 * Only appeals waiting on the player: one staff have not got round to is never marked stale,

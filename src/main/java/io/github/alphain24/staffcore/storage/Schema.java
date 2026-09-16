@@ -1220,6 +1220,18 @@ final class Schema {
 					st.executeUpdate(io.github.alphain24.staffcore.modules.appeal.AppealCodes.INDEX);
 					st.executeUpdate(io.github.alphain24.staffcore.modules.appeal.AppealCodes.BACKFILL);
 				}
+			},
+
+			// 31 - whether staff were told a banned player came back.
+			//
+			//      Set on the first join after a ban ends. Every ban already over is marked, so an
+			//      upgrade does not announce every player who was ever banned. See ReturnWatch.
+			conn -> {
+				addColumn(conn, "punishments", "return_noticed_at", "INTEGER");
+				try (Statement st = conn.createStatement()) {
+					st.executeUpdate(io.github.alphain24.staffcore.modules.punish.ReturnWatch.backfill(
+							System.currentTimeMillis()));
+				}
 			}
 	);
 
@@ -1298,6 +1310,7 @@ final class Schema {
 			{"command_log", "case_id", "TEXT"},
 			{"command_log", "server_version", "TEXT"},
 			{"punishments", "appeal_code", "TEXT"},
+			{"punishments", "return_noticed_at", "INTEGER"},
 			{"cases", "resolution_reason", "TEXT"},
 			{"cases", "category", "TEXT"},
 			{"punishments", "server_version", "TEXT"},

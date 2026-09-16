@@ -1022,6 +1022,15 @@
             <code>staff.history.clear</code> and a confirm, and it cannot be undone.
           </p>
         </div>
+
+        <h3>When a banned player comes back</h3>
+        <p>
+          The first time somebody joins after a ban of theirs ran out or was lifted, staff with alerts on are
+          told, with the ban, its reason, and how it ended &mdash; ran out, or lifted by whom and why. The same
+          goes to the Discord alerts channel and into the ban's case. Each ban is announced once, whenever the
+          player next joins; bans that had already ended when you upgraded are not announced.
+          <code>notifyReturningPlayers</code> turns it off.
+        </p>
       </section>
 
       <!-- =========================================================== NOTES -->
@@ -2565,7 +2574,7 @@
             <tbody>
               <tr><td class="mono">punishmentsChannelId</td><td class="mono">create</td><td class="wrap">Reason, staff, the player and their prior count, duration, expiry, case and id. A reversal edits the post.</td></tr>
               <tr><td class="mono">reportsChannelId</td><td class="mono">create</td><td class="wrap">Each report with a thread and Claim, Resolve, Escalate, Profile, History, Add Note and Freeze buttons. Claims and resolutions edit the post and are said in the thread. Empty: reports reach Discord only as alerts.</td></tr>
-              <tr><td class="mono">alertsChannelId</td><td class="mono">create</td><td class="wrap">Detector signals, and a thread for every case. Notes, assignments, punishments and closing go into the case's thread.</td></tr>
+              <tr><td class="mono">alertsChannelId</td><td class="mono">create</td><td class="wrap">Detector signals, and a thread for every case. Notes, assignments, punishments and closing go into the case's thread. Also a player back for the first time since a ban ended.</td></tr>
               <tr><td class="mono">appealsChannelId</td><td class="mono">create</td><td class="wrap">Each appeal with the original punishment spelled out, a thread, and Accept, Reject, Request More Info, Close, Punishment, Profile, Evidence and Staff Note buttons. Setting it offers <code>/appeal</code> and has the bot read direct messages sent to it. Empty takes no appeals from Discord.</td></tr>
               <tr><td class="mono">appealIntakeChannelId</td><td class="mono">empty</td><td class="wrap">The one channel <code>/appeal</code> is answered in, so appeals can be made where players see while the appeals channel stays staff-only. Empty answers it anywhere.</td></tr>
               <tr><td class="mono">staffLogChannelId</td><td class="mono">create</td><td class="wrap">Every audited staff action: who, the command, the player it names, when, the case. One post per command.</td></tr>
@@ -2966,6 +2975,7 @@
 <pre><code>{
   "discordWebhookUrl": "",            // empty = bridge off
   "appealCooldownDays": 7,             // the wait a rejection sets unless staff pick another, 0-365; 0 = no wait
+  "notifyReturningPlayers": true,     // tell staff once when somebody joins after a ban of theirs ended
   "appealStaleDays": 7,                // an appeal staff asked a question on closes as stale if unanswered this long; 0 = never
   "appealAttemptsPerHour": 5,          // per Discord account, wrong codes included; 0 = no limit
   "requireReason": true,

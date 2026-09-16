@@ -1023,7 +1023,8 @@ public class PunishmentModule implements Module {
 		return out;
 	}
 
-	private Punishment map(ResultSet rs) throws SQLException {
+	/** A punishment row as a record. For this package's other readers of the table. */
+	Punishment map(ResultSet rs) throws SQLException {
 		long exp = rs.getLong("expires_at");
 		Long expires = rs.wasNull() ? null : exp;
 		return new Punishment(

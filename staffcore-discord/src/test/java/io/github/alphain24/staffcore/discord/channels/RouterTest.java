@@ -93,6 +93,28 @@ class RouterTest {
 	}
 
 	@Test
+	@DisplayName("a player back after a ban is posted to the alerts channel, saying how the ban ended")
+	void returned() {
+		var out = router.route(new StaffCoreEvent.PlayerReturned(NOW, STEVE, "Steve_", 9, "TEMPBAN", "x-ray",
+				NOW - 3_600_000L, "LIFTED", "Admin", "appeal #2 accepted", "CASE1234"));
+		assertEquals(1, out.size());
+		Send send = assertInstanceOf(Send.class, out.get(0));
+		assertEquals(Channel.ALERTS, send.channel());
+		assertTrue(send.message().embed().title().contains("Back after a ban"), send.message().embed().title());
+		assertTrue(send.message().embed().field("Ended").contains("Lifted by Admin"));
+		// What staff typed is escaped, so it is matched loosely.
+		assertTrue(send.message().embed().field("Ended").contains("2 accepted"), send.message().embed().field("Ended"));
+
+		var expired = router.route(new StaffCoreEvent.PlayerReturned(NOW, STEVE, "Steve_", 10, "BAN", null,
+				NOW - 60_000L, "EXPIRED", null, null, null));
+		assertTrue(((Send) expired.get(0)).message().embed().field("Ended").startsWith("Ran out"));
+
+		settings.alertsChannelId = "";
+		assertTrue(router.route(new StaffCoreEvent.PlayerReturned(NOW, STEVE, "Steve_", 11, "BAN", null,
+				NOW, "EXPIRED", null, null, null)).isEmpty(), "posted with the alerts channel off");
+	}
+
+	@Test
 	@DisplayName("a channel left empty posts nothing")
 	void emptyChannelIsOff() {
 		settings.punishmentsChannelId = "";

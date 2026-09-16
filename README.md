@@ -351,6 +351,7 @@ Changing a default in the code alone would never reach a server that has already
   "discordInvite": "",                 // e.g. https://discord.gg/abc123 - shown on the ban screen so people can appeal
   "allowInGameAppeals": true,
   "appealCooldownDays": 7,             // the wait a rejection sets unless staff pick another, 0-365; 0 = no wait
+  "notifyReturningPlayers": true,     // tell staff once when somebody joins after a ban of theirs ended
   "appealStaleDays": 7,                // an appeal staff asked a question on closes as stale if unanswered this long; 0 = never
   "appealAttemptsPerHour": 5,          // per Discord account, wrong codes included; 0 = no limit
   "detectBanEvasion": true,
@@ -553,7 +554,7 @@ posting.
 |---|---|---|
 | Punishments | Reason, staff, the player and their prior count, duration, expiry, case, punishment id | A reversal edits the post |
 | Reports | Reason, player and prior count, reporter, assignee, status, server, when, case; a thread; Claim, Resolve, Escalate, Profile, History, Add Note and Freeze buttons | Claiming and resolving edit the post and are said in the thread; resolving turns the report's own buttons off and closes the thread |
-| Alerts | The signal, its confidence and its case; a thread when it opened the case | Notes, assignments, punishments and closing are said in the case's thread; weaker signals about the case go there too |
+| Alerts | The signal, its confidence and its case; a thread when it opened the case. Also a player back for the first time since a ban ended, and how it ended | Notes, assignments, punishments and closing are said in the case's thread; weaker signals about the case go there too |
 | Appeals | The player, the Discord account that filed and whose Minecraft account it is linked to, the punishment with its reason, who issued it and when, the appeal, evidence count, when, case; a thread; Accept, Reject, Request More Info, Close, Punishment, Profile, Evidence and Staff Note buttons | Questions to the player and their answers are said in the thread; a verdict edits the post, turns the verdict buttons off and closes the thread |
 | Staff log | Who, the command as recorded, the player it names, when, case | — |
 | Staff chat | Every staff chat line from the game | Lines typed there go into staff chat in game, marked `[Discord]` |

@@ -298,6 +298,9 @@ public class StaffCore implements ModInitializer {
 			// how a moderation tool gets mistaken for an item-loss bug.
 			PENDING.announce(player, PENDING.drainFor(player));
 
+			// Staff hear about somebody back after a ban once, on the first join after it ended.
+			io.github.alphain24.staffcore.modules.punish.ReturnWatch.onJoin(mc, player);
+
 			greetStaff(player);
 		});
 

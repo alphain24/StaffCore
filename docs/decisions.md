@@ -2079,6 +2079,34 @@ Discord, naming the Discord account.
 
 ---
 
+## Back after a ban
+
+**Date:** 2026-09-16
+
+Phase 6.2: staff are told when somebody joins for the first time since a ban of theirs ended.
+
+**Noticed once, as a state on the ban.** `punishments.return_noticed_at` is set on the first join after
+the ban ran out or was lifted, and the announcement is made only if this join was the one to set it —
+so two joins close together, or a second server on the same file, cannot both announce it. Migration 31
+marks every ban already over, because the alternative is an upgrade that announces every player who was
+ever banned, one join at a time, for months. With `notifyReturningPlayers` off, bans are still
+marked on the join and nothing is said, so switching it back on does not replay the returns that
+happened meanwhile.
+
+**Bans only.** A mute that ends never kept anybody out, so there is no return to notice. IP bans are a
+separate table about addresses, not accounts, and are not included.
+
+**Where it goes.** In game, to staff with alerts on, through the alerts module, which also mirrors it to
+the webhook. To Discord, as a `PlayerReturned` event the bot posts in the alerts channel, the one staff
+watch for what needs attention. The ban's case, if it has one, gets a note, which reaches the case's
+thread the way every case note does.
+
+**The ban type names are written out** in the SQL rather than read from the enum, because migration 31
+runs before the game's items exist and the enum is built from them. `ReturnWatchTypesTest` fails if a
+ban type is added and the list is not.
+
+---
+
 ## Appeal codes end with a decision
 
 **Date:** 2026-09-16

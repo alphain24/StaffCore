@@ -4,6 +4,12 @@
 
 In progress. Ships with `staffcore-discord-1.1.0.jar`.
 
+### Added
+
+- **Staff are told when a banned player comes back**: the first join after a ban ran out or was
+  lifted is announced in game, in the Discord alerts channel and in the ban's case, once per ban.
+  `notifyReturningPlayers` (on). Bans already over when you upgrade are not announced.
+
 ### Changed
 
 - **An appeal code stops working once its appeal is accepted or rejected.** Rejecting asks how many

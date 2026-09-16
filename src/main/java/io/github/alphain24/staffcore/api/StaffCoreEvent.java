@@ -31,6 +31,20 @@ public sealed interface StaffCoreEvent {
 			String reversedBy, String reason, String caseId) implements StaffCoreEvent {}
 
 	/**
+	 * A player joined for the first time since a ban of theirs ended. Sent once per ban.
+	 *
+	 * @param type       the ban's type
+	 * @param endedAt    when it ran out or was lifted
+	 * @param howEnded   {@code EXPIRED} or {@code LIFTED}
+	 * @param liftedBy   who lifted it, or null when it ran out
+	 * @param liftReason why it was lifted, or null
+	 * @param caseId     the ban's case, or null
+	 */
+	record PlayerReturned(long at, UUID playerId, String playerName, long punishmentId, String type,
+			String reason, long endedAt, String howEnded, String liftedBy, String liftReason, String caseId)
+			implements StaffCoreEvent {}
+
+	/**
 	 * A player filed a report.
 	 *
 	 * @param caseId the case the report opened or joined, or null when it did neither

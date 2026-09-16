@@ -77,6 +77,11 @@ public class AlertsModule implements Module {
 		broadcast(server, "Performance", detail, Theme.WARN);
 	}
 
+	/** A player back for the first time since a ban of theirs ended. See ReturnWatch. */
+	public void onReturn(MinecraftServer server, String detail) {
+		broadcast(server, "Returning", detail, Theme.WARN);
+	}
+
 	public void onStaffAction(MinecraftServer server, String detail) {
 		broadcast(server, "Staff", detail, Theme.MUTED);
 	}

@@ -44,6 +44,8 @@ public final class Router implements StaffCoreListener {
 	static final int APPEAL = 0x5865F2;
 	static final int SEVERE = 0xFF5C57;
 	static final int SERIOUS = 0xFF8C42;
+	/** Worth a look, nothing wrong: somebody back after a ban. */
+	static final int NOTICE = 0x4FA3F7;
 
 	private static final Pattern CASE_ID = Pattern.compile("[0-9A-Z]{1,16}");
 	private static final Pattern SNOWFLAKE = Pattern.compile("\\d{15,22}");
@@ -98,6 +100,7 @@ public final class Router implements StaffCoreListener {
 		List<Outbound> out = switch (event) {
 			case StaffCoreEvent.PunishmentIssued e -> punishment(e);
 			case StaffCoreEvent.PunishmentReversed e -> reversed(e);
+			case StaffCoreEvent.PlayerReturned e -> returned(e);
 			case StaffCoreEvent.ReportFiled e -> report(e);
 			case StaffCoreEvent.ReportChanged e -> reportChanged(e);
 			case StaffCoreEvent.SignalRaised e -> signal(e);
@@ -171,6 +174,30 @@ public final class Router implements StaffCoreListener {
 		Embed embed = Embed.builder(Text.punishment(e.type()) + " reversed · " + e.targetName())
 				.color(CLEARED).description(line).footer("Punishment #" + e.id()).timestamp(e.at()).build();
 		return List.of(new Send(Channel.PUNISHMENTS, Message.of(embed), null, null, List.of()));
+	}
+
+	/**
+	 * Somebody back for the first time since a ban ended, in the alerts channel where staff watch for
+	 * what needs attention. The ban's case, if it has one, hears about it through the case's own note.
+	 */
+	private List<Outbound> returned(StaffCoreEvent.PlayerReturned e) {
+		if (off(Channel.ALERTS)) return List.of();
+		String how = "LIFTED".equals(e.howEnded())
+				? "Lifted by " + Text.safe(e.liftedBy() == null ? "staff" : e.liftedBy(), 100)
+						+ (e.liftReason() == null || e.liftReason().isBlank() ? "" : " — " + Text.safe(e.liftReason(), 300))
+						+ " · " + Text.relative(e.endedAt())
+				: "Ran out " + Text.relative(e.endedAt());
+		Embed.Builder embed = Embed.builder("Back after a ban · " + e.playerName())
+				.color(NOTICE)
+				.thumbnail(head(e.playerId()))
+				.description(Text.safe(e.playerName(), 100) + " joined for the first time since this ended.")
+				.field(Text.punishment(e.type()) + " #" + e.punishmentId(), Text.safe(
+						e.reason() == null || e.reason().isBlank() ? "No reason given" : e.reason(), 600))
+				.field("Ended", how)
+				.footer("Punishment #" + e.punishmentId())
+				.timestamp(e.at());
+		if (e.caseId() != null) embed.inline("Case", "`" + Text.safe(e.caseId(), 16) + "`");
+		return List.of(new Send(Channel.ALERTS, Message.of(embed.build()), null, null, List.of()));
 	}
 
 	// ------------------------------------------------------------------ reports
