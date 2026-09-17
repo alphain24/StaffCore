@@ -116,6 +116,7 @@ public final class DiscordEvidenceStore {
 				}
 			}
 		});
+		if (done) io.github.alphain24.staffcore.api.internal.CaseSnapshots.touched(caseId, false);
 		return done ? id[0] : -1;
 	}
 

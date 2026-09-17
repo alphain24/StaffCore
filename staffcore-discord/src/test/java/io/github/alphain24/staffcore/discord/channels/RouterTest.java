@@ -43,6 +43,8 @@ class RouterTest {
 		settings.appealsChannelId = "200000000000000004";
 		settings.staffLogChannelId = "200000000000000005";
 		settings.staffChatChannelId = "200000000000000006";
+		// Most tests here are about a server without the cases channel; the ones about it set it.
+		settings.casesChannelId = "";
 		settings.validate(Set.of());
 		book = new ThreadBook(null, () -> NOW);
 		router = new Router(settings, book, outbound -> { });
@@ -247,6 +249,82 @@ class RouterTest {
 				"x", "Mod", null, "CASE1234")));
 		assertEquals("[`CASE1234`](https://discord.com/channels/123456789012345678/400000000000000009)",
 				post.message().embed().field("Case"));
+	}
+
+	// ------------------------------------------------------------------ the cases channel
+
+	private static final String CASES = "200000000000000007";
+
+	private static io.github.alphain24.staffcore.api.DiscordCase snapshot(String id, String status, Long closedAt) {
+		return new io.github.alphain24.staffcore.api.DiscordCase(id, STEVE, "Steve_", status, "Hacking / cheating", 85,
+				"x-ray from security", NOW, "SYSTEM", null, closedAt, closedAt == null ? null : "Mod",
+				closedAt == null ? null : "banned", 3, 2, 1,
+				List.of(new io.github.alphain24.staffcore.api.DiscordCase.Event(NOW, "SYSTEM", "opened", "x-ray (85%)")));
+	}
+
+	@Test
+	@DisplayName("with a cases channel, a case gets a card with its thread, and every change edits the card")
+	void caseCard() {
+		settings.casesChannelId = CASES;
+		Send card = send(router.route(new StaffCoreEvent.CaseUpdated(NOW, snapshot("CASEBBBB", "open", null), true)));
+		assertEquals(Channel.CASES, card.channel());
+		assertEquals("casecard:CASEBBBB", card.key());
+		assertNotNull(card.threadName());
+		assertEquals(List.of("case:CASEBBBB"), card.sharing(), "the card does not take the case's thread");
+		assertEquals("Case CASEBBBB · Steve_", card.message().embed().title());
+
+		var changed = router.route(new StaffCoreEvent.CaseUpdated(NOW, snapshot("CASEBBBB", "actioned", NOW), false));
+		Update update = assertInstanceOf(Update.class, changed.get(0));
+		assertEquals("casecard:CASEBBBB", update.key());
+		assertEquals("Actioned", update.message().embed().field("Status"));
+
+		var line = router.route(new StaffCoreEvent.CaseChanged(NOW, "CASEBBBB", "note", "Mod", "looked at it", false));
+		assertEquals("case:CASEBBBB", assertInstanceOf(InThread.class, line.get(0)).key(),
+				"a line about the case did not go under its card");
+
+		settings.casesChannelId = "";
+		assertTrue(router.route(new StaffCoreEvent.CaseUpdated(NOW, snapshot("CASECCCC", "open", null), true)).isEmpty(),
+				"a card was posted with the cases channel empty");
+	}
+
+	@Test
+	@DisplayName("with a cases channel, alerts and reports leave the case's thread to its card")
+	void casesChannelTakesTheThread() {
+		settings.casesChannelId = CASES;
+		assertTrue(router.route(new StaffCoreEvent.CaseOpened(NOW, "CASEDDDD", STEVE, "Steve_", "griefing", "Mod",
+				"saw it")).isEmpty(), "a case opened by hand was announced in alerts as well as by its card");
+
+		router.route(new StaffCoreEvent.CaseUpdated(NOW, snapshot("CASEEEEE", "open", null), true));
+		var alert = router.route(new StaffCoreEvent.SignalRaised(NOW, "XRAY", STEVE, "Steve_", 85, "dug", "CASEEEEE",
+				true));
+		Send post = send(alert);
+		assertEquals(Channel.ALERTS, post.channel());
+		assertEquals(null, post.threadName(), "the alert took a thread the card already has");
+		assertTrue(post.message().embed().field("Case").contains("<#" + CASES + ">"), post.message().embed().field("Case"));
+		assertTrue(alert.stream().anyMatch(o -> o instanceof InThread line && line.key().equals("case:CASEEEEE")),
+				"the alert was not written under the case's card");
+
+		Send report = send(router.route(report(30, "flying", "CASEFFFF")));
+		assertTrue(report.sharing().isEmpty(), "the report took the case's thread with a cases channel set");
+	}
+
+	@Test
+	@DisplayName("a closed case's card keeps the looking buttons and turns off holding the player")
+	void closedCard() {
+		Outbound.Message open = CaseCard.message(snapshot("CASEGGGG", "open", null), null);
+		assertTrue(open.rows().get(1).stream().noneMatch(Outbound.Button::disabled));
+		assertEquals(List.of("sc:case:CASEGGGG", "sc:caseev:CASEGGGG", "sc:notes:" + STEVE, "sc:history:" + STEVE,
+				"sc:profile:" + STEVE), open.rows().get(0).stream().map(Outbound.Button::id).toList());
+		assertEquals(List.of("sc:freeze:" + STEVE, "sc:unfreeze:" + STEVE, "sc:casenote:CASEGGGG"),
+				open.rows().get(1).stream().map(Outbound.Button::id).toList());
+
+		Outbound.Message closed = CaseCard.message(snapshot("CASEGGGG", "cleared", NOW), null);
+		assertTrue(closed.rows().get(0).stream().noneMatch(Outbound.Button::disabled));
+		assertTrue(closed.rows().get(1).stream().allMatch(Outbound.Button::disabled));
+		assertEquals(Router.CLEARED, closed.embed().color());
+		assertTrue(closed.embed().field("Closed").contains("Mod"), closed.embed().field("Closed"));
+		assertEquals("3 signals · 2 pieces of evidence · 1 linked record", open.embed().field("In this case"));
+		assertTrue(open.embed().field("Latest").contains("**StaffCore** opened"), open.embed().field("Latest"));
 	}
 
 	// ------------------------------------------------------------------ appeals

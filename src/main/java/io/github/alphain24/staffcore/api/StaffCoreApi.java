@@ -46,8 +46,11 @@ public final class StaffCoreApi {
 	 * staff panel, and {@link #configFolder}.
 	 * <p>
 	 * 5: the 1.2.0 additions — the wait a rejection sets, and what follows in {@link DiscordAccess}.
+	 * <p>
+	 * 6: the 1.3.0 additions — {@link StaffCoreEvent.CaseUpdated} for the cases channel, and the case
+	 * card's calls on {@link DiscordAccess}.
 	 */
-	public static final int VERSION = 5;
+	public static final int VERSION = 6;
 
 	private static final List<StaffCoreListener> LISTENERS = new CopyOnWriteArrayList<>();
 	private static final Map<String, Supplier<List<String>>> STATUS = new ConcurrentHashMap<>();

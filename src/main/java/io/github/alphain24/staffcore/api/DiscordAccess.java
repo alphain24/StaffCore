@@ -180,7 +180,7 @@ public final class DiscordAccess {
 		return DiscordGate.history(user, player);
 	}
 
-	/** A player's notes, newest first, retracted ones included and marked. */
+	/** A player's notes, newest first, retracted ones included and marked. The player by name or by id. */
 	public static CompletableFuture<DiscordAnswer<List<DiscordNote>>> notes(DiscordUser user, String player) {
 		return DiscordGate.notes(user, player);
 	}
@@ -193,6 +193,7 @@ public final class DiscordAccess {
 		return DiscordGate.freeze(user, player);
 	}
 
+	/** Releases a frozen player who is online, by name or by id. */
 	public static CompletableFuture<DiscordResult> unfreeze(DiscordUser user, String player) {
 		return DiscordGate.unfreeze(user, player);
 	}
@@ -230,6 +231,11 @@ public final class DiscordAccess {
 	/** A case by its id, with the latest of its history. */
 	public static CompletableFuture<DiscordAnswer<DiscordCase>> caseView(DiscordUser user, String caseId) {
 		return DiscordGate.caseView(user, caseId);
+	}
+
+	/** A line in a case's history, as {@code /staff case <id> note} writes one. */
+	public static CompletableFuture<DiscordResult> caseNote(DiscordUser user, String caseId, String text) {
+		return DiscordGate.caseNote(user, caseId, text);
 	}
 
 	/** The evidence filed on a case, by the case's id. */

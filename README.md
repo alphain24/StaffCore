@@ -536,6 +536,7 @@ companion is doing instead.
 | `outboundQueueSize` | `500` | How many posts may wait while the bot cannot post (50–10000). Past it the oldest are dropped, logged and counted. Higher keeps more of a long outage, at a few kilobytes a post. |
 | `punishmentsChannelId` | `create` | Where punishments are posted. Empty posts none. |
 | `reportsChannelId` | `create` | Where reports are posted, with a thread and buttons. Empty posts none, and reports reach Discord only as alerts. |
+| `casesChannelId` | `create` | A card per case with its thread and buttons — see Channels. Empty posts no cards, and cases keep their threads in the alerts channel and under reports. |
 | `alertsChannelId` | `create` | Where detector signals are posted and where cases get their threads. Empty posts none, and only cases a report opened get a thread. |
 | `appealsChannelId` | `create` | Where appeals are posted for staff, each with a thread and buttons. Setting it offers `/appeal` to players and has the bot read direct messages sent to it, which is where players answer questions and hear verdicts. Empty takes no appeals from Discord. |
 | `appealIntakeChannelId` | `create` | The players' appeal channel: `/appeal` is answered only there, and the bot keeps a message in it with an **Appeal** button that opens the form. `create` makes a public `#appeal` that everybody can read and only the bot can write in. Empty answers `/appeal` anywhere in the server and posts no button. |
@@ -566,13 +567,16 @@ posting.
 |---|---|---|
 | Punishments | Reason, staff, the player and their prior count, duration, expiry, case, punishment id | A reversal edits the post |
 | Reports | Reason, player and prior count, reporter, assignee, status, server, when, case; a thread; Claim, Resolve, Escalate, Profile, History, Add Note and Freeze buttons | Claiming and resolving edit the post and are said in the thread; resolving turns the report's own buttons off and closes the thread |
-| Alerts | The signal, its confidence and its case; a thread when it opened the case. Also a player back for the first time since a ban ended, and how it ended | Notes, assignments, punishments and closing are said in the case's thread; weaker signals about the case go there too |
+| Alerts | The signal, its confidence and its case; a thread when it opened the case (unless there is a cases channel). Also a player back for the first time since a ban ended, and how it ended | Notes, assignments, punishments and closing are said in the case's thread; weaker signals about the case go there too |
+| Cases | A card per case: who, status, kind, severity, assignee, when and by whom it was opened, how many signals, pieces of evidence and linked records, the latest of its history; the case's thread; Details, Evidence, Notes, History, Profile, Freeze, Unfreeze and Add Note buttons | The card is edited whenever the case changes; the thread gets every note, assignment, signal and verdict, and closes with the case |
 | Appeals | The player, the Discord account that filed and whose Minecraft account it is linked to, the punishment with its reason, who issued it and when, the appeal, evidence count, when, case; a thread; Accept, Reject, Request More Info, Close, Punishment, Profile, Evidence and Staff Note buttons | Questions to the player and their answers are said in the thread; a verdict edits the post, turns the verdict buttons off and closes the thread |
 | Staff log | Who, the command as recorded, the player it names, when, case | — |
 | Staff chat | Every staff chat line from the game | Lines typed there go into staff chat in game, marked `[Discord]` |
 
-A case opened by a report is discussed in the report's thread rather than a second one. Cases
-opened by hand get a post in the alerts channel.
+**With a cases channel** (the default), every case has its card there and its thread under the card;
+alerts and reports link to it rather than starting a thread of their own. A case from before the
+channel was set gets its card the first time it changes. **Without one**, a case opened by a report is
+discussed in the report's thread, and other cases get a post and a thread in the alerts channel.
 
 **The buttons are the in-game actions, through the same checks.** Claim takes a report over from
 whoever holds it, as clicking it in the queue does, and Resolve closes it; both need
@@ -583,6 +587,12 @@ onto the player's record and their open case, as `/staff note` does. Freeze (`st
 player who is online. Every one is subject to the permission rules below and recorded against the
 linked account, lookups included. Profile shows conduct only: nothing drawn from where a player
 connects from, and not the accounts linked to them that way.
+
+**A case's card** (`#cases`) has Details (`staff.gui`) — the case and the latest of its history, as
+`/staff case` — Evidence (`staff.gui`), Notes (`staff.notes.view`), History and Profile on the first
+row, and Freeze and Unfreeze (`staff.freeze`) and Add Note on the second. Add Note there writes into
+the case's history, as `/staff case <id> note` does in game, and needs `staff.gui`. The second row is
+switched off once the case is closed.
 
 Only linked staff holding `staff.chat` are bridged into staff chat; anybody else gets a short reply
 that disappears. Lines from the game are sent with mentions switched off. **`/staffchat <message>`**

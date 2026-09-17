@@ -158,6 +158,7 @@ public final class CaseEvidence {
 		if (!ready() || caseId == null || draft == null) return -1;
 		long[] id = { -1 };
 		StaffCore.storage().inTransaction(conn -> id[0] = insert(conn, caseId, draft, actor));
+		if (id[0] > 0) io.github.alphain24.staffcore.api.internal.CaseSnapshots.touched(caseId, false);
 		return id[0];
 	}
 

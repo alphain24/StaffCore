@@ -2594,6 +2594,7 @@
               <tr><td class="mono">punishmentsChannelId</td><td class="mono">create</td><td class="wrap">Reason, staff, the player and their prior count, duration, expiry, case and id. A reversal edits the post.</td></tr>
               <tr><td class="mono">reportsChannelId</td><td class="mono">create</td><td class="wrap">Each report with a thread and Claim, Resolve, Escalate, Profile, History, Add Note and Freeze buttons. Claims and resolutions edit the post and are said in the thread. Empty: reports reach Discord only as alerts.</td></tr>
               <tr><td class="mono">alertsChannelId</td><td class="mono">create</td><td class="wrap">Detector signals, and a thread for every case. Notes, assignments, punishments and closing go into the case's thread. Also a player back for the first time since a ban ended.</td></tr>
+              <tr><td class="mono">casesChannelId</td><td class="mono">create</td><td class="wrap">A card per case: who, status, kind, severity, assignee, what is in it and the latest of its history, edited whenever the case changes, with the case's thread under it and Details, Evidence, Notes, History, Profile, Freeze, Unfreeze and Add Note buttons. Set, alerts and reports link to the card rather than starting a case thread. Empty: no cards, and case threads stay in alerts and under reports.</td></tr>
               <tr><td class="mono">appealsChannelId</td><td class="mono">create</td><td class="wrap">Each appeal with the original punishment spelled out, a thread, and Accept, Reject, Request More Info, Close, Punishment, Profile, Evidence and Staff Note buttons. Setting it offers <code>/appeal</code> and has the bot read direct messages sent to it. Empty takes no appeals from Discord.</td></tr>
               <tr><td class="mono">appealIntakeChannelId</td><td class="mono">create</td><td class="wrap">The players' appeal channel, with a message whose <strong>Appeal</strong> button opens the form; <code>/appeal</code> is answered only there. <code>create</code> makes a public <code>#appeal</code> that only the bot can type in. Empty answers <code>/appeal</code> anywhere and posts no button.</td></tr>
               <tr><td class="mono">staffLogChannelId</td><td class="mono">create</td><td class="wrap">Every audited staff action: who, the command, the player it names, when, the case. One post per command.</td></tr>
@@ -2618,7 +2619,15 @@
           account, lookups included.
         </p>
         <p>
-          A case opened by a report is discussed in the report's thread. Nothing a player typed can ping or
+          On a case's card, Details and Evidence need <code>staff.gui</code>, Notes
+          <code>staff.notes.view</code>, Freeze and Unfreeze <code>staff.freeze</code>, and Add Note writes
+          into the case's history as <code>/staff case &lt;id&gt; note</code> does, behind
+          <code>staff.gui</code>. Freeze, Unfreeze and Add Note switch off once the case is closed.
+        </p>
+        <p>
+          With a cases channel, every case's thread is under its card, and a case from before the channel was
+          set gets its card the first time it changes. Without one, a case opened by a report is discussed in
+          the report's thread. Nothing a player typed can ping or
           link: text is escaped and every message is sent with mentions disabled. Where each post went is kept
           in <code>world/staffcore-discord/threads.json</code> for 90 days, so edits survive a restart.
         </p>

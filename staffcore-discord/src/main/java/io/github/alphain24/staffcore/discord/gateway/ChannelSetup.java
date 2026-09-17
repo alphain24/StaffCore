@@ -61,11 +61,12 @@ public final class ChannelSetup {
 	static final Set<Permission> TO_CREATE = EnumSet.of(Permission.MANAGE_CHANNEL, Permission.MANAGE_ROLES);
 
 	/** The name each channel is made with. Staff can rename it afterwards; the bot goes by its id. */
-	static String name(Channel channel) {
+	public static String name(Channel channel) {
 		return switch (channel) {
 			case PUNISHMENTS -> "punishments";
 			case REPORTS -> "reports";
 			case ALERTS -> "alerts";
+			case CASES -> "cases";
 			case APPEALS -> "appeals";
 			case STAFF_LOG -> "staff-log";
 			case STAFF_CHAT -> "staff-chat";

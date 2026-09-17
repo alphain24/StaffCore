@@ -98,6 +98,9 @@ public final class CaseStore {
 					caseId, opened);
 		});
 
+		// After the commit, and before the signal is announced, so a companion draws the case before it
+		// posts anything about it.
+		if (result[0].caseId() != null) io.github.alphain24.staffcore.api.internal.CaseSnapshots.touched(result[0].caseId(), result[0].openedCase());
 		return result[0];
 	}
 
@@ -143,6 +146,7 @@ public final class CaseStore {
 				io.github.alphain24.staffcore.api.StaffCoreApi.publish(new io.github.alphain24.staffcore.api.StaffCoreEvent.CaseOpened(
 						System.currentTimeMillis(), id[0], subject, subjectName, category.label(),
 						openedBy, summary));
+				io.github.alphain24.staffcore.api.internal.CaseSnapshots.touched(id[0], true);
 			} else {
 				changed(id[0], "note", openedBy, "asked to open a " + category.label() + " case: " + summary,
 						false);
@@ -168,7 +172,7 @@ public final class CaseStore {
 			return false;
 		}
 
-		return StaffCore.storage().inTransaction(conn -> {
+		boolean committed = StaffCore.storage().inTransaction(conn -> {
 			try (PreparedStatement ps = conn.prepareStatement(
 					"UPDATE cases SET category = ? WHERE id = ?")) {
 				ps.setString(1, category.stored());
@@ -178,6 +182,8 @@ public final class CaseStore {
 			appendEvent(conn, caseId, actor, "category",
 					current.get().category().label() + " -> " + category.label());
 		});
+		if (committed) io.github.alphain24.staffcore.api.internal.CaseSnapshots.touched(caseId, false);
+		return committed;
 	}
 
 	// ------------------------------------------------------------------- the rules
@@ -309,6 +315,7 @@ public final class CaseStore {
 				appendEvent(conn, id, Case.SYSTEM, "stale",
 						"no signals or staff activity for " + days + " days");
 			});
+			io.github.alphain24.staffcore.api.internal.CaseSnapshots.touched(id, false);
 		}
 		if (!going.isEmpty()) {
 			StaffCore.LOGGER.info("[Cases] {} case(s) went stale after {} days.", going.size(), days);
@@ -363,6 +370,7 @@ public final class CaseStore {
 	private static void changed(String caseId, String kind, String actor, String body, boolean closed) {
 		io.github.alphain24.staffcore.api.StaffCoreApi.publish(new io.github.alphain24.staffcore.api.StaffCoreEvent.CaseChanged(
 				System.currentTimeMillis(), caseId, kind, actor, body, closed));
+		io.github.alphain24.staffcore.api.internal.CaseSnapshots.touched(caseId, false);
 	}
 
 	public boolean assign(String caseId, String assignee, String actor) {
@@ -398,7 +406,7 @@ public final class CaseStore {
 	public boolean link(String caseId, String entityType, String entityId, String actor) {
 		if (!ready()) return false;
 
-		return StaffCore.storage().inTransaction(conn -> {
+		boolean committed = StaffCore.storage().inTransaction(conn -> {
 			try (PreparedStatement ps = conn.prepareStatement("""
 					INSERT OR IGNORE INTO case_links (case_id, entity_type, entity_id, linked_at)
 					VALUES (?,?,?,?)
@@ -411,6 +419,8 @@ public final class CaseStore {
 			}
 			appendEvent(conn, caseId, actor, "linked", entityType + " " + entityId);
 		});
+		if (committed) io.github.alphain24.staffcore.api.internal.CaseSnapshots.touched(caseId, false);
+		return committed;
 	}
 
 	// --------------------------------------------------------------------- reading

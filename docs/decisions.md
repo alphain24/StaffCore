@@ -2079,6 +2079,39 @@ Discord, naming the Discord account.
 
 ---
 
+## A card per case
+
+**Date:** 2026-09-17
+
+Asked for: "when a case is made we need a case channel with proper embeds to freeze the player and
+just to see all the stuff that is in a case with proper embeds like we have on reports".
+
+**Drawn from a snapshot, not from events.** Reports have a card because the report events carry
+everything the card shows. A case changes in many more ways: signals, evidence, links, notes,
+assignment, status. Rebuilding its state from those in the companion would be a second case model.
+So StaffCore sends `CaseUpdated` with the case as `/staff case` shows it (`DiscordCase`, from
+`CaseSnapshots`, which that command now uses too) after every committed change, and only while
+somebody is listening. The companion posts the card the first time it sees a case and edits it after
+that.
+
+**The case's thread moves under the card.** With a cases channel, the card takes the `case:<id>` thread
+key. Alerts and reports link to the case instead of starting its thread, so there is one place a case
+is discussed. A case that already had a thread, from before the channel was set, keeps it, and its
+card is posted without one. Without a cases channel nothing changes.
+
+**The buttons are the existing actions.** Details, Evidence, Notes, History and Profile are the same
+reads as the slash commands. Freeze and Unfreeze are the same gated calls, and notes and unfreeze now
+accept a player's id as well as a name, which is what a button carries. Add Note is new from Discord,
+and copies the in-game command it stands for: `/staff case <id> note` writes a line in the case's
+history behind `staff.gui`, so `CASE_NOTE` does exactly that. It is not `NOTE`, which writes onto the
+player's record behind `staff.notes`.
+
+**A bug it found.** The card's game test closed a case and the card still said open. `CaseStore.read`
+called `wasNull()` for `closed_at` after reading `assigned_to`, so the closing time depended on whether
+anybody was assigned. That is fixed separately, with its own test.
+
+---
+
 ## Leaving while frozen
 
 **Date:** 2026-09-17

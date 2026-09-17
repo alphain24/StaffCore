@@ -341,7 +341,7 @@ public final class DiscordGate {
 	public static CompletableFuture<DiscordAnswer<List<io.github.alphain24.staffcore.api.DiscordNote>>> notes(
 			DiscordUser user, String player) {
 		return read(user, DiscordOperation.VIEW_NOTES, (server, resolved) -> {
-			Named named = named(server, player);
+			Named named = namedOrId(server, player);
 			if (named.player() == null) return DiscordAnswer.no(named.refusal());
 			List<io.github.alphain24.staffcore.api.DiscordNote> out = new ArrayList<>();
 			for (var note : Mods.notes().list(named.player().id())) {
@@ -399,7 +399,7 @@ public final class DiscordGate {
 
 	public static CompletableFuture<DiscordResult> unfreeze(DiscordUser user, String player) {
 		return act(user, DiscordOperation.UNFREEZE, (server, resolved) -> {
-			Named named = named(server, player);
+			Named named = namedOrId(server, player);
 			return named.player() == null ? DiscordResult.no(named.refusal())
 					: freezeOn(server, resolved, user, named.player().id(), false);
 		});
@@ -543,27 +543,33 @@ public final class DiscordGate {
 	}
 
 	/** How many of a case's history lines one answer carries. */
-	static final int CASE_EVENTS = 10;
+	static final int CASE_EVENTS = CaseSnapshots.EVENTS;
 
 	public static CompletableFuture<DiscordAnswer<io.github.alphain24.staffcore.api.DiscordCase>> caseView(
 			DiscordUser user, String caseId) {
 		return read(user, DiscordOperation.VIEW_CASE, (server, resolved) -> {
-			var store = Mods.cases().store();
 			var found = caseFor(caseId);
 			if (found == null) return DiscordAnswer.no("There is no case " + (caseId == null ? "" : caseId.strip()) + ".");
-
-			List<io.github.alphain24.staffcore.api.DiscordCase.Event> events = new ArrayList<>();
-			List<io.github.alphain24.staffcore.modules.cases.CaseStore.Event> history = store.eventsFor(found.id());
-			for (int i = history.size() - 1; i >= 0 && events.size() < CASE_EVENTS; i--) {
-				var e = history.get(i);
-				events.add(new io.github.alphain24.staffcore.api.DiscordCase.Event(e.at(), e.actor(), e.kind(), e.body()));
-			}
 			audit(resolved, user, "case " + found.id() + " " + found.subjectName(), found.id());
-			return DiscordAnswer.of(new io.github.alphain24.staffcore.api.DiscordCase(found.id(), found.subjectId(),
-					found.subjectName(), found.status().stored(), found.category() == null ? "other" : found.category().label(),
-					found.severity(), found.summary(), found.openedAt(), found.openedBy(), found.assignedTo(),
-					found.closedAt(), found.closedBy(), found.resolution(), store.signalsFor(found.id()).size(),
-					Mods.cases().evidence().forCase(found.id()).size(), store.linksFor(found.id()).size(), events));
+			return DiscordAnswer.of(CaseSnapshots.of(found));
+		});
+	}
+
+	/**
+	 * A line in a case's history, as {@code /staff case <id> note} writes one in game: on the case, behind
+	 * the case commands' node.
+	 */
+	public static CompletableFuture<DiscordResult> caseNote(DiscordUser user, String caseId, String text) {
+		return act(user, DiscordOperation.CASE_NOTE, (server, resolved) -> {
+			var found = caseFor(caseId);
+			if (found == null) return DiscordResult.no("There is no case " + (caseId == null ? "" : caseId.strip()) + ".");
+			String clean = cleanText(text, NOTE_LIMIT);
+			if (clean.isEmpty()) return DiscordResult.no("A note needs some text.");
+			if (!Mods.cases().store().note(found.id(), resolved.standing().minecraftName(), clean)) {
+				return DiscordResult.no("The note could not be saved. The server log says why.");
+			}
+			audit(resolved, user, "case " + found.id() + " note", found.id());
+			return new DiscordResult(true, "Noted on case " + found.id() + ".");
 		});
 	}
 

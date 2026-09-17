@@ -1357,6 +1357,17 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			case "profile" -> answer(event, DiscordAccess.profile(user, clicked.player()).thenApply(Replies::profile));
 			case "history" -> answer(event, DiscordAccess.history(user, clicked.player()).thenApply(Replies::history));
 			case "freeze" -> answer(event, DiscordAccess.freeze(user, clicked.player()).thenApply(DiscordResult::message));
+			case "unfreeze" -> answer(event, DiscordAccess.unfreeze(user, clicked.player().toString())
+					.thenApply(DiscordResult::message));
+			case "notes" -> answer(event, DiscordAccess.notes(user, clicked.player().toString()).thenApply(Replies::notes));
+			case "case" -> answer(event, DiscordAccess.caseView(user, clicked.caseId()).thenApply(Replies::caseView));
+			case "caseev" -> answer(event, DiscordAccess.caseEvidence(user, clicked.caseId()).thenApply(Replies::evidence));
+			case "casenote" -> event.replyModal(Modal.create("sc:casenote:" + clicked.caseId(), "Note on case " + clicked.caseId())
+					.addComponents(Label.of("Note", TextInput.create("text", TextInputStyle.PARAGRAPH)
+							.setRequired(true).setMaxLength(256)
+							.setPlaceholder("Goes into the case's history, as /staff case <id> note does in game")
+							.build()))
+					.build()).queue();
 			case "note" -> event.replyModal(Modal.create("sc:note:" + clicked.player(), "Add a note")
 					.addComponents(Label.of("Note", TextInput.create("text", TextInputStyle.PARAGRAPH)
 							.setRequired(true).setMaxLength(256)
@@ -1399,6 +1410,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		if (clicked == null) return;
 		switch (clicked.action()) {
 			case "note" -> answer(event, DiscordAccess.addNote(user, clicked.player(), value(event, "text"))
+					.thenApply(DiscordResult::message));
+			case "casenote" -> answer(event, DiscordAccess.caseNote(user, clicked.caseId(), value(event, "text"))
 					.thenApply(DiscordResult::message));
 			case "info" -> answer(event, DiscordAccess.requestAppealInfo(user, clicked.id(), value(event, "question"))
 					.thenApply(DiscordResult::message));
@@ -1527,9 +1540,11 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 
 	/**
 	 * A button or form id the bot made: {@code sc:<action>:<id>}, where the id is a report, appeal or
-	 * punishment number, or a player's uuid.
+	 * punishment number, a player's uuid, or a case id.
 	 */
-	record Clicked(String action, long id, UUID player) {
+	record Clicked(String action, long id, UUID player, String caseId) {
+
+		private static final java.util.regex.Pattern CASE_ID = java.util.regex.Pattern.compile("[0-9A-Z]{1,16}");
 
 		static Clicked parse(String raw) {
 			if (raw == null || !raw.startsWith("sc:")) return null;
@@ -1539,8 +1554,11 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 				return switch (parts[1]) {
 					case "claim", "resolve", "escalate", "accept", "reject", "close", "info", "punishment", "evidence",
 							"appealpanel", "appealform" ->
-							new Clicked(parts[1], Long.parseLong(parts[2]), null);
-					case "profile", "history", "note", "freeze" -> new Clicked(parts[1], 0, UUID.fromString(parts[2]));
+							new Clicked(parts[1], Long.parseLong(parts[2]), null, null);
+					case "profile", "history", "note", "freeze", "unfreeze", "notes" ->
+							new Clicked(parts[1], 0, UUID.fromString(parts[2]), null);
+					case "case", "caseev", "casenote" ->
+							CASE_ID.matcher(parts[2]).matches() ? new Clicked(parts[1], 0, null, parts[2]) : null;
 					default -> null;
 				};
 			} catch (IllegalArgumentException e) {

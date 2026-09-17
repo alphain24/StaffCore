@@ -13,7 +13,10 @@ public sealed interface Outbound {
 
 	/** Which of the configured channels. */
 	enum Channel {
-		PUNISHMENTS, REPORTS, ALERTS, APPEALS, STAFF_LOG, STAFF_CHAT,
+		PUNISHMENTS, REPORTS, ALERTS,
+		/** A card per case, kept up to date, with the case's thread under it. */
+		CASES,
+		APPEALS, STAFF_LOG, STAFF_CHAT,
 		/** Not posted to: the punishment panel's private channel. */
 		PUNISH_PANEL
 	}

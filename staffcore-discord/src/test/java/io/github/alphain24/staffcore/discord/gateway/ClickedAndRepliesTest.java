@@ -31,6 +31,16 @@ class ClickedAndRepliesTest {
 		assertEquals("appealpanel", JdaGateway.Clicked.parse(
 				io.github.alphain24.staffcore.discord.channels.AppealPanel.BUTTON_ID).action());
 		assertEquals("reject", JdaGateway.Clicked.parse("sc:reject:4").action());
+
+		// A case card's buttons: case ids and players.
+		assertEquals("CASE1234", JdaGateway.Clicked.parse("sc:case:CASE1234").caseId());
+		assertEquals("CASE1234", JdaGateway.Clicked.parse("sc:caseev:CASE1234").caseId());
+		assertEquals("casenote", JdaGateway.Clicked.parse("sc:casenote:CASE1234").action());
+		assertEquals(null, JdaGateway.Clicked.parse("sc:case:../etc"), "a case id that is not one was read");
+		assertEquals(null, JdaGateway.Clicked.parse("sc:case:case1234"), "a lower-case case id was read");
+		assertEquals(STEVE, JdaGateway.Clicked.parse("sc:unfreeze:" + STEVE).player());
+		assertEquals(STEVE, JdaGateway.Clicked.parse("sc:notes:" + STEVE).player());
+		assertEquals(null, JdaGateway.Clicked.parse("sc:unfreeze:Steve_"), "a name was read as a player id");
 		assertEquals(null, JdaGateway.waitDays("400"), "a wait over a year was accepted");
 		assertEquals(null, JdaGateway.waitDays("-1"));
 		assertEquals(null, JdaGateway.waitDays("seven"));

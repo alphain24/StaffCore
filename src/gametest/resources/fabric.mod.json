@@ -55,7 +55,8 @@
 			"io.github.alphain24.staffcore.gametest.PermissionApiTests",
 			"io.github.alphain24.staffcore.gametest.DiscordBypassTests",
 			"io.github.alphain24.staffcore.gametest.FreezeScreenTests",
-			"io.github.alphain24.staffcore.gametest.FreezeEvasionTests"
+			"io.github.alphain24.staffcore.gametest.FreezeEvasionTests",
+			"io.github.alphain24.staffcore.gametest.DiscordCaseCardTests"
 		]
 	},
 	"depends": {

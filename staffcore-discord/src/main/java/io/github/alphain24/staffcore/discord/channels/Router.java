@@ -105,6 +105,7 @@ public final class Router implements StaffCoreListener {
 			case StaffCoreEvent.ReportChanged e -> reportChanged(e);
 			case StaffCoreEvent.SignalRaised e -> signal(e);
 			case StaffCoreEvent.CaseOpened e -> caseOpened(e);
+			case StaffCoreEvent.CaseUpdated e -> caseUpdated(e);
 			case StaffCoreEvent.CaseChanged e -> caseChanged(e);
 			case StaffCoreEvent.AppealFiled e -> appeal(e);
 			case StaffCoreEvent.AppealDecided e -> appealDecided(e);
@@ -206,7 +207,8 @@ public final class Router implements StaffCoreListener {
 		if (off(Channel.REPORTS)) return List.of();
 
 		String caseKey = e.caseId() == null ? null : "case:" + e.caseId();
-		boolean caseSharesThisThread = caseKey != null && !hasThread(caseKey);
+		// With a cases channel, the case's thread is under its card there, never under the report.
+		boolean caseSharesThisThread = off(Channel.CASES) && caseKey != null && !hasThread(caseKey);
 
 		Embed.Builder embed = Embed.builder("Report #" + e.id() + " · " + e.targetName())
 				.color(REPORT)
@@ -299,11 +301,13 @@ public final class Router implements StaffCoreListener {
 				.thumbnail(head(e.subjectId()))
 				.inline("Confidence", e.confidence() + "/100")
 				.inline("Case", e.caseId() == null ? "None — below the case threshold"
-						: e.openedCase() ? code(e.caseId()) + " opened — in this alert's thread" : caseLink(e.caseId()))
+						: e.openedCase() ? code(e.caseId()) + " opened — " + (off(Channel.CASES) ? "in this alert's thread"
+								: "its card is in " + channelMention(Channel.CASES))
+						: caseLink(e.caseId()))
 				.timestamp(e.at())
 				.build();
 
-		if (e.openedCase()) {
+		if (e.openedCase() && off(Channel.CASES)) {
 			return List.of(new Send(Channel.ALERTS, Message.of(embed), caseKey,
 					"Case " + e.caseId() + " — " + e.subjectName(), List.of()));
 		}
@@ -314,7 +318,8 @@ public final class Router implements StaffCoreListener {
 	}
 
 	private List<Outbound> caseOpened(StaffCoreEvent.CaseOpened e) {
-		if (off(Channel.ALERTS)) return List.of();
+		// With a cases channel, the case's card is its announcement; it arrives as CaseUpdated.
+		if (off(Channel.ALERTS) || !off(Channel.CASES)) return List.of();
 		Embed embed = Embed.builder("Case " + e.caseId() + " opened · " + e.subjectName())
 				.description(Text.safe(e.summary(), 2000))
 				.color(REPORT)
@@ -325,6 +330,27 @@ public final class Router implements StaffCoreListener {
 				.build();
 		return List.of(new Send(Channel.ALERTS, Message.of(embed), "case:" + e.caseId(),
 				"Case " + e.caseId() + " — " + e.subjectName(), List.of()));
+	}
+
+	/**
+	 * A case's card: posted the first time the case is seen — when it opens, or the first time an older
+	 * case changes — and edited every time after. The card takes the case's thread unless the case already
+	 * has one somewhere, from before the channel was set.
+	 */
+	private List<Outbound> caseUpdated(StaffCoreEvent.CaseUpdated e) {
+		var snapshot = e.snapshot();
+		if (off(Channel.CASES) || snapshot == null || snapshot.id() == null || !CASE_ID.matcher(snapshot.id()).matches()) {
+			return List.of();
+		}
+		String key = CaseCard.key(snapshot.id());
+		Message card = CaseCard.message(snapshot, head(snapshot.subjectId()));
+		if (posted(key) != null) return List.of(new Update(key, card));
+
+		String caseKey = "case:" + snapshot.id();
+		boolean takeThread = !hasThread(caseKey);
+		return List.of(new Send(Channel.CASES, card, key,
+				takeThread ? "Case " + snapshot.id() + " — " + Text.clip(String.valueOf(snapshot.subjectName()), 60) : null,
+				takeThread ? List.of(caseKey) : List.of()));
 	}
 
 	private List<Outbound> caseChanged(StaffCoreEvent.CaseChanged e) {
@@ -503,6 +529,13 @@ public final class Router implements StaffCoreListener {
 
 	private boolean off(Channel channel) {
 		return settings.channelId(channel).isEmpty();
+	}
+
+	/** A channel as a link when its id is known, and by name while it is still to be made. */
+	private String channelMention(Channel channel) {
+		String id = settings.channelId(channel);
+		return SNOWFLAKE.matcher(id).matches() ? "<#" + id + ">"
+				: "#" + io.github.alphain24.staffcore.discord.gateway.ChannelSetup.name(channel);
 	}
 
 	private String head(UUID player) {

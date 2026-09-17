@@ -42,6 +42,8 @@ public enum DiscordOperation {
 	PUNISH_PANEL(Nodes.DISCORD_PUNISH_PANEL, true),
 	/** Filing evidence on a case, as {@code /staff case <id> evidence} does in game. */
 	ADD_EVIDENCE(Nodes.STAFF_GUI, true),
+	/** A line in a case's history, as {@code /staff case <id> note} writes one in game. */
+	CASE_NOTE(Nodes.STAFF_GUI, true),
 
 	// ---- reports and staff chat
 	CLAIM_REPORT(Nodes.REPORT_VIEW, true),

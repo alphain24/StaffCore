@@ -80,6 +80,14 @@ public sealed interface StaffCoreEvent {
 			String openedBy, String summary) implements StaffCoreEvent {}
 
 	/**
+	 * How a case looks now, sent whenever anything changes it: opened, a signal or evidence added, a
+	 * note, an assignment, a new status, a link. What the case's card in Discord is drawn from.
+	 *
+	 * @param opened true when this change was the case being opened
+	 */
+	record CaseUpdated(long at, DiscordCase snapshot, boolean opened) implements StaffCoreEvent {}
+
+	/**
 	 * Something was written into a case's history by a person: a note, an assignment, a change of
 	 * status.
 	 *

@@ -187,6 +187,7 @@ Open the file the server wrote and fill it in. A complete example — your ids w
   "punishmentsChannelId": "create",
   "reportsChannelId": "create",
   "alertsChannelId": "create",
+  "casesChannelId": "create",
   "appealsChannelId": "create",
   "appealIntakeChannelId": "create",
   "staffLogChannelId": "create",
@@ -221,7 +222,8 @@ When the bot connects, it makes a **StaffCore** category and puts every staff ch
 |---|---|---|
 | `#punishments` | `punishmentsChannelId` | Every ban, mute, warning and kick |
 | `#reports` | `reportsChannelId` | Player reports, with buttons |
-| `#alerts` | `alertsChannelId` | Detector alerts, and a thread per case |
+| `#alerts` | `alertsChannelId` | Detector alerts |
+| `#cases` | `casesChannelId` | A card per case, kept up to date, with buttons and the case's thread |
 | `#appeals` | `appealsChannelId` | Appeals, with buttons |
 | `#staff-log` | `staffLogChannelId` | Every staff command — busy |
 | `#staff-chat` | `staffChatChannelId` | Staff chat, both ways |
@@ -395,6 +397,22 @@ answer is private to you; what a command does — a ban, a note — is posted to
 
 Durations are written the way they are in game: `30m`, `12h`, `7d`, `1h30m`.
 
+### Case cards
+
+Every case has a card in `#cases`: who it is about, its status, kind, severity and assignee, what is in
+it, and the latest of its history. The card changes as the case does, and the discussion is in the
+thread under it.
+
+| Button | Needs | Does |
+|---|---|---|
+| Details | `staff.gui` | The case and more of its history, only to you |
+| Evidence | `staff.gui` | What is filed on the case |
+| Notes · History · Profile | `staff.notes.view` · `staff.history` · `staff.gui` | The player's notes, punishments and standing |
+| Freeze · Unfreeze | `staff.freeze` | Hold or release the player, if they are online |
+| Add Note | `staff.gui` | A line in the case's history, as `/staff case <id> note` in game |
+
+Freeze, Unfreeze and Add Note are switched off once the case is closed.
+
 A command from Discord meets the same checks as in game — the permission, the punishment rate limit,
 the rule against punishing somebody who outranks you — and on top of that everything you change from
 Discord counts against `discordActionsPerMinute` in `config/staffcore/staffcore.json` (20 a minute
@@ -463,8 +481,15 @@ and links are kept.
   `appealIntakeChannelId` and `staffChatChannelId`; set them to `"create"` if you want `#appeal` and
   `#staff-chat` made too. Making channels needs **Manage Channels** and **Manage Roles**; give them back
   first if you took them away.
-- Add `"discord.punishpanel"` to your admin role in `roleNodes` for the punishment panel. If only one is replaced, the log says
-`This companion was built for StaffCore API version …` and the bot does not start.
+- Add `"discord.punishpanel"` to your admin role in `roleNodes` for the punishment panel.
+
+**From 1.2.0 to 1.3.0:**
+
+- The bot makes `#cases` on its next start, and every case gets a card there the next time it changes.
+  To keep case threads in `#alerts` as before, set `"casesChannelId": ""`.
+
+If only one jar is replaced, the log says `This companion was built for StaffCore API version …` and the
+bot does not start.
 
 To switch the bot off without removing it, set `"enabled": false` and restart. Links and channels
 are kept for when you switch it back on.

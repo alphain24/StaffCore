@@ -123,6 +123,15 @@ public final class DiscordSettings {
 	public volatile String alertsChannelId = CREATE;
 
 	/**
+	 * Where every case gets a card: who it is about, its status, kind, severity and assignee, what is in
+	 * it and the latest of its history, with buttons for the details, the evidence, the player's notes,
+	 * history and profile, freezing and releasing them, and adding a note to the case. The card is edited
+	 * whenever the case changes, and the case's thread is under it. Set, cases get no threads in the
+	 * alerts channel or under reports. Empty posts no cards, and cases keep their threads there.
+	 */
+	public volatile String casesChannelId = CREATE;
+
+	/**
 	 * Where appeals are posted for staff, each with a thread and buttons to accept, reject, ask the
 	 * player something and close; a verdict edits the post. Setting it also turns on {@code /appeal}
 	 * for players, and the bot then reads its direct messages, which is where a player answers a
@@ -203,6 +212,7 @@ public final class DiscordSettings {
 			case PUNISHMENTS -> punishmentsChannelId;
 			case REPORTS -> reportsChannelId;
 			case ALERTS -> alertsChannelId;
+			case CASES -> casesChannelId;
 			case APPEALS -> appealsChannelId;
 			case STAFF_LOG -> staffLogChannelId;
 			case STAFF_CHAT -> staffChatChannelId;
@@ -222,6 +232,7 @@ public final class DiscordSettings {
 			case PUNISHMENTS -> "punishmentsChannelId";
 			case REPORTS -> "reportsChannelId";
 			case ALERTS -> "alertsChannelId";
+			case CASES -> "casesChannelId";
 			case APPEALS -> "appealsChannelId";
 			case STAFF_LOG -> "staffLogChannelId";
 			case STAFF_CHAT -> "staffChatChannelId";
@@ -260,6 +271,7 @@ public final class DiscordSettings {
 				case PUNISHMENTS -> punishmentsChannelId = id;
 				case REPORTS -> reportsChannelId = id;
 				case ALERTS -> alertsChannelId = id;
+				case CASES -> casesChannelId = id;
 				case APPEALS -> appealsChannelId = id;
 				case STAFF_LOG -> staffLogChannelId = id;
 				case STAFF_CHAT -> staffChatChannelId = id;
@@ -414,6 +426,7 @@ public final class DiscordSettings {
 		punishmentsChannelId = channel("punishmentsChannelId", punishmentsChannelId, true, problems);
 		reportsChannelId = channel("reportsChannelId", reportsChannelId, true, problems);
 		alertsChannelId = channel("alertsChannelId", alertsChannelId, true, problems);
+		casesChannelId = channel("casesChannelId", casesChannelId, true, problems);
 		appealsChannelId = channel("appealsChannelId", appealsChannelId, true, problems);
 		staffLogChannelId = channel("staffLogChannelId", staffLogChannelId, true, problems);
 		staffChatChannelId = channel("staffChatChannelId", staffChatChannelId, true, problems);

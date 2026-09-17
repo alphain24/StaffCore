@@ -12,6 +12,12 @@ In progress. Ships with `staffcore-discord-1.2.0.jar`; install both jars from th
 
 ### Added
 
+- **A cases channel in Discord.** Every case gets a card in `#cases` (`casesChannelId`, made
+  automatically): who, status, kind, severity, assignee, what is in it and the latest of its history,
+  edited whenever the case changes, with the case's thread under it. It has Details, Evidence, Notes,
+  History, Profile, Freeze, Unfreeze and Add Note buttons. Add Note writes into the case's history
+  behind `staff.gui`, as `/staff case <id> note` does. Set `casesChannelId` to `""` to keep case threads
+  in `#alerts`.
 - **Leaving while frozen is reported.** Staff are told in game and in the Discord alerts channel, and it
   is added to the player's open case, of any kind, with where they were frozen and who froze them. A
   case is opened when they have none. Kicks, bans and shutdowns are not reported; a dropped
