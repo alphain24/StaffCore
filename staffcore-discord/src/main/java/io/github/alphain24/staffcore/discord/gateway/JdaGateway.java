@@ -332,6 +332,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		if (saving != null) setupProblems.add(saving);
 		ChannelSetup.Intake intake = ChannelSetup.intake(guild, settings);
 		if (intake.problem() != null) setupProblems.add(intake.problem());
+		String placing = ChannelSetup.placeIntake(guild, settings);
+		if (placing != null) setupProblems.add(placing);
 		if (intake.id() != null) {
 			String saved = settings.recordIntakeCreated(intake.id());
 			if (saved != null) setupProblems.add(saved);

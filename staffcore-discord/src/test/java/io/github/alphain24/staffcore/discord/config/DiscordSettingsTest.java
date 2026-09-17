@@ -198,6 +198,19 @@ class DiscordSettingsTest {
 	}
 
 	@Test
+	@DisplayName("the appeal channel's category is Help unless set, and is kept within what Discord takes")
+	void intakeCategory() throws IOException {
+		assertEquals("Help", new DiscordSettings().appealIntakeCategory);
+		assertEquals("Staff Help", load("{\"appealIntakeCategory\": \"  Staff Help \"}").settings().appealIntakeCategory);
+		assertEquals("", load("{\"appealIntakeCategory\": \"\"}").settings().appealIntakeCategory);
+		assertEquals("", load("{\"appealIntakeCategory\": null}").settings().appealIntakeCategory);
+		assertEquals("a b", load("{\"appealIntakeCategory\": \"a\nb\"}").settings().appealIntakeCategory);
+		var long_ = load("{\"appealIntakeCategory\": \"" + "x".repeat(150) + "\"}");
+		assertEquals(100, long_.settings().appealIntakeCategory.length());
+		assertTrue(long_.problems().stream().anyMatch(p -> p.contains("appealIntakeCategory")));
+	}
+
+	@Test
 	@DisplayName("roles add up, and a role nobody mapped adds nothing")
 	void roleMap() {
 		RoleMap map = new RoleMap(Map.of("1", List.of("a"), "2", List.of("b", "a")));

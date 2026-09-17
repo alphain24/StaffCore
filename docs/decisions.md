@@ -2079,6 +2079,36 @@ Discord, naming the Discord account.
 
 ---
 
+## A Help category for players
+
+**Date:** 2026-09-17
+
+Asked for: "one channel on discord for appeals for the banned players … that they can send /appeal
+under a different category 'Help' or 'Staff Help' with an embed for the appeal".
+
+**The channel was already there; its place was not.** `#appeal` has existed since 1.2.0, public, with an
+Appeal button and `/appeal`. It was made at the top of the server, outside every category, because the
+StaffCore category is private. It now goes under a public category of its own, `appealIntakeCategory`,
+**Help** by default. A category with that name is used as it is, so an owner's existing Help or Staff
+Help category keeps its permissions. A new one gets no override for everybody, so it is as visible as
+the server's own channels, plus the bot's posting permissions.
+
+**Moving what the bot made.** An existing `#appeal` at the top of the server is moved under the category
+once. That covers a channel made by 1.2.0, and one an owner made and never categorised. It is moved
+with `setParent` and not synced, so it keeps its own permissions, and "the bot never changes a
+channel's permissions" still holds. A channel already in some other category was put there by
+somebody, so it stays.
+
+**The message is steps now.** The same content as before, as numbered fields: find the code, press
+Appeal, wait for a direct message. There is also a line saying that a rejection brings a new code and
+a date. Players read it once and follow it, so steps work better than a paragraph.
+
+**Existing settings files.** A file written by 1.1.0 has `"appealIntakeChannelId": ""`, and 1.2.0
+deliberately did not change that: making a public channel on somebody's server unasked is a bigger
+step than making a private one. That stays; the upgrade notes say to set it to `"create"`.
+
+---
+
 ## A card per case
 
 **Date:** 2026-09-17

@@ -151,6 +151,15 @@ public final class DiscordSettings {
 	public volatile String appealIntakeChannelId = CREATE;
 
 	/**
+	 * The public category the players' appeal channel goes under, such as {@code "Help"} or
+	 * {@code "Staff Help"}: found by name, or made visible to everybody when there is none. A players'
+	 * appeal channel already made outside any category is moved into it on the next start; one an owner
+	 * put in a category of their own is left there. Empty puts the channel at the top of the server, with
+	 * no category. At most 100 characters.
+	 */
+	public String appealIntakeCategory = "Help";
+
+	/**
 	 * Where every audited staff action is posted: who, what, the player it names, when, and its
 	 * case. This is one post per command on a busy server. Empty posts none.
 	 */
@@ -432,6 +441,12 @@ public final class DiscordSettings {
 		staffChatChannelId = channel("staffChatChannelId", staffChatChannelId, true, problems);
 		punishPanelChannelId = channel("punishPanelChannelId", punishPanelChannelId, true, problems);
 		appealIntakeChannelId = channel("appealIntakeChannelId", appealIntakeChannelId, true, problems);
+		appealIntakeCategory = appealIntakeCategory == null ? ""
+				: appealIntakeCategory.replaceAll("\\p{Cntrl}", " ").strip();
+		if (appealIntakeCategory.length() > 100) {
+			appealIntakeCategory = appealIntakeCategory.substring(0, 100).strip();
+			problems.add("appealIntakeCategory is longer than Discord allows. Using the first 100 characters.");
+		}
 		if (!appealIntakeChannelId.isEmpty() && appealsChannelId.isEmpty()) {
 			problems.add("appealIntakeChannelId is set but appealsChannelId is not, so there is nowhere to post "
 					+ "appeals and /appeal is not offered. Set appealsChannelId too.");

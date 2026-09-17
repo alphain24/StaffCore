@@ -28,15 +28,16 @@ public final class AppealPanel {
 	public static Outbound.Message message() {
 		Embed embed = Embed.builder("Appeal a ban or mute")
 				.color(COLOUR)
-				.description("""
-						Punished on the Minecraft server and think it was wrong? Press **Appeal**, enter the \
-						appeal code, and tell staff what happened.
-
-						**Where is the code?** On the screen you see when you try to join, if you are banned; \
-						in chat when you try to talk, if you are muted. It looks like `ABCD-EFGH-JKMN`.
-
-						Staff answer by direct message, so keep direct messages from this server switched on. \
-						One appeal per punishment at a time. You can also type `/appeal` here.""")
+				.description("Punished on the Minecraft server and think it was wrong? Tell staff here. "
+						+ "Press **Appeal** below, or type `/appeal` in this channel.")
+				.field("1. Find your appeal code", "On the screen you see when you try to join, if you are banned; "
+						+ "in chat when you try to talk, if you are muted. It looks like `ABCD-EFGH-JKMN`.")
+				.field("2. Press Appeal", "Enter the code, and say what happened and why the punishment should be "
+						+ "lifted. Add anything staff should know.")
+				.field("3. Wait for staff", "Staff read every appeal and answer by direct message, so keep direct "
+						+ "messages from this server switched on. They may ask you a question first; reply to it there.")
+				.field("Good to know", "One appeal per punishment at a time. If an appeal is rejected, the code "
+						+ "stops working, and your ban screen shows a new one and when you can use it.")
 				.footer("Only the account that files an appeal sees what it typed.")
 				.build();
 		return Outbound.Message.of(embed).withRows(List.of(List.of(

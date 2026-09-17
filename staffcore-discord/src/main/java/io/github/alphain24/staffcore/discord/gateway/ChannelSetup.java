@@ -190,9 +190,11 @@ public final class ChannelSetup {
 	public record Intake(String id, String problem) {}
 
 	/**
-	 * Makes the players' appeal channel when the settings ask for it: {@code #appeal}, outside the private
-	 * category, readable by everybody and written in by nobody but the bot. A top-level channel of that name
-	 * already there is used instead.
+	 * Makes the players' appeal channel when the settings ask for it: {@code #appeal}, under the public
+	 * category {@link DiscordSettings#appealIntakeCategory} names (or at the top of the server when that is
+	 * empty), readable by everybody and written in by nobody but the bot. A channel of that name already
+	 * there, in that category or at the top, is used instead, and moved into the category if it is at the
+	 * top. For a channel already made, see {@link #placeIntake}.
 	 */
 	public static Intake intake(Guild guild, DiscordSettings settings) {
 		if (!DiscordSettings.CREATE.equals(settings.appealIntakeChannelId) || settings.appealsChannelId.isEmpty()) {
@@ -202,25 +204,87 @@ public final class ChannelSetup {
 			return new Intake(null, "the appeal channel was not made: the bot needs Manage Channels and Manage Roles");
 		}
 		try {
+			Category category = helpCategory(guild, settings);
 			for (TextChannel text : guild.getTextChannelsByName(INTAKE, true)) {
-				if (text.getParentCategory() == null) {
+				Category parent = text.getParentCategory();
+				if (parent == null || (category != null && parent.getId().equals(category.getId()))) {
 					StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Using #{} for appeals rather than making another.",
 							text.getName());
+					if (parent == null && category != null) moveInto(text, category);
 					return new Intake(text.getId(), null);
 				}
 			}
-			TextChannel made = guild.createTextChannel(INTAKE)
+			TextChannel made = guild.createTextChannel(INTAKE, category)
 					.setTopic("Appeal a ban or mute on the Minecraft server: press Appeal, or type /appeal.")
 					.addPermissionOverride(guild.getPublicRole(), PUBLIC_ALLOWED, PUBLIC_DENIED)
 					.addPermissionOverride(guild.getSelfMember(), BOT, EnumSet.noneOf(Permission.class))
 					.complete();
-			StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Made public channel #{} for appeals.", made.getName());
+			StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Made public channel #{} for appeals{}.", made.getName(),
+					category == null ? "" : " in " + category.getName());
 			return new Intake(made.getId(), null);
 		} catch (RuntimeException e) {
-			String why = e instanceof ErrorResponseException discord ? discord.getErrorResponse().name()
-					: e.getClass().getSimpleName();
-			return new Intake(null, "the appeal channel could not be made (" + why + "); it is tried again at the next start");
+			return new Intake(null, "the appeal channel could not be made (" + describe(e)
+					+ "); it is tried again at the next start");
 		}
+	}
+
+	/**
+	 * A players' appeal channel made before it had a category: moved under the one the settings name, when
+	 * it is at the top of the server. One an owner put in a category of their own is theirs to place.
+	 *
+	 * @return why it could not be moved, or null
+	 */
+	public static String placeIntake(Guild guild, DiscordSettings settings) {
+		if (settings.appealIntakeCategory.isEmpty() || settings.appealsChannelId.isEmpty()
+				|| !SNOWFLAKE.matcher(settings.appealIntakeChannelId).matches()) {
+			return null;
+		}
+		TextChannel text = guild.getTextChannelById(settings.appealIntakeChannelId);
+		if (text == null || text.getParentCategory() != null) return null;
+		if (!guild.getSelfMember().hasPermission(TO_CREATE)) {
+			return "#" + text.getName() + " was not moved into " + settings.appealIntakeCategory
+					+ ": the bot needs Manage Channels and Manage Roles";
+		}
+		try {
+			moveInto(text, helpCategory(guild, settings));
+			return null;
+		} catch (RuntimeException e) {
+			return "#" + text.getName() + " could not be moved into " + settings.appealIntakeCategory + " ("
+					+ describe(e) + "); it is tried again at the next start";
+		}
+	}
+
+	private static final java.util.regex.Pattern SNOWFLAKE = java.util.regex.Pattern.compile("[0-9]{15,22}");
+
+	/**
+	 * The public category for the players' appeal channel: the one of that name already there, or a new one
+	 * everybody can see. Null when the settings put the channel at the top.
+	 * <p>
+	 * Made with no override for everybody, so it is as visible as the server's own channels are, and with the
+	 * bot given what it posts with. An existing category is used as it is: its permissions are the owner's.
+	 */
+	static Category helpCategory(Guild guild, DiscordSettings settings) {
+		String name = settings.appealIntakeCategory;
+		if (name == null || name.isEmpty()) return null;
+		List<Category> found = guild.getCategoriesByName(name, true);
+		if (!found.isEmpty()) return found.get(0);
+		Category made = guild.createCategory(name)
+				.addPermissionOverride(guild.getSelfMember(), BOT, EnumSet.noneOf(Permission.class))
+				.complete();
+		StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Made public category {} for the appeal channel.", made.getName());
+		return made;
+	}
+
+	/** Moves a channel under a category, keeping its own permissions rather than taking the category's. */
+	private static void moveInto(TextChannel text, Category category) {
+		if (category == null) return;
+		text.getManager().setParent(category).complete();
+		StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Moved #{} into {}.", text.getName(), category.getName());
+	}
+
+	private static String describe(RuntimeException e) {
+		return e instanceof ErrorResponseException discord ? discord.getErrorResponse().name()
+				: e.getClass().getSimpleName();
 	}
 
 	/**

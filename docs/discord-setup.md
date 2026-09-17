@@ -190,6 +190,7 @@ Open the file the server wrote and fill it in. A complete example — your ids w
   "casesChannelId": "create",
   "appealsChannelId": "create",
   "appealIntakeChannelId": "create",
+  "appealIntakeCategory": "Help",
   "staffLogChannelId": "create",
   "staffChatChannelId": "create",
   "punishPanelChannelId": "create",
@@ -243,12 +244,15 @@ restarting never makes them again. You can rename or move the channels, and chan
 permissions — the bot goes by id and never touches permissions again. To let another role see them,
 add it to the category's permissions in Discord.
 
-**One channel is for players: `#appeal`** (`appealIntakeChannelId`). The bot makes it outside the
-category, **public**: everybody can read it and press its button, nobody but the bot can type or
-start threads. The bot keeps one message there with an **Appeal** button; see
-[step 9](#9-set-up-appeals).
+**One channel is for players: `#appeal`** (`appealIntakeChannelId`). The bot makes it in a separate,
+**public** category, **Help** (`appealIntakeCategory`; use `"Staff Help"` or any name you like, or `""` for
+no category). The category is used if it already exists, and made visible to everybody if it does not.
+Everybody can read `#appeal` and press its button; nobody but the bot can type or start threads there.
+The bot keeps one message there, an embed explaining how to appeal, with an **Appeal** button; see
+[step 9](#9-set-up-appeals). An `#appeal` the bot made earlier at the top of the server is moved into the
+category on the next start; one you put in a category yourself stays where it is.
 
-A new settings file sets all seven to `"create"`.
+A new settings file sets all eight staff channels, and `appealIntakeChannelId`, to `"create"`.
 
 > **Your file was written by an earlier build?** Some channel settings will be `""` — `staffChatChannelId`
 > was empty by default before 1.2.0. Change the ones you want to `"create"`.
@@ -453,7 +457,7 @@ With `appealsChannelId` set, banned and muted players can appeal from Discord.
    screen tells players where to go. With the bot taking appeals, the ban screen tells them to type
    `/appeal` with the appeal code shown underneath.
 2. `#appeals` is private to staff. Appeals and staff discussion go there, and players never see it.
-3. Players go to **`#appeal`** and press **Appeal**, or type `/appeal` there. The form asks for the
+3. Players go to **`#appeal`**, under **Help**, and press **Appeal**, or type `/appeal` there. The form asks for the
    appeal code and what happened; the form and the bot's answers are visible only to them. To use a
    channel you made instead, put its id in `appealIntakeChannelId` — the bot posts the button there,
    and needs to see, send and read history in it. Empty lets players use `/appeal` in any channel and
@@ -487,6 +491,10 @@ and links are kept.
 
 - The bot makes `#cases` on its next start, and every case gets a card there the next time it changes.
   To keep case threads in `#alerts` as before, set `"casesChannelId": ""`.
+- The players' `#appeal` goes into a public **Help** category, made if you have none, and its message is
+  rewritten as steps. If your settings file still has `"appealIntakeChannelId": ""`, set it to `"create"`
+  to have `#appeal` made. Set `appealIntakeCategory` to choose the category, or `""` to keep the channel
+  at the top.
 
 If only one jar is replaced, the log says `This companion was built for StaffCore API version …` and the
 bot does not start.

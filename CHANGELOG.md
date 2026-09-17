@@ -18,6 +18,10 @@ In progress. Ships with `staffcore-discord-1.2.0.jar`; install both jars from th
   History, Profile, Freeze, Unfreeze and Add Note buttons. Add Note writes into the case's history
   behind `staff.gui`, as `/staff case <id> note` does. Set `casesChannelId` to `""` to keep case threads
   in `#alerts`.
+- **`#appeal` goes under a public Help category** (`appealIntakeCategory`, `Help` by default; `""` keeps it at
+  the top). An existing category of that name is used; an `#appeal` the bot made at the top of the server
+  is moved into it. Its message is now numbered steps. A settings file that still has
+  `"appealIntakeChannelId": ""` needs `"create"` for the channel to be made.
 - **Leaving while frozen is reported.** Staff are told in game and in the Discord alerts channel, and it
   is added to the player's open case, of any kind, with where they were frozen and who froze them. A
   case is opened when they have none. Kicks, bans and shutdowns are not reported; a dropped
