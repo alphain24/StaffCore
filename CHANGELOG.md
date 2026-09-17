@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 — unreleased
+
+In progress. Ships with `staffcore-discord-1.2.0.jar`; install both jars from the same release.
+
 ## 1.2.0 — 2026-09-17
 
 Discord extras, a permissions fix for servers without LuckPerms, and the last of the Discord brief:
