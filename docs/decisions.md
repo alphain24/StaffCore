@@ -2079,6 +2079,54 @@ Discord, naming the Discord account.
 
 ---
 
+## Contacting staff from Discord
+
+**Date:** 2026-09-17
+
+Asked for as a follow-up to the freeze screen, which tells a frozen player to "join our Discord and
+contact staff": a public contact channel under Help.
+
+**A private thread per request.** The request has to become a conversation. Three ways were
+considered:
+
+- A ticket channel per request, the usual Discord ticket bot. It needs permissions set on every one of
+  them, and leaves hundreds of dead channels behind.
+- A relay through direct messages, as appeals use. That already carries appeals, and a second
+  conversation over the same direct messages would need guessing which one a reply belongs to.
+- A private thread in `#contact-staff`. Only its members can see it, and it archives on its own. The
+  bot creates it and adds the player; staff are added when they press Join.
+
+The private thread won. Everybody may write in threads in that channel but may not start one and may not
+post in the channel itself, so the only place a player can write is the thread they were given. That
+needs **Create Private Threads**, so the invite link asks for it. Discord refuses an override for a
+permission the bot does not hold, which is why the channel checks for it before making anything.
+
+**Closing takes the player out.** Private threads cannot be locked without Manage Threads, which the bot
+is not asked for. A player left in an archived thread could reopen it by typing. So closing says so,
+removes the player (the thread's creator may), and archives it. The conversation stays with staff, and
+the player opens a new request for something new.
+
+**Who is asking.** Anybody may ask, as anybody may appeal; the people who need this are players. What they
+type is a claim. StaffCore answers with what it knows: whether the Discord account is linked to that
+player, whether the player is online, frozen or banned, and their open case. The staff post says plainly
+when the name is only what somebody typed. Only a request from the player's own linked account is noted
+on their case.
+
+**Limits.** One open request per account, kept by the companion. Three requests an hour per account, and
+30 in-game alerts an hour overall, kept by StaffCore, so a crowd of accounts cannot flood staff chat.
+A name the server has never seen is not resolved at all, because resolving an unknown name can go to
+Mojang, and a player should not be able to make the server do that on demand.
+
+**Staff actions go through the gate.** Join and Close are `HELP_DESK`, behind `report.view`, the report
+queue's node, which is the nearest thing in game to answering players. Like every Discord action they
+are counted against the Discord action limit and audited. Profile, History, Freeze and Unfreeze are the
+existing buttons.
+
+**Kept by the companion.** Requests live in `world/staffcore-discord/help.json`, beside the thread book.
+They are Discord conversations; StaffCore records that one was asked for, and who acted on it.
+
+---
+
 ## A Help category for players
 
 **Date:** 2026-09-17

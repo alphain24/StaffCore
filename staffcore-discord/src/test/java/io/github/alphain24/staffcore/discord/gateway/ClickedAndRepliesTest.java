@@ -32,6 +32,13 @@ class ClickedAndRepliesTest {
 				io.github.alphain24.staffcore.discord.channels.AppealPanel.BUTTON_ID).action());
 		assertEquals("reject", JdaGateway.Clicked.parse("sc:reject:4").action());
 
+		// Contacting staff.
+		assertEquals(12, JdaGateway.Clicked.parse("sc:helpjoin:12").id());
+		assertEquals("helpclose", JdaGateway.Clicked.parse("sc:helpclose:12").action());
+		assertEquals("contactpanel", JdaGateway.Clicked.parse(
+				io.github.alphain24.staffcore.discord.channels.ContactPanel.BUTTON_ID).action());
+		assertEquals(null, JdaGateway.Clicked.parse("sc:helpjoin:twelve"));
+
 		// A case card's buttons: case ids and players.
 		assertEquals("CASE1234", JdaGateway.Clicked.parse("sc:case:CASE1234").caseId());
 		assertEquals("CASE1234", JdaGateway.Clicked.parse("sc:caseev:CASE1234").caseId());

@@ -127,7 +127,7 @@ Open this link in a browser, with your Application ID in place of `APPLICATION_I
 server:
 
 ```
-https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=309506198544
+https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=378225675280
 ```
 
 That asks for exactly these permissions and nothing more:
@@ -139,6 +139,7 @@ That asks for exactly these permissions and nothing more:
 | Embed Links | Posts are embeds |
 | Read Message History | To find a thread again once Discord has archived it |
 | Create Public Threads | Every report, appeal and case gets a thread |
+| Create Private Threads | Each request from `#contact-staff` gets a thread only the player and staff can see |
 | Send Messages in Threads | To say what happened in each thread |
 | Attach Files | To post files filed as evidence into a case's thread |
 | Manage Channels | To make its private channels |
@@ -193,6 +194,8 @@ Open the file the server wrote and fill it in. A complete example — your ids w
   "appealIntakeCategory": "Help",
   "staffLogChannelId": "create",
   "staffChatChannelId": "create",
+  "contactStaffChannelId": "create",
+  "helpRequestsChannelId": "create",
   "punishPanelChannelId": "create",
   "discordAlertSeverity": 70,
   "serverName": "",
@@ -228,6 +231,7 @@ When the bot connects, it makes a **StaffCore** category and puts every staff ch
 | `#appeals` | `appealsChannelId` | Appeals, with buttons |
 | `#staff-log` | `staffLogChannelId` | Every staff command — busy |
 | `#staff-chat` | `staffChatChannelId` | Staff chat, both ways |
+| `#help-requests` | `helpRequestsChannelId` | Players' requests from `#contact-staff`, with a Join button |
 | `#punish` | `punishPanelChannelId` | The punishment panel — only for roles with `discord.punishpanel` |
 
 **All of them are private.** Nobody can see the category or its channels except:
@@ -252,7 +256,14 @@ The bot keeps one message there, an embed explaining how to appeal, with an **Ap
 [step 9](#9-set-up-appeals). An `#appeal` the bot made earlier at the top of the server is moved into the
 category on the next start; one you put in a category yourself stays where it is.
 
-A new settings file sets all eight staff channels, and `appealIntakeChannelId`, to `"create"`.
+**The other is `#contact-staff`** (`contactStaffChannelId`), in the same category. It holds one message with
+a **Contact Staff** button. A player who presses it says who they are in game and what they need, and gets
+a private thread that only they and the staff who join can see. Nobody can type in the channel itself.
+Requests reach staff in `#help-requests`, where **Join** adds you to the player's thread; see
+[Helping players](#helping-players).
+
+A new settings file sets all nine staff channels, `appealIntakeChannelId` and `contactStaffChannelId` to
+`"create"`.
 
 > **Your file was written by an earlier build?** Some channel settings will be `""` — `staffChatChannelId`
 > was empty by default before 1.2.0. Change the ones you want to `"create"`.
@@ -449,6 +460,23 @@ Discord's own links to files stop working after a while. Files larger than `evid
 
 ---
 
+### Helping players
+
+A request in `#help-requests` says who asked. The Discord account is either *linked to this player*, *not
+linked* (the name is only what they typed), or *linked to somebody else*. It also says whether the player
+is online, frozen or banned, and names their open case. Staff in game are told as well, loudly when the
+player is frozen.
+
+| Button | Needs | Does |
+|---|---|---|
+| Join | `report.view` | Adds you to the player's private thread, and says so there |
+| Close | `report.view` | Closes the request: said in the thread, the player taken out of it, the thread archived |
+| Profile · History | `staff.gui` · `staff.history` | The player's standing and punishments |
+| Freeze · Unfreeze | `staff.freeze` | Hold or release the player, if they are online |
+
+A player can close their own request from their thread. Each account can have one request open and ask
+three times an hour.
+
 ## 9. Set up appeals
 
 With `appealsChannelId` set, banned and muted players can appeal from Discord.
@@ -491,6 +519,10 @@ and links are kept.
 
 - The bot makes `#cases` on its next start, and every case gets a card there the next time it changes.
   To keep case threads in `#alerts` as before, set `"casesChannelId": ""`.
+- **Open the invite link from [step 4](#4-invite-the-bot-to-your-server) again**: it adds **Create Private
+  Threads**, which `#contact-staff` needs. Until then, the status says the contact channel was not made.
+- The bot makes `#help-requests` and the public `#contact-staff` on its next start. Set
+  `"contactStaffChannelId": ""` if you do not want players contacting staff through the bot.
 - The players' `#appeal` goes into a public **Help** category, made if you have none, and its message is
   rewritten as steps. If your settings file still has `"appealIntakeChannelId": ""`, set it to `"create"`
   to have `#appeal` made. Set `appealIntakeCategory` to choose the category, or `""` to keep the channel
@@ -533,6 +565,8 @@ entry of `/staff` → **Discord**, and in `logs/latest.log` (lines starting `[St
 | `posts waiting until the bot can post: …` | The bot is disconnected or still connecting. The posts go out, in order, when it can post again. If the number stays up, look at the lines above for why it cannot. |
 | `posts dropped because too many were waiting: …` | More than `outboundQueueSize` posts piled up while the bot could not post, so the oldest were dropped. Raise `outboundQueueSize` if your outages are long. |
 | `posts given up after Discord kept failing them: …` | Discord answered with server errors five times for those posts. The log line `A Discord post was given up…` names the reason. |
+| `the contact channel was not made: the bot needs Create Private Threads…` | Open the invite link from [step 4](#4-invite-the-bot-to-your-server) again and restart. |
+| `the contact channel takes no requests until the help requests channel exists` | Look at the lines above for why `#help-requests` was not made, or set `helpRequestsChannelId`. |
 | `posts not made because their channel was not made or found: …` | A channel is still set to `"create"` or its id is wrong. Look at the lines above for why. |
 | `direct messages players did not receive: …` | Those players have direct messages off. Each appeal's thread says which. |
 | `warning: the token file is readable by every user on this machine` | Restrict the file — see [step 3](#3-make-the-bot-in-discord). |

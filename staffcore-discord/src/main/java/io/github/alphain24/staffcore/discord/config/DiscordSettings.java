@@ -92,7 +92,8 @@ public final class DiscordSettings {
 	//
 	// Each is one of three things. A channel id in guildId posts there. "create" has the bot make the
 	// channel when it connects - private, under a StaffCore category, seen only by the bot and the staff
-	// roles in roleNodes; the players' appeal channel alone is public - and write its id back here in place
+	// roles in roleNodes; the players' appeal and contact channels alone are public, under their own
+	// category - and write its id back here in place
 	// of "create". Empty means that kind of post
 	// is not made. Set any of the first five and StaffCore's own discordWebhookUrl stops posting once the
 	// bot connects, so nothing arrives twice. The bot needs to see, send messages, embed links and
@@ -151,11 +152,32 @@ public final class DiscordSettings {
 	public volatile String appealIntakeChannelId = CREATE;
 
 	/**
-	 * The public category the players' appeal channel goes under, such as {@code "Help"} or
-	 * {@code "Staff Help"}: found by name, or made visible to everybody when there is none. A players'
-	 * appeal channel already made outside any category is moved into it on the next start; one an owner
-	 * put in a category of their own is left there. Empty puts the channel at the top of the server, with
-	 * no category. At most 100 characters.
+	 * The public contact channel, {@code #contact-staff}: a message with a Contact Staff button, for a player
+	 * who needs a person — frozen in game and told to come here, or stuck. Pressing it asks who they are in
+	 * game and what they need, opens a private thread for them, tells staff in game, and posts the request
+	 * to {@link #helpRequestsChannelId} with a Join button that adds a staff member to the thread.
+	 * <p>
+	 * {@code "create"} makes it under {@link #appealIntakeCategory}, readable by everybody, typed in by nobody
+	 * but the bot; players write only in their own threads. It needs the bot to be allowed to create private
+	 * threads, which the setup guide's invite link asks for. A channel id uses one you made. Empty takes no
+	 * requests.
+	 */
+	public volatile String contactStaffChannelId = CREATE;
+
+	/**
+	 * Where the requests from {@link #contactStaffChannelId} arrive, private to staff: who asked, as whom,
+	 * whether the Discord account is really that player, whether they are online, frozen or banned, their
+	 * case, and Join, Close, Profile, History, Freeze and Unfreeze buttons. Joining and closing need
+	 * {@code report.view}. Empty takes no requests.
+	 */
+	public volatile String helpRequestsChannelId = CREATE;
+
+	/**
+	 * The public category the players' channels go under — the appeal channel and the contact channel — such
+	 * as {@code "Help"} or {@code "Staff Help"}: found by name, or made visible to everybody when there is
+	 * none. A players' appeal channel already made outside any category is moved into it on the next start;
+	 * one an owner put in a category of their own is left there. Empty puts the channels at the top of the
+	 * server, with no category. At most 100 characters.
 	 */
 	public String appealIntakeCategory = "Help";
 
@@ -225,6 +247,7 @@ public final class DiscordSettings {
 			case APPEALS -> appealsChannelId;
 			case STAFF_LOG -> staffLogChannelId;
 			case STAFF_CHAT -> staffChatChannelId;
+			case HELP_REQUESTS -> helpRequestsChannelId;
 			case PUNISH_PANEL -> punishPanelChannelId;
 		};
 		return id == null ? "" : id;
@@ -245,6 +268,7 @@ public final class DiscordSettings {
 			case APPEALS -> "appealsChannelId";
 			case STAFF_LOG -> "staffLogChannelId";
 			case STAFF_CHAT -> "staffChatChannelId";
+			case HELP_REQUESTS -> "helpRequestsChannelId";
 			case PUNISH_PANEL -> "punishPanelChannelId";
 		};
 	}
@@ -267,6 +291,12 @@ public final class DiscordSettings {
 	 *
 	 * @return why the file could not be changed, or null when it was
 	 */
+	/** As {@link #recordCreated}, for the public contact channel. */
+	public String recordContactCreated(String id) {
+		contactStaffChannelId = id;
+		return writeKeys(Map.of("contactStaffChannelId", id));
+	}
+
 	/** As {@link #recordCreated}, for the players' appeal channel. */
 	public String recordIntakeCreated(String id) {
 		appealIntakeChannelId = id;
@@ -284,6 +314,7 @@ public final class DiscordSettings {
 				case APPEALS -> appealsChannelId = id;
 				case STAFF_LOG -> staffLogChannelId = id;
 				case STAFF_CHAT -> staffChatChannelId = id;
+				case HELP_REQUESTS -> helpRequestsChannelId = id;
 				case PUNISH_PANEL -> punishPanelChannelId = id;
 			}
 		});
@@ -439,6 +470,12 @@ public final class DiscordSettings {
 		appealsChannelId = channel("appealsChannelId", appealsChannelId, true, problems);
 		staffLogChannelId = channel("staffLogChannelId", staffLogChannelId, true, problems);
 		staffChatChannelId = channel("staffChatChannelId", staffChatChannelId, true, problems);
+		helpRequestsChannelId = channel("helpRequestsChannelId", helpRequestsChannelId, true, problems);
+		contactStaffChannelId = channel("contactStaffChannelId", contactStaffChannelId, true, problems);
+		if (!contactStaffChannelId.isEmpty() && helpRequestsChannelId.isEmpty()) {
+			problems.add("contactStaffChannelId is set but helpRequestsChannelId is not, so requests would reach "
+					+ "nobody and the contact channel is not used. Set helpRequestsChannelId too.");
+		}
 		punishPanelChannelId = channel("punishPanelChannelId", punishPanelChannelId, true, problems);
 		appealIntakeChannelId = channel("appealIntakeChannelId", appealIntakeChannelId, true, problems);
 		appealIntakeCategory = appealIntakeCategory == null ? ""

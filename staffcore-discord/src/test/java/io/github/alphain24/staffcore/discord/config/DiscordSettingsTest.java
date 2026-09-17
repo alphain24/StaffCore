@@ -198,6 +198,16 @@ class DiscordSettingsTest {
 	}
 
 	@Test
+	@DisplayName("the contact channel needs somewhere for requests to go, and both are made by default")
+	void contactChannels() throws IOException {
+		assertEquals(DiscordSettings.CREATE, new DiscordSettings().contactStaffChannelId);
+		assertEquals(DiscordSettings.CREATE, new DiscordSettings().helpRequestsChannelId);
+		var orphan = load("{\"contactStaffChannelId\": \"create\", \"helpRequestsChannelId\": \"\"}");
+		assertTrue(orphan.problems().stream().anyMatch(p -> p.contains("helpRequestsChannelId")), orphan.problems().toString());
+		assertEquals("", load("{\"contactStaffChannelId\": \"general\"}").settings().contactStaffChannelId);
+	}
+
+	@Test
 	@DisplayName("the appeal channel's category is Help unless set, and is kept within what Discord takes")
 	void intakeCategory() throws IOException {
 		assertEquals("Help", new DiscordSettings().appealIntakeCategory);

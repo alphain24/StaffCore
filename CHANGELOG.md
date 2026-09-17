@@ -18,6 +18,13 @@ In progress. Ships with `staffcore-discord-1.2.0.jar`; install both jars from th
   History, Profile, Freeze, Unfreeze and Add Note buttons. Add Note writes into the case's history
   behind `staff.gui`, as `/staff case <id> note` does. Set `casesChannelId` to `""` to keep case threads
   in `#alerts`.
+- **Contacting staff from Discord.** A public `#contact-staff` channel under Help
+  (`contactStaffChannelId`) has a **Contact Staff** button. It asks who the player is in game and what they
+  need, and opens a private thread only they and the staff who join can see. Staff are told in game,
+  loudly if the player is frozen. The request appears in the private `#help-requests`
+  (`helpRequestsChannelId`), which says whether the Discord account is that player's and whether they are
+  online, frozen or banned. Its buttons are Join, Close, Profile, History, Freeze and Unfreeze. Join and
+  Close need `report.view`. Each account can have one request open and ask three times an hour.
 - **`#appeal` goes under a public Help category** (`appealIntakeCategory`, `Help` by default; `""` keeps it at
   the top). An existing category of that name is used; an `#appeal` the bot made at the top of the server
   is moved into it. Its message is now numbered steps. A settings file that still has

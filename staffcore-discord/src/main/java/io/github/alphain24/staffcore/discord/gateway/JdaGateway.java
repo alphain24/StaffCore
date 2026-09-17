@@ -103,6 +103,11 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 	private volatile String intakePanel;
 	/** The punishment panel's message id, likewise. */
 	private volatile String punishPanelMessage;
+	/** The contact panel's message id, likewise. */
+	private volatile String contactPanel;
+	private volatile String contactProblem;
+	/** Players' requests from the contact channel. */
+	private final io.github.alphain24.staffcore.discord.channels.HelpDesk help;
 	/** True once Discord refused the message content intent and the bot connected without it. */
 	private volatile boolean contentIntentMissing;
 	/** When a typed staff chat line was last answered with how to use /staffchat instead. */
@@ -124,6 +129,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		this.roles = roles;
 		this.worker = worker;
 		this.book = book;
+		this.help = new io.github.alphain24.staffcore.discord.channels.HelpDesk(
+				book == null ? null : book.beside("help.json"), System::currentTimeMillis);
 	}
 
 	@Override
@@ -234,6 +241,16 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 				out.add(new DiscordBotStatus.Channel(name, true, "posting"));
 			}
 		}
+		String contact = settings.contactStaffChannelId;
+		if (!contact.isEmpty()) {
+			out.add(new DiscordBotStatus.Channel(ChannelSetup.CONTACT + " (players)",
+					contactProblem == null && channelsChecked && contactPanel != null,
+					contactProblem != null ? contactProblem
+							: !channelsChecked ? (DiscordSettings.CREATE.equals(contact) ? "made when the bot connects"
+									: "checked when the bot connects")
+							: contactPanel != null ? "Contact Staff button posted; " + help.open().size() + " open request(s)"
+									: "no Contact Staff button"));
+		}
 		String intake = settings.appealIntakeChannelId;
 		if (!intake.isEmpty()) {
 			out.add(new DiscordBotStatus.Channel(ChannelSetup.INTAKE + " (players)",
@@ -263,6 +280,8 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			out.add("direct messages players did not receive: " + undelivered.get() + " (said in each appeal's thread)");
 		}
 		if (book.problem() != null) out.add(book.problem());
+		if (help.problem() != null) out.add(help.problem());
+		if (contactProblem != null) out.add(contactProblem);
 		return out;
 	}
 
@@ -310,6 +329,7 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			setUpChannels(guild);
 			checkChannels(guild);
 			appealPanel(guild);
+			contactPanel(guild);
 			punishPanel(guild);
 			channelsChecked = true;
 			// Posts that waited while the bot connected go now, into channels that exist.
@@ -334,6 +354,12 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		if (intake.problem() != null) setupProblems.add(intake.problem());
 		String placing = ChannelSetup.placeIntake(guild, settings);
 		if (placing != null) setupProblems.add(placing);
+		ChannelSetup.Intake contact = ChannelSetup.contact(guild, settings);
+		if (contact.problem() != null) setupProblems.add(contact.problem());
+		if (contact.id() != null) {
+			String saved = settings.recordContactCreated(contact.id());
+			if (saved != null) setupProblems.add(saved);
+		}
 		if (intake.id() != null) {
 			String saved = settings.recordIntakeCreated(intake.id());
 			if (saved != null) setupProblems.add(saved);
@@ -420,6 +446,30 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 		} catch (RuntimeException e) {
 			setupProblems.add("the punishment panel could not be posted in #" + channel.getName() + " (" + describe(e)
 					+ "); /staff punish still works");
+		}
+	}
+
+	/** The Contact Staff message in the public contact channel. */
+	private void contactPanel(Guild guild) {
+		contactPanel = null;
+		contactProblem = null;
+		if (!SNOWFLAKE.matcher(settings.contactStaffChannelId).matches()) return;
+		if (!SNOWFLAKE.matcher(settings.helpRequestsChannelId).matches()) {
+			contactProblem = "the contact channel takes no requests until the help requests channel exists";
+			return;
+		}
+		TextChannel channel = guild.getTextChannelById(settings.contactStaffChannelId);
+		if (channel == null) {
+			contactProblem = "contact channel " + settings.contactStaffChannelId + " is not a text channel in "
+					+ guild.getName();
+			return;
+		}
+		try {
+			contactPanel = keepPanel(guild, channel, io.github.alphain24.staffcore.discord.channels.ContactPanel.KEY,
+					io.github.alphain24.staffcore.discord.channels.ContactPanel.message(),
+					io.github.alphain24.staffcore.discord.channels.ContactPanel.BUTTON_ID);
+		} catch (RuntimeException e) {
+			contactProblem = "the Contact Staff button could not be posted in #" + channel.getName() + " (" + describe(e) + ")";
 		}
 	}
 
@@ -1350,6 +1400,9 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			case "punishment" -> answer(event, DiscordAccess.punishment(user, clicked.id()).thenApply(Replies::punishment));
 			case "evidence" -> answer(event, DiscordAccess.evidence(user, clicked.id()).thenApply(Replies::evidence));
 			case "appealpanel" -> appealForm(event);
+			case "contactpanel" -> contactForm(event);
+			case "helpjoin" -> helpJoin(event, user, clicked.id());
+			case "helpclose" -> helpClose(event, user, clicked.id());
 			case "info" -> event.replyModal(Modal.create("sc:info:" + clicked.id(), "Ask the player")
 					.addComponents(Label.of("Question", TextInput.create("question", TextInputStyle.PARAGRAPH)
 							.setRequired(true).setMaxLength(1000)
@@ -1395,6 +1448,10 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 					value(event, "reason")).thenApply(DiscordResult::message));
 			return;
 		}
+		if (modalId.equals(io.github.alphain24.staffcore.discord.channels.ContactPanel.FORM_ID)) {
+			contactRequest(event, user);
+			return;
+		}
 		if (modalId.equals(io.github.alphain24.staffcore.discord.channels.PunishPanel.PLAYER_FORM)) {
 			panelPlayer(event, user, value(event, "player"));
 			return;
@@ -1428,6 +1485,248 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			}
 			default -> { }
 		}
+	}
+
+	// ------------------------------------------------------------------ contacting staff
+
+	/** The Contact Staff button: who they are in game, and what they need. */
+	private void contactForm(ButtonInteractionEvent event) {
+		if (!SNOWFLAKE.matcher(settings.contactStaffChannelId).matches()
+				|| !SNOWFLAKE.matcher(settings.helpRequestsChannelId).matches()) {
+			event.reply("Staff are not taking requests here right now.").setEphemeral(true).queue();
+			return;
+		}
+		event.replyModal(Modal.create(io.github.alphain24.staffcore.discord.channels.ContactPanel.FORM_ID, "Contact staff")
+				.addComponents(
+						Label.of("Your Minecraft name", TextInput.create("name", TextInputStyle.SHORT)
+								.setRequired(true).setMinLength(3).setMaxLength(16)
+								.setPlaceholder("The name you play as")
+								.build()),
+						Label.of("What do you need?", TextInput.create("text", TextInputStyle.PARAGRAPH)
+								.setRequired(true).setMaxLength(1000)
+								.setPlaceholder("If you are frozen, say so. Staff read this first.")
+								.build()))
+				.build()).queue();
+	}
+
+	/**
+	 * A request from the form: one open at a time per account, checked with StaffCore (which limits how often
+	 * an account may ask and tells staff in game), then a private thread with the player in it, and the
+	 * request on the staff channel.
+	 */
+	private void contactRequest(ModalInteractionEvent event, DiscordUser user) {
+		if (!SNOWFLAKE.matcher(settings.contactStaffChannelId).matches()
+				|| !SNOWFLAKE.matcher(settings.helpRequestsChannelId).matches()) {
+			event.reply("Staff are not taking requests here right now.").setEphemeral(true).queue();
+			return;
+		}
+		String name = value(event, "name").strip();
+		String text = value(event, "text");
+		Guild guild = event.getGuild();
+		event.deferReply(true).queue();
+		InteractionHook hook = event.getHook();
+		worker.execute(() -> {
+			var already = help.openFor(user.id());
+			if (already != null) {
+				if (requestThread(guild, already) != null) {
+					hook.sendMessage("You already have request #" + already.id() + " open: <#" + already.threadId()
+							+ ">. Add anything else there.").queue(ok -> { }, ignored -> { });
+					return;
+				}
+				// Its thread was deleted by hand; the request goes with it.
+				help.put(already.closed("nobody (its thread was removed)", System.currentTimeMillis()));
+			}
+			long id = help.take();
+			DiscordAccess.helpRequest(user, name, text, id)
+					.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+					.whenCompleteAsync((answer, failure) -> {
+						if (failure != null || !answer.answered()) {
+							String why = failure != null ? Replies.failure(failure) : answer.refusal();
+							hook.sendMessage(Text.clip(token.redact(why), 2000)).queue(ok -> { }, ignored -> { });
+							return;
+						}
+						try {
+							openRequest(guild, hook, user, id, answer.value(), text);
+						} catch (RuntimeException e) {
+							StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Help request #{} could not be opened ({}).",
+									id, describe(e));
+							hook.sendMessage("Your request could not be opened (" + describe(e) + "). Staff were told you "
+									+ "asked; try again in a moment.").queue(ok -> { }, ignored -> { });
+						}
+					}, worker);
+		});
+	}
+
+	private void openRequest(Guild guild, InteractionHook hook, DiscordUser user, long id,
+			io.github.alphain24.staffcore.api.DiscordHelpInfo info, String text) {
+		TextChannel contact = guild.getTextChannelById(settings.contactStaffChannelId);
+		if (contact == null) throw new IllegalStateException("the contact channel is gone");
+		long now = System.currentTimeMillis();
+		net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel thread = contact
+				.createThreadChannel(Text.clip("request " + id + " - " + info.playerName(), THREAD_NAME), true)
+				.setInvitable(false)
+				.setAutoArchiveDuration(net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel.AutoArchiveDuration.TIME_1_WEEK)
+				.complete();
+		thread.addThreadMemberById(user.id()).complete();
+
+		var request = new io.github.alphain24.staffcore.discord.channels.HelpDesk.Request(id, user.id(), user.name(),
+				info.playerName(), info.playerId(), info.linkedTo(), info.online(), info.frozen(), info.banned(),
+				info.caseId(), Text.clip(text == null ? "" : text.strip(), 1000), thread.getId(), null, null, now, null,
+				null, List.of());
+		thread.sendMessage(create(io.github.alphain24.staffcore.discord.channels.ContactPanel.opening(request))).complete();
+		help.put(request);
+
+		TextChannel desk = guild.getTextChannelById(settings.helpRequestsChannelId);
+		if (desk != null) {
+			try {
+				Message card = desk.sendMessage(create(io.github.alphain24.staffcore.discord.channels.HelpCard.message(
+						request, headOf(info.playerId())))).complete();
+				help.put(request.withCard(desk.getId(), card.getId()));
+			} catch (RuntimeException e) {
+				failed.incrementAndGet();
+				StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Help request #{} was not posted for staff ({}).", id,
+						describe(e));
+			}
+		}
+		hook.sendMessage("Request #" + id + " is open: <#" + thread.getId() + ">. A member of staff will join you "
+				+ "there; only you and they can see it.").queue(ok -> { }, ignored -> { });
+	}
+
+	/** Join: the gate, then the staff member added to the player's thread. */
+	private void helpJoin(ButtonInteractionEvent event, DiscordUser user, long id) {
+		var request = help.get(id);
+		if (request == null || !request.open()) {
+			event.reply(request == null ? "That request is not known any more." : "Request #" + id + " is closed.")
+					.setEphemeral(true).queue();
+			return;
+		}
+		Guild guild = event.getGuild();
+		event.deferReply(true).queue();
+		InteractionHook hook = event.getHook();
+		DiscordAccess.helpDesk(user, id, "join")
+				.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+				.whenCompleteAsync((result, failure) -> {
+					if (failure != null || !result.done()) {
+						String why = failure != null ? Replies.failure(failure) : result.message();
+						hook.sendMessage(Text.clip(token.redact(why), 2000)).queue(ok -> { }, ignored -> { });
+						return;
+					}
+					try {
+						var thread = requestThread(guild, request);
+						if (thread == null) {
+							close(guild, id, "nobody (its thread was removed)", null);
+							hook.sendMessage("The request's thread is gone, so it has been closed.").queue(ok -> { }, ignored -> { });
+							return;
+						}
+						if (thread.isArchived()) thread.getManager().setArchived(false).complete();
+						thread.addThreadMemberById(user.id()).complete();
+						String name = result.message() == null || result.message().isBlank() ? user.name() : result.message();
+						thread.sendMessage(line("**" + Text.safe(name, 64) + "** from staff joined.")).complete();
+						var joined = help.get(id).joinedBy(name);
+						help.put(joined);
+						updateCard(guild, joined);
+						hook.sendMessage("You are in the request's thread: <#" + thread.getId() + ">.").queue(ok -> { }, ignored -> { });
+					} catch (RuntimeException e) {
+						hook.sendMessage("Could not add you to the thread (" + describe(e) + ").").queue(ok -> { }, ignored -> { });
+					}
+				}, worker);
+	}
+
+	/** Close: by the player who asked, or by staff through the gate. */
+	private void helpClose(ButtonInteractionEvent event, DiscordUser user, long id) {
+		var request = help.get(id);
+		if (request == null || !request.open()) {
+			event.reply(request == null ? "That request is not known any more." : "Request #" + id + " is already closed.")
+					.setEphemeral(true).queue();
+			return;
+		}
+		boolean own = user.id().equals(request.discordId());
+		Guild guild = event.getGuild();
+		event.deferReply(true).queue();
+		InteractionHook hook = event.getHook();
+		CompletableFuture<DiscordResult> gate = own
+				? CompletableFuture.completedFuture(new DiscordResult(true, request.minecraftName()))
+				: DiscordAccess.helpDesk(user, id, "close");
+		gate.orTimeout(settings.requestTimeoutSeconds, TimeUnit.SECONDS)
+				.whenCompleteAsync((result, failure) -> {
+					if (failure != null || !result.done()) {
+						String why = failure != null ? Replies.failure(failure) : result.message();
+						hook.sendMessage(Text.clip(token.redact(why), 2000)).queue(ok -> { }, ignored -> { });
+						return;
+					}
+					String by = own ? "the player" : result.message();
+					try {
+						close(guild, id, by, request);
+						hook.sendMessage("Request #" + id + " is closed.").queue(ok -> { }, ignored -> { });
+					} catch (RuntimeException e) {
+						hook.sendMessage("The request could not be closed (" + describe(e) + ").").queue(ok -> { }, ignored -> { });
+					}
+				}, worker);
+	}
+
+	/**
+	 * Closes a request: said in its thread, the player taken out of it — so the conversation stays with staff
+	 * and the player opens a new request rather than reviving an old one — the thread archived, the card
+	 * updated.
+	 */
+	private void close(Guild guild, long id, String by,
+			io.github.alphain24.staffcore.discord.channels.HelpDesk.Request request) {
+		var closed = help.get(id).closed(by, System.currentTimeMillis());
+		help.put(closed);
+		var thread = request == null ? null : requestThread(guild, request);
+		if (thread != null) {
+			if (thread.isArchived()) thread.getManager().setArchived(false).complete();
+			thread.sendMessage(line("Closed by **" + Text.safe(by, 64) + "**. To ask something else, open a new "
+					+ "request from <#" + settings.contactStaffChannelId + ">.")).complete();
+			try {
+				thread.removeThreadMemberById(closed.discordId()).complete();
+			} catch (RuntimeException ignored) {
+				// They may have left already.
+			}
+			thread.getManager().setArchived(true).complete();
+		}
+		updateCard(guild, closed);
+	}
+
+	private void updateCard(Guild guild, io.github.alphain24.staffcore.discord.channels.HelpDesk.Request request) {
+		if (request.cardChannelId() == null || request.cardMessageId() == null) return;
+		TextChannel desk = guild.getTextChannelById(request.cardChannelId());
+		if (desk == null) return;
+		try {
+			desk.editMessageById(request.cardMessageId(), edit(io.github.alphain24.staffcore.discord.channels.HelpCard
+					.message(request, headOf(request.playerId())))).complete();
+		} catch (RuntimeException e) {
+			StaffCoreDiscord.LOGGER.warn("[StaffCore Discord] Help request #{}'s card was not updated ({}).",
+					request.id(), describe(e));
+		}
+	}
+
+	/** The request's thread: from the cache while active, or among the archived private threads the bot is in. */
+	private net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel requestThread(Guild guild,
+			io.github.alphain24.staffcore.discord.channels.HelpDesk.Request request) {
+		if (guild == null || request.threadId() == null) return null;
+		var cached = guild.getThreadChannelById(request.threadId());
+		if (cached != null) return cached;
+		TextChannel contact = guild.getTextChannelById(settings.contactStaffChannelId);
+		if (contact == null) return null;
+		try {
+			for (var archived : contact.retrieveArchivedPrivateJoinedThreadChannels().limit(100).complete()) {
+				if (archived.getId().equals(request.threadId())) return archived;
+			}
+		} catch (RuntimeException e) {
+			// Nothing more to look in.
+		}
+		return null;
+	}
+
+	private static net.dv8tion.jda.api.utils.messages.MessageCreateData line(String text) {
+		return new MessageCreateBuilder().setContent(Text.clip(text, 2000))
+				.setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)).build();
+	}
+
+	private String headOf(java.util.UUID player) {
+		if (player == null || settings.playerHeadUrl.isEmpty()) return null;
+		return settings.playerHeadUrl.replace("{uuid}", player.toString());
 	}
 
 	/** A typed number of days, or null when it is not one a rejection can set. */
@@ -1555,7 +1854,7 @@ public final class JdaGateway extends ListenerAdapter implements DiscordGateway 
 			try {
 				return switch (parts[1]) {
 					case "claim", "resolve", "escalate", "accept", "reject", "close", "info", "punishment", "evidence",
-							"appealpanel", "appealform" ->
+							"appealpanel", "appealform", "contactpanel", "contactform", "helpjoin", "helpclose" ->
 							new Clicked(parts[1], Long.parseLong(parts[2]), null, null);
 					case "profile", "history", "note", "freeze", "unfreeze", "notes" ->
 							new Clicked(parts[1], 0, UUID.fromString(parts[2]), null);

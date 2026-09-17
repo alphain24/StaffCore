@@ -24,8 +24,13 @@ class ChannelSetupTest {
 				Permission.MESSAGE_HISTORY, Permission.CREATE_PUBLIC_THREADS, Permission.MESSAGE_SEND_IN_THREADS,
 				Permission.MESSAGE_ATTACH_FILES), ChannelSetup.BOT);
 
-		// The invite link in the setup guide asks for exactly these and the two that make channels.
-		java.util.EnumSet<Permission> invited = java.util.EnumSet.copyOf(ChannelSetup.BOT);
+		// The invite link in the setup guide asks for exactly these, private threads for the contact channel,
+		// and the two that make channels.
+		assertTrue(ChannelSetup.BOT_CONTACT.containsAll(ChannelSetup.BOT));
+		assertEquals(Set.of(Permission.CREATE_PRIVATE_THREADS), new HashSet<>(java.util.EnumSet.complementOf(
+				java.util.EnumSet.copyOf(ChannelSetup.BOT))).stream().filter(ChannelSetup.BOT_CONTACT::contains)
+				.collect(java.util.stream.Collectors.toSet()));
+		java.util.EnumSet<Permission> invited = java.util.EnumSet.copyOf(ChannelSetup.BOT_CONTACT);
 		invited.addAll(ChannelSetup.TO_CREATE);
 		assertEquals(Permission.getRaw(invited), ChannelSetup.INVITE_PERMISSIONS);
 		assertTrue(readGuide().contains("permissions=" + ChannelSetup.INVITE_PERMISSIONS),
@@ -84,6 +89,26 @@ class ChannelSetupTest {
 			assertTrue(ChannelSetup.BOT.contains(permission), permission + " is not the bot's to deny");
 		}
 		assertFalse(ChannelSetup.names().contains(ChannelSetup.INTAKE), "#appeal shares a name with a staff channel");
+	}
+
+	@Test
+	@DisplayName("the contact channel can be read by everybody, and players write only in their own private threads")
+	void publicContactChannel() {
+		assertTrue(ChannelSetup.CONTACT_ALLOWED.contains(Permission.VIEW_CHANNEL));
+		assertTrue(ChannelSetup.CONTACT_ALLOWED.contains(Permission.MESSAGE_SEND_IN_THREADS),
+				"players could not answer in their thread");
+		assertFalse(ChannelSetup.CONTACT_ALLOWED.contains(Permission.MESSAGE_SEND), "players can type in #contact-staff");
+		assertTrue(ChannelSetup.CONTACT_DENIED.containsAll(Set.of(Permission.MESSAGE_SEND,
+				Permission.CREATE_PUBLIC_THREADS, Permission.CREATE_PRIVATE_THREADS)),
+				"players could start threads of their own");
+		for (Permission permission : ChannelSetup.CONTACT_ALLOWED) {
+			assertTrue(ChannelSetup.BOT_CONTACT.contains(permission), permission + " is not the bot's to grant");
+		}
+		for (Permission permission : ChannelSetup.CONTACT_DENIED) {
+			assertTrue(ChannelSetup.BOT_CONTACT.contains(permission), permission + " is not the bot's to deny");
+		}
+		assertFalse(ChannelSetup.names().contains(ChannelSetup.CONTACT), "#contact-staff shares a name with a staff channel");
+		assertEquals("help-requests", ChannelSetup.name(Channel.HELP_REQUESTS));
 	}
 
 	@Test

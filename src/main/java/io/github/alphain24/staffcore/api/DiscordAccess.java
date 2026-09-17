@@ -233,6 +233,20 @@ public final class DiscordAccess {
 		return DiscordGate.caseView(user, caseId);
 	}
 
+	/**
+	 * Somebody asking staff for help from the public contact channel, as the Minecraft player they named.
+	 * Open to anybody; limited to a few requests an hour per account. Staff are told in game.
+	 */
+	public static CompletableFuture<DiscordAnswer<DiscordHelpInfo>> helpRequest(DiscordUser asker, String minecraftName,
+			String text, long requestId) {
+		return DiscordGate.helpRequest(asker, minecraftName, text, requestId);
+	}
+
+	/** A staff member joining or closing a help request: {@code "join"} or {@code "close"}. */
+	public static CompletableFuture<DiscordResult> helpDesk(DiscordUser user, long requestId, String what) {
+		return DiscordGate.helpDesk(user, requestId, what);
+	}
+
 	/** A line in a case's history, as {@code /staff case <id> note} writes one. */
 	public static CompletableFuture<DiscordResult> caseNote(DiscordUser user, String caseId, String text) {
 		return DiscordGate.caseNote(user, caseId, text);

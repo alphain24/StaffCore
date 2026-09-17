@@ -51,6 +51,11 @@ public enum DiscordOperation {
 	/** Opens or joins a case, which in game is {@code /staff case open}, behind the case screen's node. */
 	ESCALATE_REPORT(Nodes.STAFF_GUI, true),
 	STAFF_CHAT(Nodes.CHAT, true),
+	/**
+	 * Joining and closing a player's request from the public contact channel. The report queue's node: the
+	 * nearest thing in game to answering what a player asked for.
+	 */
+	HELP_DESK(Nodes.REPORT_VIEW, true),
 
 	// ---- appeals
 	/** Accepting, rejecting, closing and asking the player something: the appeals screen's node. */

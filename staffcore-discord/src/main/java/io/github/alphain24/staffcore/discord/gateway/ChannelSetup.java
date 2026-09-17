@@ -54,8 +54,19 @@ public final class ChannelSetup {
 			Permission.MESSAGE_EMBED_LINKS, Permission.MESSAGE_HISTORY, Permission.CREATE_PUBLIC_THREADS,
 			Permission.MESSAGE_SEND_IN_THREADS, Permission.MESSAGE_ATTACH_FILES);
 
-	/** The permissions the setup guide's invite link asks for: {@link #BOT} and {@link #TO_CREATE}. */
-	static final long INVITE_PERMISSIONS = 309506198544L;
+	/**
+	 * What the bot is given on the public contact channel: {@link #BOT}, and making the private threads each
+	 * request is held in.
+	 */
+	static final Set<Permission> BOT_CONTACT = EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_SEND,
+			Permission.MESSAGE_EMBED_LINKS, Permission.MESSAGE_HISTORY, Permission.CREATE_PUBLIC_THREADS,
+			Permission.MESSAGE_SEND_IN_THREADS, Permission.MESSAGE_ATTACH_FILES, Permission.CREATE_PRIVATE_THREADS);
+
+	/**
+	 * The permissions the setup guide's invite link asks for: {@link #BOT_CONTACT}, which is {@link #BOT} and
+	 * private threads, and {@link #TO_CREATE}.
+	 */
+	static final long INVITE_PERMISSIONS = 378225675280L;
 
 	/** What it needs to make channels like that at all. */
 	static final Set<Permission> TO_CREATE = EnumSet.of(Permission.MANAGE_CHANNEL, Permission.MANAGE_ROLES);
@@ -70,6 +81,7 @@ public final class ChannelSetup {
 			case APPEALS -> "appeals";
 			case STAFF_LOG -> "staff-log";
 			case STAFF_CHAT -> "staff-chat";
+			case HELP_REQUESTS -> "help-requests";
 			case PUNISH_PANEL -> "punish";
 		};
 	}
@@ -181,6 +193,18 @@ public final class ChannelSetup {
 	static final Set<Permission> PUBLIC_DENIED = EnumSet.of(Permission.MESSAGE_SEND, Permission.MESSAGE_SEND_IN_THREADS,
 			Permission.CREATE_PUBLIC_THREADS);
 
+	/** The name the public contact channel is made with. */
+	static final String CONTACT = "contact-staff";
+
+	/**
+	 * What everybody is given on the contact channel: to read it, and to write in threads — which, since
+	 * nobody but the bot can start one, means only in the private thread they were added to.
+	 */
+	static final Set<Permission> CONTACT_ALLOWED = EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_HISTORY,
+			Permission.MESSAGE_SEND_IN_THREADS);
+	static final Set<Permission> CONTACT_DENIED = EnumSet.of(Permission.MESSAGE_SEND, Permission.CREATE_PUBLIC_THREADS,
+			Permission.CREATE_PRIVATE_THREADS);
+
 	/**
 	 * What making the players' appeal channel did.
 	 *
@@ -203,27 +227,59 @@ public final class ChannelSetup {
 		if (!guild.getSelfMember().hasPermission(TO_CREATE)) {
 			return new Intake(null, "the appeal channel was not made: the bot needs Manage Channels and Manage Roles");
 		}
+		return publicChannel(guild, settings, INTAKE, "appeals",
+				"Appeal a ban or mute on the Minecraft server: press Appeal, or type /appeal.",
+				PUBLIC_ALLOWED, PUBLIC_DENIED, BOT);
+	}
+
+	/**
+	 * Makes the public contact channel when the settings ask for it: {@code #contact-staff}, beside the appeal
+	 * channel, readable by everybody, typed in by nobody but the bot, with players writing only in the private
+	 * thread each request gets.
+	 */
+	public static Intake contact(Guild guild, DiscordSettings settings) {
+		if (!DiscordSettings.CREATE.equals(settings.contactStaffChannelId) || settings.helpRequestsChannelId.isEmpty()) {
+			return new Intake(null, null);
+		}
+		if (!guild.getSelfMember().hasPermission(TO_CREATE)) {
+			return new Intake(null, "the contact channel was not made: the bot needs Manage Channels and Manage Roles");
+		}
+		if (!guild.getSelfMember().hasPermission(Permission.CREATE_PRIVATE_THREADS)) {
+			return new Intake(null, "the contact channel was not made: the bot needs Create Private Threads. Open the "
+					+ "invite link from the setup guide again to add it");
+		}
+		return publicChannel(guild, settings, CONTACT, "contacting staff",
+				"Need a member of staff? Press Contact Staff for a private thread with them.",
+				CONTACT_ALLOWED, CONTACT_DENIED, BOT_CONTACT);
+	}
+
+	/**
+	 * A public channel under the players' category: one of that name already there — in the category, or at
+	 * the top, which is then moved in — or a new one.
+	 */
+	private static Intake publicChannel(Guild guild, DiscordSettings settings, String name, String what, String topic,
+			Set<Permission> everybodyAllowed, Set<Permission> everybodyDenied, Set<Permission> botAllowed) {
 		try {
 			Category category = helpCategory(guild, settings);
-			for (TextChannel text : guild.getTextChannelsByName(INTAKE, true)) {
+			for (TextChannel text : guild.getTextChannelsByName(name, true)) {
 				Category parent = text.getParentCategory();
 				if (parent == null || (category != null && parent.getId().equals(category.getId()))) {
-					StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Using #{} for appeals rather than making another.",
-							text.getName());
+					StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Using #{} for {} rather than making another.",
+							text.getName(), what);
 					if (parent == null && category != null) moveInto(text, category);
 					return new Intake(text.getId(), null);
 				}
 			}
-			TextChannel made = guild.createTextChannel(INTAKE, category)
-					.setTopic("Appeal a ban or mute on the Minecraft server: press Appeal, or type /appeal.")
-					.addPermissionOverride(guild.getPublicRole(), PUBLIC_ALLOWED, PUBLIC_DENIED)
-					.addPermissionOverride(guild.getSelfMember(), BOT, EnumSet.noneOf(Permission.class))
+			TextChannel made = guild.createTextChannel(name, category)
+					.setTopic(topic)
+					.addPermissionOverride(guild.getPublicRole(), everybodyAllowed, everybodyDenied)
+					.addPermissionOverride(guild.getSelfMember(), botAllowed, EnumSet.noneOf(Permission.class))
 					.complete();
-			StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Made public channel #{} for appeals{}.", made.getName(),
+			StaffCoreDiscord.LOGGER.info("[StaffCore Discord] Made public channel #{} for {}{}.", made.getName(), what,
 					category == null ? "" : " in " + category.getName());
 			return new Intake(made.getId(), null);
 		} catch (RuntimeException e) {
-			return new Intake(null, "the appeal channel could not be made (" + describe(e)
+			return new Intake(null, "the channel for " + what + " could not be made (" + describe(e)
 					+ "); it is tried again at the next start");
 		}
 	}

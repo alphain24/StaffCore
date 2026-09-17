@@ -494,7 +494,7 @@ and inviting the bot, filling in the settings, linking accounts, appeals and tro
    server with the link in the guide. Switch on **Message Content Intent** for the bot so staff can
    type in the staff chat channel; without it the bot still connects and staff use `/staffchat` there
    instead. It needs to view, send messages,
-   embed links, read message history, create public threads, send messages in threads and attach files — and
+   embed links, read message history, create public and private threads, send messages in threads and attach files — and
    Manage Channels and Manage Roles to make its own private channels, which can be taken away again
    once it has.
 2. Put both jars in `mods/` and start the server once. It writes `config/staffcore/discord.json`
@@ -540,9 +540,11 @@ companion is doing instead.
 | `alertsChannelId` | `create` | Where detector signals are posted and where cases get their threads. Empty posts none, and only cases a report opened get a thread. |
 | `appealsChannelId` | `create` | Where appeals are posted for staff, each with a thread and buttons. Setting it offers `/appeal` to players and has the bot read direct messages sent to it, which is where players answer questions and hear verdicts. Empty takes no appeals from Discord. |
 | `appealIntakeChannelId` | `create` | The players' appeal channel: `/appeal` is answered only there, and the bot keeps a message in it with an **Appeal** button that opens the form. `create` makes a public `#appeal` that everybody can read and only the bot can write in. Empty answers `/appeal` anywhere in the server and posts no button. |
-| `appealIntakeCategory` | `Help` | The public category `#appeal` goes under: an existing category of that name, or a new one everybody can see. An `#appeal` the bot made at the top of the server is moved into it; one in a category you chose stays. Empty keeps it at the top. |
+| `appealIntakeCategory` | `Help` | The public category `#appeal` and `#contact-staff` go under: an existing category of that name, or a new one everybody can see. An `#appeal` the bot made at the top of the server is moved into it; one in a category you chose stays. Empty keeps it at the top. |
 | `staffLogChannelId` | `create` | Where every audited staff action is posted — one post per command on a busy server. Empty posts none. |
 | `punishPanelChannelId` | `create` | The punishment panel's channel — see below. `create` makes it private to the bot and to the roles whose `roleNodes` list `discord.punishpanel`, not to every staff role. Empty posts no panel. |
+| `contactStaffChannelId` | `create` | The public `#contact-staff` channel, under `appealIntakeCategory`: a **Contact Staff** button that opens a private thread with staff — see Contacting staff. Empty takes no requests. |
+| `helpRequestsChannelId` | `create` | Where requests from `#contact-staff` reach staff, private. Empty takes no requests. |
 | `staffChatChannelId` | `create` | A channel bridged with staff chat both ways. Typing there needs Message Content Intent switched on for the bot; without it the bot connects anyway, game lines still arrive, and staff answer with `/staffchat`, which `/staff status` and the panel point out. Empty bridges nothing. |
 | `discordAlertSeverity` | `70` | The lowest signal confidence (0–100) posted to the alerts channel on its own. A signal that opens a case is always posted, because the case needs its thread. |
 | `serverName` | empty | Shown on report posts, for a network sharing one Discord. Empty shows nothing. |
@@ -553,8 +555,9 @@ Each channel setting is a channel id, `"create"`, or empty. **`"create"` has the
 channel when it connects**: under a **StaffCore** category, private — hidden from `@everyone`, open
 to the bot and to the staff roles in `roleNodes`, and to administrators as Discord always is — and
 its id is written back into the file in place of `"create"`, so it is made once. The one exception is
-the players' `#appeal`, which is public and goes under its own category (**Help** by default,
-`appealIntakeCategory`), with typing and starting threads switched off for everybody but the bot. Threads in those
+the players' `#appeal` and `#contact-staff`, which are public and go under their own category (**Help** by
+default, `appealIntakeCategory`), with typing and starting threads switched off for everybody but the bot;
+players write only in the private thread their own request gets. Threads in those
 channels are as private as the channels. The bot never changes a channel's permissions after making
 it, and making channels needs Manage Channels and Manage Roles, which can be removed afterwards.
 
@@ -573,6 +576,7 @@ posting.
 | Appeals | The player, the Discord account that filed and whose Minecraft account it is linked to, the punishment with its reason, who issued it and when, the appeal, evidence count, when, case; a thread; Accept, Reject, Request More Info, Close, Punishment, Profile, Evidence and Staff Note buttons | Questions to the player and their answers are said in the thread; a verdict edits the post, turns the verdict buttons off and closes the thread |
 | Staff log | Who, the command as recorded, the player it names, when, case | — |
 | Staff chat | Every staff chat line from the game | Lines typed there go into staff chat in game, marked `[Discord]` |
+| Help requests | A player's request from `#contact-staff`: who asked and whether the account is that player's, whether they are online, frozen or banned, their case, what they need; Join, Close, Profile, History, Freeze and Unfreeze buttons | Joining and closing are said in the player's private thread and edit the post |
 
 **With a cases channel** (the default), every case has its card there and its thread under the card;
 alerts and reports link to it rather than starting a thread of their own. A case from before the
@@ -686,6 +690,32 @@ straight to the same confirmation. Everything is private to whoever pressed it.
   and you are asked to look again. A confirmation lasts five minutes and only works for whoever drew it.
 - `punishPanelChannelId` (`create`) makes the channel visible only to the roles whose `roleNodes`
   list `discord.punishpanel`.
+
+### Contacting staff
+
+**`#contact-staff`** is the other public channel under Help. A player who needs a person — frozen in game
+and told to come here, or stuck — presses **Contact Staff** and says who they are in game and what they
+need. They get a **private thread** that only they and the staff who join can see; nobody can type in the
+channel itself or start threads there.
+
+StaffCore tells staff in game at once, loudly when the player is frozen, and the request is posted in
+the private **`#help-requests`** channel. The post says whether the Discord account is linked to that
+player (the name is otherwise only what they typed), and whether the player is online, frozen or banned.
+It also shows their open case. Its buttons:
+
+- **Join** adds you to the player's thread.
+- **Close** says so in the thread, takes the player out of it and archives it. The player can close
+  their own request from the thread, too.
+- **Profile**, **History**, **Freeze** and **Unfreeze** act on the player.
+
+Join and Close need `report.view`, in game and in the role mapping, and are recorded like every other
+action from Discord. When the account asking is linked to the player, the request is noted on their open
+case.
+
+An account can have one request open at a time, and ask three times an hour. The in-game alerts stop
+after 30 an hour, whoever asks, so many accounts cannot flood staff chat. A name the server has never
+seen is not looked up anywhere; it is shown as unknown. The bot needs **Create Private Threads** for this,
+which the invite link in the setup guide asks for.
 
 ### Appeals
 

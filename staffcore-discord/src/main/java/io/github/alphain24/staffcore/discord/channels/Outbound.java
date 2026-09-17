@@ -17,6 +17,8 @@ public sealed interface Outbound {
 		/** A card per case, kept up to date, with the case's thread under it. */
 		CASES,
 		APPEALS, STAFF_LOG, STAFF_CHAT,
+		/** Where players' requests from the public contact channel come in. Posted to directly, not queued. */
+		HELP_REQUESTS,
 		/** Not posted to: the punishment panel's private channel. */
 		PUNISH_PANEL
 	}

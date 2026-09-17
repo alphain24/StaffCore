@@ -72,6 +72,11 @@ public final class ThreadBook {
 		save();
 	}
 
+	/** A file of this name beside the book, for the companion's other memory; null when the book has no file. */
+	public Path beside(String name) {
+		return file == null ? null : file.resolveSibling(name);
+	}
+
 	/** A problem reading or writing the file, for {@code /staff status}; null when there is none. */
 	public synchronized String problem() {
 		return lastProblem;

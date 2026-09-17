@@ -1220,6 +1220,105 @@ public final class DiscordGate {
 		});
 	}
 
+	// ------------------------------------------------------------------ asking staff for help
+
+	/** How many times one Discord account may ask for help in an hour. */
+	static final int HELP_REQUESTS_PER_HOUR = 3;
+	/** How many help requests are said in game in an hour, whoever asks, so many accounts cannot flood staff. */
+	static final int HELP_ALERTS_PER_HOUR = 30;
+	static final int HELP_LIMIT = 1000;
+	private static final java.util.regex.Pattern MINECRAFT_NAME = java.util.regex.Pattern.compile("[A-Za-z0-9_]{3,16}");
+
+	/**
+	 * Somebody on Discord asked staff for help, naming a Minecraft player. Open to anybody, as appealing is:
+	 * the people who need this are players, frozen or banned, not staff. Limited per account, and said in
+	 * game with what StaffCore knows about the player. Written into the player's open case only when the
+	 * account asking is linked to them, since otherwise the name is only what somebody typed.
+	 *
+	 * @param requestId the companion's number for the request, so staff can find it
+	 */
+	public static CompletableFuture<DiscordAnswer<io.github.alphain24.staffcore.api.DiscordHelpInfo>> helpRequest(
+			DiscordUser asker, String minecraftName, String text, long requestId) {
+		return onServer(server -> {
+			if (asker == null) return DiscordAnswer.no("No Discord account.");
+			String typed = minecraftName == null ? "" : minecraftName.strip();
+			if (!MINECRAFT_NAME.matcher(typed).matches()) {
+				return DiscordAnswer.no("\"" + clip(typed.replaceAll("[^A-Za-z0-9_ ]", ""), 32) + "\" is not a Minecraft name. Type the name you "
+						+ "play as, 3 to 16 letters, numbers or underscores.");
+			}
+			String clean = cleanText(text, HELP_LIMIT);
+			if (clean.isEmpty()) return DiscordAnswer.no("Say what you need help with.");
+
+			Long wait = Mods.discord().appealAttempts().attempt("help:" + asker.id(), HELP_REQUESTS_PER_HOUR);
+			if (wait != null) {
+				return DiscordAnswer.no("You have asked for help " + HELP_REQUESTS_PER_HOUR + " times in the last hour. "
+						+ "Try again in " + Math.max(1, wait / 60_000L) + " minute(s).");
+			}
+
+			// Only players the server has seen: a name it does not know is not looked up anywhere, so typing
+			// made-up names cannot make the server ask Mojang about them.
+			NameAndId player = null;
+			for (String known : io.github.alphain24.staffcore.command.KnownPlayers.startingWith(server, typed, 40)) {
+				if (known.equalsIgnoreCase(typed)) {
+					player = PlayerLookup.profile(server, known).orElse(null);
+					break;
+				}
+			}
+			UUID id = player == null ? null : player.id();
+			String name = player == null ? typed : player.name();
+
+			var link = Mods.discord().links().forDiscord(asker.id());
+			ServerPlayer online = id == null ? null : server.getPlayerList().getPlayer(id);
+			boolean frozen = id != null && (online != null ? Mods.freeze().isFrozen(online) : storedFrozen(id));
+			boolean banned = id != null && Mods.punish().activeBan(id) != null;
+			String caseId = id == null ? null : Mods.cases().store().openCaseFor(id).map(Case::id).orElse(null);
+			boolean linkedHere = link != null && id != null && link.playerId().equals(id);
+
+			if (Mods.discord().appealAttempts().attempt("help-alerts", HELP_ALERTS_PER_HOUR) == null) {
+				String who = linkedHere ? name
+						: user(asker) + " (as " + name + (link == null ? ", not linked" : ", linked to " + link.playerName()) + ")";
+				String state = frozen ? " - they are frozen" : banned ? " - they are banned" : id == null
+						? " - nobody of that name has joined" : "";
+				String line = "[Discord] " + who + " asked staff for help, request #" + requestId + state;
+				if (frozen) Mods.alerts().onSecurityFlag(server, name, line);
+				else Mods.alerts().onStaffAction(server, line);
+			}
+			if (linkedHere && caseId != null) {
+				Mods.cases().store().note(caseId, Case.SYSTEM, "asked staff for help on Discord, request #" + requestId);
+			}
+			return DiscordAnswer.of(new io.github.alphain24.staffcore.api.DiscordHelpInfo(id, name,
+					link == null ? null : link.playerName(), online != null, frozen, banned, caseId));
+		}, DiscordAnswer.no(STOPPED));
+	}
+
+	/**
+	 * A staff member joining or closing a player's help request. The request itself lives in Discord; this is
+	 * the gate, the rate limit and the record. The answer's message is the linked Minecraft name, for the
+	 * line the companion writes in the request's thread.
+	 */
+	public static CompletableFuture<DiscordResult> helpDesk(DiscordUser user, long requestId, String what) {
+		return act(user, DiscordOperation.HELP_DESK, (server, resolved) -> {
+			String action = what == null ? "" : what.replaceAll("[^a-z]", "");
+			audit(resolved, user, "help request #" + requestId + " " + action, null);
+			return new DiscordResult(true, resolved.standing().minecraftName());
+		});
+	}
+
+	private static boolean storedFrozen(UUID id) {
+		var stored = StaffCore.state().loadAll().get(id);
+		return stored != null && stored.frozen();
+	}
+
+	/** A Discord account as staff read it in game: its name, which anybody can choose, and its id. */
+	private static String user(DiscordUser asker) {
+		String name = asker.name() == null ? "" : asker.name().replaceAll("[^A-Za-z0-9_.]", "");
+		return "@" + clip(name, 32) + " (" + asker.id() + ")";
+	}
+
+	private static String clip(String text, int max) {
+		return text.length() <= max ? text : text.substring(0, max);
+	}
+
 	/** A time as Discord shows it to each reader in their own timezone. */
 	private static String discordTime(Long epochMillis) {
 		return epochMillis == null ? "later" : "<t:" + epochMillis / 1000 + ":R>";
