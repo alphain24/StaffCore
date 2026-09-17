@@ -1,8 +1,22 @@
 # Changelog
 
-## 1.3.0 — unreleased
+## 1.3.0 — 2026-09-17
 
-In progress. Ships with `staffcore-discord-1.2.0.jar`; install both jars from the same release.
+A frozen player's screen, freeze evasion in the case, and Discord channels for cases and for players to
+reach staff. Ships with `staffcore-discord-1.2.0.jar`; install both jars from the same release.
+
+### Upgrading from 1.2.0
+
+- **Discord: open the invite link from the setup guide again.** It adds **Create Private Threads**, which
+  `#contact-staff` needs; until then the bot's status says the contact channel was not made.
+- The bot makes `#cases`, `#help-requests` and the public `#contact-staff` on its next start, the last one
+  in a public **Help** category with `#appeal`. Set `casesChannelId` or `contactStaffChannelId` to `""` if
+  you do not want them, and `appealIntakeCategory` to name the category or to `""` for none.
+- A settings file that still has `"appealIntakeChannelId": ""` (written by 1.1.0) needs `"create"` for
+  `#appeal` to be made.
+- Set `discordInvite` in `config/staffcore/staffcore.json`, if you have not, so a frozen player's screen
+  tells them where your Discord is.
+- A new server's database is created complete; an existing one is unchanged, with no new migrations.
 
 ### Fixed
 
