@@ -4,6 +4,12 @@
 
 In progress. Ships with `staffcore-discord-1.2.0.jar`; install both jars from the same release.
 
+### Fixed
+
+- **A closed case with nobody assigned read as still open**, and an open case somebody was assigned to as
+  closed. The player's risk profile missed recently actioned cases because of it, and the cases menu
+  and Discord's case view showed the wrong closing time.
+
 ### Added
 
 - **Leaving while frozen is reported.** Staff are told in game and in the Discord alerts channel, and it

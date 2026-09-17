@@ -872,12 +872,16 @@ public final class CaseStore {
 	}
 
 	private static Case read(ResultSet rs) throws SQLException {
-		long closedAt = rs.getLong("closed_at");
+		// Checked straight after the read it is about. It used to be checked in the argument list below,
+		// after assigned_to had been read, so an unassigned closed case read as open and an assigned open
+		// one as closed at the epoch.
+		long closedRaw = rs.getLong("closed_at");
+		Long closedAt = rs.wasNull() ? null : closedRaw;
 		return new Case(rs.getString("id"), UUID.fromString(rs.getString("subject_uuid")),
 				rs.getString("subject_name"), Case.Status.of(rs.getString("status")),
 				rs.getInt("severity"), rs.getString("summary"), rs.getLong("opened_at"),
 				rs.getString("opened_by"), rs.getString("assigned_to"),
-				rs.wasNull() ? null : closedAt, rs.getString("closed_by"),
+				closedAt, rs.getString("closed_by"),
 				rs.getString("resolution"), rs.getString("server_version"),
 				rs.getString("mod_version"),
 				Resolution.of(rs.getString("resolution_reason")),
