@@ -330,6 +330,8 @@ public class StaffCore implements ModInitializer {
 			// Vanish is deliberately absent here. This event fires before vanilla has
 			// broadcast "X left the game", so forgetting the vanish state now would delete
 			// the very thing that suppresses that line. VanishLeaveMixin does it afterwards.
+			// Before the hold is dropped: a frozen player who left is reported and goes into their case.
+			Mods.freeze().onDisconnect(mc, player);
 			Mods.freeze().onPlayerLeft(player.getUUID());
 			Mods.teleport().forget(player.getUUID());
 			Mods.control().forget(player.getUUID());

@@ -304,7 +304,7 @@ public class InvseeMenu extends Gui {
 				.build(), click -> {
 			ServerPlayer p = live();
 			if (p == null) return;
-			Mods.freeze().toggle(p);
+			Mods.freeze().toggle(p, Mc.name(viewer));
 			Sfx.success(viewer);
 			render();
 		});

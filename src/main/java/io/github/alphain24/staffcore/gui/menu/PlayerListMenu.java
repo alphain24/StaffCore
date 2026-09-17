@@ -144,7 +144,7 @@ public class PlayerListMenu extends PagedGui<ServerPlayer> {
 			case REPLAY -> ReplayMenu.open(viewer, Mc.profile(target));
 			case XRAY -> XrayMenu.open(viewer, Mc.profile(target));
 			case FREEZE -> {
-				boolean frozen = Mods.freeze().toggle(target);
+				boolean frozen = Mods.freeze().toggle(target, Mc.name(viewer));
 				viewer.sendSystemMessage(frozen
 						? Theme.good(Mc.name(target) + " is frozen.")
 						: Theme.info(Mc.name(target) + " is free to move."));

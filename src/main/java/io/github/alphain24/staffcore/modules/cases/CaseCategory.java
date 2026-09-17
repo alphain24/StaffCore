@@ -77,6 +77,8 @@ public enum CaseCategory {
 			case XRAY, ANTICHEAT, CANARY -> CHEATING;
 			case CONTRABAND -> ILLEGAL_ITEMS;
 			case ALT_MATCH -> BAN_EVASION;
+			// Only when the player has no case open to join; see Signal.Type#joinsAnyCase.
+			case FREEZE_EVASION -> OTHER;
 			case REPORT, OTHER -> fromWords(reasonOnly(signal.evidenceJson()));
 		};
 	}

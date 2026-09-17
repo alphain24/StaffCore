@@ -420,7 +420,9 @@ public final class DiscordGate {
 			return DiscordResult.no(Mc.name(target) + (freeze ? " is already frozen." : " is not frozen."));
 		}
 		audit(resolved, user, (freeze ? "freeze " : "unfreeze ") + Mc.name(target), null);
-		Mods.freeze().toggle(target);
+		String by = resolved.standing().minecraftName() == null ? user.name() + " (Discord)"
+				: resolved.standing().minecraftName() + " (from Discord)";
+		Mods.freeze().toggle(target, by);
 		return new DiscordResult(true, Mc.name(target) + (freeze ? " is frozen." : " is free to move."));
 	}
 

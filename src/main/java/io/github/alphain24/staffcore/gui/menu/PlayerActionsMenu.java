@@ -133,7 +133,7 @@ public class PlayerActionsMenu extends Gui {
 				frozen ? "release them" : "freeze them", click -> {
 					ServerPlayer p = online();
 					if (p == null) return;
-					boolean now = Mods.freeze().toggle(p);
+					boolean now = Mods.freeze().toggle(p, Mc.name(viewer));
 					viewer.sendSystemMessage(now
 							? Theme.good(target.name() + " is frozen.")
 							: Theme.info(target.name() + " is free to move."));

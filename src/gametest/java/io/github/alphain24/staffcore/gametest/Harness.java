@@ -57,6 +57,30 @@ final class Harness {
 	private static final java.util.Map<java.util.UUID, io.netty.channel.embedded.EmbeddedChannel> CHANNELS =
 			new java.util.concurrent.ConcurrentHashMap<>();
 
+	private static final java.util.Map<java.util.UUID, net.minecraft.network.Connection> CONNECTIONS =
+			new java.util.concurrent.ConcurrentHashMap<>();
+
+	/**
+	 * A named player closing the game: the connection ends from their side, and the server handles it as
+	 * it would any dropped connection, disconnect event and all.
+	 */
+	static void quit(ServerPlayer player) {
+		io.netty.channel.embedded.EmbeddedChannel channel = CHANNELS.remove(player.getUUID());
+		net.minecraft.network.Connection connection = CONNECTIONS.remove(player.getUUID());
+		if (channel == null || connection == null) throw new IllegalArgumentException("not a named player");
+		channel.close();
+		connection.handleDisconnection();
+	}
+
+	/** A named player removed by the server, the way a kick removes somebody. */
+	static void kick(ServerPlayer player, net.minecraft.network.chat.Component reason) {
+		net.minecraft.network.Connection connection = CONNECTIONS.remove(player.getUUID());
+		CHANNELS.remove(player.getUUID());
+		if (connection == null) throw new IllegalArgumentException("not a named player");
+		player.connection.disconnect(reason);
+		connection.handleDisconnection();
+	}
+
 	/**
 	 * Everything the server has sent this named player since the last call, in order, as packets.
 	 * <p>
@@ -84,8 +108,11 @@ final class Harness {
 	 */
 	static ServerPlayer namedPlayer(GameTestHelper helper) {
 		String name = ("t" + java.util.UUID.randomUUID().toString().replace("-", "")).substring(0, 12);
-		com.mojang.authlib.GameProfile profile =
-				new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), name);
+		return namedPlayer(helper, new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), name));
+	}
+
+	/** The same, for an account that has been here before: a player coming back after leaving. */
+	static ServerPlayer namedPlayer(GameTestHelper helper, com.mojang.authlib.GameProfile profile) {
 		net.minecraft.server.network.CommonListenerCookie cookie =
 				net.minecraft.server.network.CommonListenerCookie.createInitial(profile, false);
 		net.minecraft.server.level.ServerLevel level = helper.getLevel();
@@ -94,6 +121,7 @@ final class Harness {
 		net.minecraft.network.Connection connection =
 				new net.minecraft.network.Connection(net.minecraft.network.protocol.PacketFlow.SERVERBOUND);
 		CHANNELS.put(profile.id(), new io.netty.channel.embedded.EmbeddedChannel(connection));
+		CONNECTIONS.put(profile.id(), connection);
 		level.getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
 		player.setGameMode(GameType.SURVIVAL);
 		player.snapTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(

@@ -322,7 +322,7 @@ public final class StaffToolset {
 			}
 			case FREEZE -> {
 				if (denied(staff, Nodes.FREEZE)) return;
-				boolean frozen = StaffCore.modules().require("freeze", FreezeModule.class).toggle(target);
+				boolean frozen = StaffCore.modules().require("freeze", FreezeModule.class).toggle(target, Mc.name(staff));
 				staff.sendSystemMessage(frozen
 						? Theme.good(Mc.name(target) + " is frozen.")
 						: Theme.info(Mc.name(target) + " is free to move."));

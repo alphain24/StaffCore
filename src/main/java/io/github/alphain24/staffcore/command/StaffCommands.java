@@ -284,7 +284,7 @@ public final class StaffCommands {
 						.executes(ctx -> {
 							ServerPlayer target = EntityArgument.getPlayer(ctx, "target");
 							audit(ctx, "/staff freeze " + Mc.name(target));
-							boolean frozen = Mods.freeze().toggle(target);
+							boolean frozen = Mods.freeze().toggle(target, caseActor(ctx));
 							return ok(ctx, frozen
 									? Mc.name(target) + " is frozen."
 									: Mc.name(target) + " is free to move.");

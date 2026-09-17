@@ -313,8 +313,8 @@ public class CaseModule implements Module {
 		if (!landing.isUnattached()) {
 			// Joined an existing case. Worth saying, because an investigation somebody already
 			// has open just got more serious — but quietly, since nobody needs interrupting
-			// twice about the same player.
-			return new Announcement(false, "%s — %s added to case %s".formatted(
+			// twice about the same player. Unless it is the kind somebody has to act on now.
+			return new Announcement(signal.type().alwaysLoud(), "%s — %s added to case %s".formatted(
 					subject, what, landing.caseId()));
 		}
 

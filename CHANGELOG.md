@@ -4,6 +4,13 @@
 
 In progress. Ships with `staffcore-discord-1.2.0.jar`; install both jars from the same release.
 
+### Added
+
+- **Leaving while frozen is reported.** Staff are told in game and in the Discord alerts channel, and it
+  is added to the player's open case, of any kind, with where they were frozen and who froze them. A
+  case is opened when they have none. Kicks, bans and shutdowns are not reported; a dropped
+  connection is. Coming back frozen is noted on the case too.
+
 ### Changed
 
 - **A frozen player's screen goes dark**, with **YOU ARE FROZEN** in bold across it, *Join our Discord

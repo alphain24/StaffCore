@@ -43,6 +43,11 @@ public record Signal(long id, String caseId, Type type, UUID subjectId, String s
 		ANTICHEAT("anti-cheat"),
 		MASS_GRIEF("mass grief"),
 		CANARY("canary block"),
+		/**
+		 * A frozen player left the server. Joins whatever case the player already has open, of any kind,
+		 * since it is about the investigation they were frozen for; and is always said out loud.
+		 */
+		FREEZE_EVASION("left while frozen"),
 		OTHER("other");
 
 		private final String label;
@@ -53,6 +58,16 @@ public record Signal(long id, String caseId, Type type, UUID subjectId, String s
 
 		public String label() {
 			return label;
+		}
+
+		/** Whether staff are told loudly even when this only joins a case already open. */
+		public boolean alwaysLoud() {
+			return this == FREEZE_EVASION;
+		}
+
+		/** Whether this joins the player's newest open case of any kind, rather than one of its own kind. */
+		public boolean joinsAnyCase() {
+			return this == FREEZE_EVASION;
 		}
 
 		/** Parses a stored value, falling back rather than throwing on an unknown one. */

@@ -191,7 +191,7 @@ has already logged off.
 | `/staff` | `staff.gui` | Open the panel |
 | `/staff <player>` | `staff.gui` | Open that player's file |
 | `/staff mode` · `/staff vanish` | `staff.mode`, `staff.vanish` | Clock on, disappear |
-| `/staff freeze <player>` | `staff.freeze` | Lock a player in place, their screen dark and **YOU ARE FROZEN** across it |
+| `/staff freeze <player>` | `staff.freeze` | Lock a player in place, their screen dark and **YOU ARE FROZEN** across it. Leaving while frozen is reported and added to their case |
 | `/staff warn <player> <reason…>` | `staff.punish.warn` | Logged warning |
 | `/staff kick <player> <reason…>` | `staff.punish.kick` | Disconnect once |
 | `/staff mute` · `/staff tempmute <player> <dur> <reason…>` | `staff.punish.mute` | Silence |

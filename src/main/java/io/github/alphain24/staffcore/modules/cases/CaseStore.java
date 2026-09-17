@@ -67,7 +67,11 @@ public final class CaseStore {
 			// Only a case of the same kind. A chat report about somebody under investigation
 			// for x-ray is not part of the x-ray investigation, and joining it would close with
 			// it — and count in its evidence — when that case is cleared.
-			Optional<Case> existing = openCaseFor(conn, incoming.subjectId(), category);
+			// Leaving while frozen is part of whatever the player was frozen over, so it joins their
+			// newest open case of any kind.
+			Optional<Case> existing = incoming.type().joinsAnyCase()
+					? openCaseFor(conn, incoming.subjectId())
+					: openCaseFor(conn, incoming.subjectId(), category);
 			String caseId = existing.map(Case::id).orElse(null);
 			boolean opened = false;
 

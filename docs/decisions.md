@@ -2079,6 +2079,45 @@ Discord, naming the Discord account.
 
 ---
 
+## Leaving while frozen
+
+**Date:** 2026-09-17
+
+Asked for: "if they try to log out and evade, staff is notified … and that shall be added on top of
+their case".
+
+**A signal, so it reaches everything a signal reaches.** `FREEZE_EVASION` goes through the same
+path as every detector. It is a row on the player's record, it lands in a case, it is announced in
+game, and it goes to the Discord alerts channel through `SignalRaised`. Two things differ from the
+other types. It joins the player's **newest open case of any kind**, because leaving is part of the
+investigation they were frozen for, not a new one. And it is **always loud**, even when it only joins
+a case, because somebody has to act on it now. Confidence is 90: certain that it happened, and above
+the default threshold, so a player with no case gets one (of kind *Other*, which staff can change).
+
+**What counts as leaving.** By the time Fabric's disconnect event fires, a player who quit and a
+player who was kicked look the same. A mixin at the head of
+`ServerCommonPacketListenerImpl#disconnect(DisconnectionDetails)` tells them apart: only the server
+calls that method, so being called at all means the server ended the connection, and the reason is
+kept. A kick, a ban or a login from elsewhere is not reported. A server shutdown is not reported,
+whether shown by that reason or by the server no longer running. A timeout comes through the same
+method with `disconnect.timeout` and **is** reported, as "lost connection": pulling the network cable
+looks exactly like that. If the mixin stops applying, every disconnect of a frozen player reads as
+leaving. Staff are then told too often, which is the safe way to be wrong, and the startup check
+names the hook.
+
+**What goes in the case.** The detail says who froze them and how long they had been held, so every
+freeze path now passes a name: commands, the panel, the staff tools and Discord. The evidence is
+the place they were frozen, plus a replay window up to the moment they left when position tracking
+is on.
+
+**Coming back.** The freeze was already kept on disk across a logout. Returning now also tells staff,
+quietly, and notes it on the open case.
+
+**Nothing auto-punishes.** Leaving while frozen is written down and announced. Whether it deserves a
+ban is a person's call.
+
+---
+
 ## A frozen player's screen
 
 **Date:** 2026-09-17
