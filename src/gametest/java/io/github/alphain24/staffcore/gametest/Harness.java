@@ -53,6 +53,26 @@ final class Harness {
 		return helper.makeMockServerPlayerInLevel();
 	}
 
+	/** Each named player's end of the connection, where what the server sent them collects. */
+	private static final java.util.Map<java.util.UUID, io.netty.channel.embedded.EmbeddedChannel> CHANNELS =
+			new java.util.concurrent.ConcurrentHashMap<>();
+
+	/**
+	 * Everything the server has sent this named player since the last call, in order, as packets.
+	 * <p>
+	 * The connection has no encoder, so what the server writes arrives here as the packet objects
+	 * themselves. Empty for a player {@link #namedPlayer} did not make.
+	 */
+	static java.util.List<Object> sent(ServerPlayer player) {
+		java.util.List<Object> out = new java.util.ArrayList<>();
+		io.netty.channel.embedded.EmbeddedChannel channel = CHANNELS.get(player.getUUID());
+		if (channel == null) return out;
+		for (Object packet = channel.readOutbound(); packet != null; packet = channel.readOutbound()) {
+			out.add(packet);
+		}
+		return out;
+	}
+
 	/**
 	 * A real survival player with a name of its own, placed the way the game places a mock one.
 	 * <p>
@@ -73,7 +93,7 @@ final class Harness {
 				cookie.clientInformation());
 		net.minecraft.network.Connection connection =
 				new net.minecraft.network.Connection(net.minecraft.network.protocol.PacketFlow.SERVERBOUND);
-		new io.netty.channel.embedded.EmbeddedChannel(connection);
+		CHANNELS.put(profile.id(), new io.netty.channel.embedded.EmbeddedChannel(connection));
 		level.getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
 		player.setGameMode(GameType.SURVIVAL);
 		player.snapTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(

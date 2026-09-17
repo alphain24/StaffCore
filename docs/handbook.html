@@ -800,10 +800,18 @@
         <h3>Freeze</h3>
         <p>
           Pins a player where they stand. Every tick, a frozen player who has drifted more
-          than a few centimetres is snapped back, and every ten seconds they get a reminder
-          not to log out. The small dead zone is deliberate — snapping on <em>any</em>
-          movement fights the client's own prediction and produces rubber-banding; a little
-          slack reads cleanly as "you cannot walk".
+          than a few centimetres is snapped back. The small dead zone is deliberate — snapping
+          on <em>any</em> movement fights the client's own prediction and produces
+          rubber-banding; a little slack reads cleanly as "you cannot walk".
+        </p>
+        <p>
+          Their screen goes dark with blindness, and <strong>YOU ARE FROZEN</strong> is written
+          across the middle in bold, with <em>Join our Discord and contact staff</em> under it
+          (<em>Contact a member of staff</em> when <code>discordInvite</code> is empty). Above the
+          hotbar is the invite and a reminder that leaving the server is reported to staff. All
+          of it is sent again every two seconds while they are frozen, and taken away when
+          they are released; blindness they had from something else is left alone. Nothing is
+          said in chat, except the invite once as a link they can click, when there is one.
         </p>
 
         <h3>Return</h3>
@@ -3263,7 +3271,7 @@
               <tr><td><strong>Vanish</strong><br><span class="mono">vanish</span></td>
                 <td class="wrap">Being invisible properly. Entity tracking, tab list, player count, <code>/list</code>, selectors, the server-list sample, sounds and waypoints all agree that you are not there. Optionally stops you loading chunks. Survives a restart and a reconnect.</td></tr>
               <tr><td><strong>Freeze</strong><br><span class="mono">freeze</span></td>
-                <td class="wrap">Pinning a player where they stand, with an on-screen explanation. Anchored to a position, so logging out and back in does not shake it off.</td></tr>
+                <td class="wrap">Pinning a player where they stand, their screen dark and the freeze written across it. Anchored to a position, so logging out and back in does not shake it off.</td></tr>
               <tr><td><strong>Teleport</strong><br><span class="mono">teleport</span></td>
                 <td class="wrap">Going to a player, bringing one to you, teleporting to coordinates, and <code>/back</code> to return. Return points are memory-only and cleared by a restart.</td></tr>
               <tr><td><strong>Punishments</strong><br><span class="mono">punishment</span></td>

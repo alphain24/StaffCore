@@ -344,7 +344,7 @@ public class PunishmentModule implements Module {
 	 * The invite as chat text that opens in a browser when clicked, or plain text when it is
 	 * not a link a client would open.
 	 */
-	private static MutableComponent inviteText(String invite) {
+	public static MutableComponent inviteText(String invite) {
 		java.net.URI link = io.github.alphain24.staffcore.modules.appeal.InviteLink.of(invite);
 		MutableComponent text = Icon.text(invite, Theme.ACCENT);
 		if (link == null) return text;

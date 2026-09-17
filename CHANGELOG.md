@@ -4,6 +4,13 @@
 
 In progress. Ships with `staffcore-discord-1.2.0.jar`; install both jars from the same release.
 
+### Changed
+
+- **A frozen player's screen goes dark**, with **YOU ARE FROZEN** in bold across it, *Join our Discord
+  and contact staff* under it, and the `discordInvite` above the hotbar. It stays until they are
+  released. The freeze warnings in chat are gone; the invite is sent once as a link to click, when
+  `discordInvite` is set.
+
 ## 1.2.0 — 2026-09-17
 
 Discord extras, a permissions fix for servers without LuckPerms, and the last of the Discord brief:

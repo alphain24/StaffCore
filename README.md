@@ -191,7 +191,7 @@ has already logged off.
 | `/staff` | `staff.gui` | Open the panel |
 | `/staff <player>` | `staff.gui` | Open that player's file |
 | `/staff mode` · `/staff vanish` | `staff.mode`, `staff.vanish` | Clock on, disappear |
-| `/staff freeze <player>` | `staff.freeze` | Lock a player in place |
+| `/staff freeze <player>` | `staff.freeze` | Lock a player in place, their screen dark and **YOU ARE FROZEN** across it |
 | `/staff warn <player> <reason…>` | `staff.punish.warn` | Logged warning |
 | `/staff kick <player> <reason…>` | `staff.punish.kick` | Disconnect once |
 | `/staff mute` · `/staff tempmute <player> <dur> <reason…>` | `staff.punish.mute` | Silence |
@@ -354,7 +354,7 @@ Changing a default in the code alone would never reach a server that has already
 
   "staffModeGameMode": "survival",     // creative | survival | spectator while on duty
   "offences": [ ... ],                 // the punish menu is built from this
-  "discordInvite": "",                 // e.g. https://discord.gg/abc123 - shown on the ban screen so people can appeal
+  "discordInvite": "",                 // e.g. https://discord.gg/abc123 - on the ban screen, and on a frozen player's screen
   "allowInGameAppeals": true,
   "appealCooldownDays": 7,             // the wait a rejection sets unless staff pick another, 0-365; 0 = no wait
   "notifyReturningPlayers": true,     // tell staff once when somebody joins after a ban of theirs ended

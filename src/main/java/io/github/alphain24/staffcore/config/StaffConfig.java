@@ -345,7 +345,10 @@ public final class StaffConfig {
 	public int altMinConfidence = 40;
 
 	// ---- appeals -------------------------------------------------------------
-	/** Shown on the ban screen. Empty hides the appeal line entirely. */
+	/**
+	 * Your Discord invite. Shown on the ban screen, where empty hides the appeal line, and on a frozen
+	 * player's screen, where empty tells them to contact a member of staff instead of joining.
+	 */
 	public String discordInvite = "";
 	public boolean allowInGameAppeals = true;
 

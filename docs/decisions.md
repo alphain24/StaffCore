@@ -2079,6 +2079,37 @@ Discord, naming the Discord account.
 
 ---
 
+## A frozen player's screen
+
+**Date:** 2026-09-17
+
+Asked for: "their screen should have the blindness effect and a huge text overlay in bold saying
+'You are Frozen, Join the discord and contact staff', and remove the text it says when frozen."
+
+**Titles, not chat.** The old freeze sent two chat lines, then a reminder every ten seconds. Chat
+scrolls away under whatever the player is typing, and it is hidden entirely for a player who has
+chat off. A title sits in the middle of the screen and cannot be scrolled past. Blindness removes
+anything else to look at, and any reason to try walking. So the title says **YOU ARE FROZEN** in
+bold, the subtitle says to join the Discord and contact staff, and the action bar gives the
+`discordInvite` and says that leaving is reported.
+
+**Sent again, not once.** A title fades, a milk bucket clears effects, and a client that
+reconnects has forgotten both. Blindness is topped up every second, with a few seconds on it; the
+title is resent every two seconds, with no fade-in so it never flickers. On release the titles are
+cleared and the blindness removed.
+
+**Only our blindness.** StaffCore's blindness is ambient, with no particles and no icon. On release
+only blindness that still looks like that is removed. A player who drank a potion of blindness
+before being frozen keeps it: vanilla keeps the longer effect and the non-ambient flag.
+
+**One line of chat, on purpose.** A title cannot be clicked, and a player told to join a Discord
+needs a way to get there. When `discordInvite` is set, the invite is sent once, as a clickable link.
+That is the only chat line; the old warnings are gone.
+
+**Tested** with the packets a test player is actually sent, which `Harness.sent` now collects.
+
+---
+
 ## Gate 5
 
 **Date:** 2026-09-17
